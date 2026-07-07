@@ -1,0 +1,13 @@
+[package]
+name = "srui-audio-native"
+version = "0.1.0"
+edition = "2021"
+links = "cosmos"
+build = "build.rs"
+
+[lib]
+name = "cosmos"
+crate-type = ["cdylib"]
+
+[build-dependencies]
+cc = "1"

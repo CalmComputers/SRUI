@@ -7,4 +7,5 @@ members = [
     "srui-sdl",
     "srui-demo",
     "srui-ffi",
+    "srui-audio-native",
 ]

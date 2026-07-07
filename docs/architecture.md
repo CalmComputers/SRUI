@@ -33,6 +33,7 @@ Application vocabulary stays out of the core: no application command names, no c
 | `srui-prism` / `srui-prism-sys` | Rust over C | Speech and braille output through Prism (vendored; builds via CMake), which routes to the running screen reader or platform TTS. The reference speech reader's output channel. |
 | `srui-ffi` | Rust (cdylib) | C ABI over the core, the SDL host, and Prism speech — one native surface for bindings: opaque handles, flat input/event structs, event drain. |
 | `Srui.Net` | C# | Idiomatic .NET wrapper over the C ABI: classes, records, hand-written P/Invoke. `dotnet/SruiDemo` mirrors the Rust demo. |
+| `Srui.Audio` / `srui-audio-native` | C# over C | Game audio for C# consumers: 3D positioning (Horizon-style pan/volume or Steam Audio HRTF), sound groups with a native effect chain (convolution reverb, EQ, filter, distortion, vocoder, disperser, delay), pitch tweens, offline time-stretch. All DSP stays native (cosmos.dll: miniaudio + vendored cosmos nodes); C# orchestrates with zero steady-state allocation. Rust games use cosmos-audio directly instead. |
 | Readers | host-side | Consumers of the output event stream: self-voicing speech, braille, UIA provider, logging/test readers. |
 
 Rust programs consume `srui-core` directly; there is no FFI on the Rust path. A reactive layer over the retained API is anticipated but deferred. `srui-demo` wires the whole stack together end to end: SDL events in, Prism speech out.
