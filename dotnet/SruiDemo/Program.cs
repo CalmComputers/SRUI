@@ -382,7 +382,9 @@ views.AddShortcut("alt+v");
 quit.AddShortcut("ctrl+q", ShortcutAction.Activate);
 startJob.AddShortcut("ctrl+j", ShortcutAction.JumpAndActivate);
 
-// Host-side bindings: Ctrl+G greets, Ctrl+L opens the log.
+// Host-side bindings: Ctrl+G greets, Ctrl+L opens the log, and
+// Ctrl+Space rolls a die. Unlike widget shortcuts these are not
+// layer-scoped — unconsumed input reaches them from any dialog too.
 app.UnhandledInput = input =>
 {
     if (input.IsRawKey(Keys.Char('g'), Mods.Ctrl))
@@ -394,6 +396,13 @@ app.UnhandledInput = input =>
     if (input.IsRawKey(Keys.Char('l'), Mods.Ctrl))
     {
         ShowEventLog();
+        return true;
+    }
+    if (input.IsRawKey(Keys.Space, Mods.Ctrl))
+    {
+        var roll = Random.Shared.Next(1, 7);
+        Log($"die roll: {roll}");
+        app.Announce($"{roll}.");
         return true;
     }
     return false;
