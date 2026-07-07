@@ -1,0 +1,190 @@
+# SPDX-License-Identifier: MPL-2.0
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: Mark as pre-release
+        type: boolean
+        default: true
+permissions:
+  contents: write
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract.outputs.version }}
+      tag: ${{ steps.extract.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - name: Extract version
+        id: extract
+        run: |
+          version=$(sed -n 's/^[[:space:]]*VERSION[[:space:]]\+\([0-9.]\+\).*/\1/p' CMakeLists.txt | head -1)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+
+  build-docs:
+    uses: ./.github/workflows/build-docs.yml
+
+  build-windows:
+    uses: ./.github/workflows/build-windows.yml
+
+  build-linux:
+    uses: ./.github/workflows/build-linux.yml
+
+  build-macos:
+    uses: ./.github/workflows/build-macos.yml
+
+  build-ios:
+    uses: ./.github/workflows/build-ios.yml
+
+  build-tvos:
+    uses: ./.github/workflows/build-tvos.yml
+
+  build-visionos:
+    uses: ./.github/workflows/build-visionos.yml
+
+  build-watchos:
+    uses: ./.github/workflows/build-watchos.yml
+
+  build-android:
+    uses: ./.github/workflows/build-android.yml
+
+  build-emscripten:
+    uses: ./.github/workflows/build-emscripten.yml
+
+  build-gdextension:
+    uses: ./.github/workflows/build-gdextension.yml
+
+  build-wheels:
+    uses: ./.github/workflows/build-wheels.yml
+
+  build-sdist:
+    uses: ./.github/workflows/build-sdist.yml
+
+  release:
+    needs: [version, build-docs, build-windows, build-linux, build-macos, build-ios, build-android, build-emscripten, build-gdextension, build-wheels, build-sdist]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+      - name: Assemble SDK
+        run: |
+          tag="${{ needs.version.outputs.tag }}"
+          sdk="prism-sdk-${tag}"
+          mkdir -p "${sdk}"/{windows/x64,windows/arm64,macos/universal,ios/arm64,ios-simulator/arm64,tvos/arm64,tvos-simulator/arm64,visionos/arm64,visionos-simulator/arm64,watchos/arm64,watchos-simulator/arm64,linux/x64,linux/arm64,android,wasm,include,doc,LICENSES}
+          cp include/prism.h "${sdk}/include/"
+          cp -r artifacts/docs/* "${sdk}/doc/"
+          unzip -q artifacts/windows-x64/prism-windows-x64.zip     -d "${sdk}/windows/x64/"
+          unzip -q artifacts/windows-arm64/prism-windows-arm64.zip -d "${sdk}/windows/arm64/"
+          unzip -q artifacts/macos-universal/prism-macos-universal.zip -d "${sdk}/macos/universal/"
+          unzip -q artifacts/ios-arm64/prism-ios-arm64.zip         -d "${sdk}/ios/arm64/"
+          unzip -q artifacts/ios-simulator-arm64/prism-ios-simulator-arm64.zip         -d "${sdk}/ios-simulator/arm64/"
+          unzip -q artifacts/tvos-arm64/prism-tvos-arm64.zip         -d "${sdk}/tvos/arm64/"
+          unzip -q artifacts/tvos-simulator-arm64/prism-tvos-simulator-arm64.zip         -d "${sdk}/tvos-simulator/arm64/"
+          unzip -q artifacts/visionos-arm64/prism-visionos-arm64.zip         -d "${sdk}/visionos/arm64/"
+          unzip -q artifacts/visionos-simulator-arm64/prism-visionos-simulator-arm64.zip         -d "${sdk}/visionos-simulator/arm64/"
+          unzip -q artifacts/watchos-arm64/prism-watchos-arm64.zip         -d "${sdk}/watchos/arm64/"
+          unzip -q artifacts/watchos-simulator-arm64/prism-watchos-simulator-arm64.zip         -d "${sdk}/watchos-simulator/arm64/"
+          unzip -q artifacts/linux-x64/prism-linux-x64.zip         -d "${sdk}/linux/x64/"
+          unzip -q artifacts/linux-arm64/prism-linux-arm64.zip     -d "${sdk}/linux/arm64/"
+          unzip -q artifacts/android/prism-android.zip             -d "${sdk}/android/"
+          unzip -q artifacts/wasm/prism-wasm.zip                   -d "${sdk}/wasm/"
+          find "${sdk}" -depth -type d -name include -not -path "${sdk}/include" -exec rm -rf {} +
+          find "${sdk}" -depth -type d -name LICENSES -not -path "${sdk}/LICENSES" -exec rm -rf {} +
+          find "${sdk}" -name "NOTICE" -type f -delete
+          cp -r LICENSES "${sdk}"
+          cp NOTICE "${sdk}"
+          zip -r "${sdk}.zip" "${sdk}"
+      - name: Package GDExtension addon
+        run: |
+          tag="${{ needs.version.outputs.tag }}"
+          mkdir -p prismatoid/bin
+          for dir in artifacts/gdextension-*/; do
+            cp -r "${dir}"* prismatoid/bin/
+          done
+          cat > prismatoid/prismatoid.gdextension << 'GDEXT'
+          [configuration]
+
+          entry_symbol = "prism_library_init"
+          compatibility_minimum = "4.5"
+
+          [libraries]
+
+          linux.debug.x86_64 = "res://addons/prismatoid/bin/linux/prismatoid.linux.template_debug.x86_64.so"
+          linux.release.x86_64 = "res://addons/prismatoid/bin/linux/prismatoid.linux.template_release.x86_64.so"
+          linux.debug.x86_32 = "res://addons/prismatoid/bin/linux/prismatoid.linux.template_debug.x86_32.so"
+          linux.release.x86_32 = "res://addons/prismatoid/bin/linux/prismatoid.linux.template_release.x86_32.so"
+          linux.debug.arm64 = "res://addons/prismatoid/bin/linux/prismatoid.linux.template_debug.arm64.so"
+          linux.release.arm64 = "res://addons/prismatoid/bin/linux/prismatoid.linux.template_release.arm64.so"
+          linux.debug.arm32 = "res://addons/prismatoid/bin/linux/prismatoid.linux.template_debug.arm32.so"
+          linux.release.arm32 = "res://addons/prismatoid/bin/linux/prismatoid.linux.template_release.arm32.so"
+          windows.debug.x86_64 = "res://addons/prismatoid/bin/windows/prismatoid.windows.template_debug.x86_64.dll"
+          windows.release.x86_64 = "res://addons/prismatoid/bin/windows/prismatoid.windows.template_release.x86_64.dll"
+          windows.debug.x86_32 = "res://addons/prismatoid/bin/windows/prismatoid.windows.template_debug.x86_32.dll"
+          windows.release.x86_32 = "res://addons/prismatoid/bin/windows/prismatoid.windows.template_release.x86_32.dll"
+          windows.debug.arm64 = "res://addons/prismatoid/bin/windows/prismatoid.windows.template_debug.arm64.dll"
+          windows.release.arm64 = "res://addons/prismatoid/bin/windows/prismatoid.windows.template_release.arm64.dll"
+          macos.debug.arm64 = "res://addons/prismatoid/bin/macos/prismatoid.macos.template_debug.arm64.dylib"
+          macos.release.arm64 = "res://addons/prismatoid/bin/macos/prismatoid.macos.template_release.arm64.dylib"
+          macos.debug.x86_64 = "res://addons/prismatoid/bin/macos/prismatoid.macos.template_debug.x86_64.dylib"
+          macos.release.x86_64 = "res://addons/prismatoid/bin/macos/prismatoid.macos.template_release.x86_64.dylib"
+          android.debug.arm64 = "res://addons/prismatoid/bin/android/prismatoid.android.template_debug.arm64.so"
+          android.release.arm64 = "res://addons/prismatoid/bin/android/prismatoid.android.template_release.arm64.so"
+          android.debug.arm32 = "res://addons/prismatoid/bin/android/prismatoid.android.template_debug.arm32.so"
+          android.release.arm32 = "res://addons/prismatoid/bin/android/prismatoid.android.template_release.arm32.so"
+          android.debug.x86_64 = "res://addons/prismatoid/bin/android/prismatoid.android.template_debug.x86_64.so"
+          android.release.x86_64 = "res://addons/prismatoid/bin/android/prismatoid.android.template_release.x86_64.so"
+          android.debug.x86_32 = "res://addons/prismatoid/bin/android/prismatoid.android.template_debug.x86_32.so"
+          android.release.x86_32 = "res://addons/prismatoid/bin/android/prismatoid.android.template_release.x86_32.so"
+          ios.debug.arm64 = "res://addons/prismatoid/bin/ios/prismatoid.ios.template_debug.arm64.dylib"
+          ios.release.arm64 = "res://addons/prismatoid/bin/ios/prismatoid.ios.template_release.arm64.dylib"
+          web.debug.wasm32 = "res://addons/prismatoid/bin/web/prismatoid.web.template_debug.wasm32.so"
+          web.release.wasm32 = "res://addons/prismatoid/bin/web/prismatoid.web.template_release.wasm32.so"
+          GDEXT
+          sed -i 's/^          //' prismatoid/prismatoid.gdextension
+          cp -r LICENSES prismatoid/
+          cp NOTICE prismatoid/
+          debug_count=$(find prismatoid/bin -name '*template_debug*' -type f | wc -l)
+          release_count=$(find prismatoid/bin -name '*template_release*' -type f | wc -l)
+          if [ "$release_count" -eq 0 ]; then
+            echo "::error::No template_release binaries — GODOTCPP_TARGET is not propagating"
+            exit 1
+          fi
+          mkdir -p addons/prismatoid
+          mv prismatoid/* addons/prismatoid
+          zip -r "prismatoid-gdextension-${tag}.zip" addons
+      - uses: actions/create-github-app-token@v3.2.0
+        id: app-token
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+      - uses: softprops/action-gh-release@v3
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          tag_name: ${{ needs.version.outputs.tag }}
+          name: PRISM ${{ needs.version.outputs.tag }}
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: true
+          files: |
+            prism-sdk-${{ needs.version.outputs.tag }}.zip
+            prismatoid-gdextension-${{ needs.version.outputs.tag }}.zip
+            artifacts/windows-x64/prism-windows-x64.zip
+            artifacts/windows-arm64/prism-windows-arm64.zip
+            artifacts/macos-universal/prism-macos-universal.zip
+            artifacts/ios-arm64/prism-ios-arm64.zip
+            artifacts/ios-simulator-arm64/prism-ios-simulator-arm64.zip
+            artifacts/tvos-arm64/prism-tvos-arm64.zip
+            artifacts/tvos-simulator-arm64/prism-tvos-simulator-arm64.zip
+                        artifacts/visionos-arm64/prism-visionos-arm64.zip
+            artifacts/visionos-simulator-arm64/prism-visionos-simulator-arm64.zip
+                        artifacts/watchos-arm64/prism-watchos-arm64.zip
+            artifacts/watchos-simulator-arm64/prism-watchos-simulator-arm64.zip
+            artifacts/linux-x64/prism-linux-x64.zip
+            artifacts/linux-arm64/prism-linux-arm64.zip
+            artifacts/android/prism-android.zip
+            artifacts/wasm/prism-wasm.zip
