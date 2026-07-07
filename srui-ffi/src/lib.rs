@@ -294,6 +294,25 @@ pub unsafe extern "C" fn srui_ui_announce(ui: *mut Ui, text: *const c_char) {
     (*ui).announce(str_in(text));
 }
 
+/// Re-announce the focused node with its context labels (preceding
+/// Label siblings) — the dialog-open announcement.
+#[no_mangle]
+pub unsafe extern "C" fn srui_ui_reannounce_with_context(ui: *mut Ui) {
+    (*ui).reannounce_with_context();
+}
+
+/// Register a periodic ticker; Tick events (kind 200, num0 = id) fire at
+/// `set_now` resolution. Returns the ticker id.
+#[no_mangle]
+pub unsafe extern "C" fn srui_ui_add_ticker(ui: *mut Ui, interval_ms: u64) -> u64 {
+    (*ui).add_ticker(interval_ms)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn srui_ui_remove_ticker(ui: *mut Ui, id: u64) {
+    (*ui).remove_ticker(id);
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn srui_ui_set_primary(ui: *mut Ui, node: u64) {
     if let Some(id) = node_in(node) {
@@ -472,6 +491,13 @@ pub unsafe extern "C" fn srui_ui_set_editbox_text(ui: *mut Ui, node: u64, text: 
     }
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn srui_ui_set_editbox_read_only(ui: *mut Ui, node: u64, read_only: bool) {
+    if let Some(id) = node_in(node) {
+        (*ui).set_editbox_read_only(id, read_only);
+    }
+}
+
 /// -1 when the node is not a listbox.
 #[no_mangle]
 pub unsafe extern "C" fn srui_ui_listbox_selected(ui: *mut Ui, node: u64) -> i64 {
@@ -613,6 +639,12 @@ fn flatten_event(event: OutputEvent) -> SruiEvent {
                 speech: std::ptr::null_mut(),
             }
         }
+        OutputEvent::Tick { ticker } => SruiEvent {
+            kind: 200,
+            node: 0,
+            num0: ticker as i64,
+            speech: std::ptr::null_mut(),
+        },
     }
 }
 

@@ -37,6 +37,9 @@ internal static partial class NativeMethods
     [DllImport(Lib)] internal static extern ulong srui_ui_focus(IntPtr ui);
     [DllImport(Lib)] [return: MarshalAs(UnmanagedType.I1)] internal static extern bool srui_ui_handle_input(IntPtr ui, uint kind, uint ch, uint key, uint mods);
     [DllImport(Lib)] internal static extern void srui_ui_announce(IntPtr ui, [MarshalAs(UnmanagedType.LPUTF8Str)] string text);
+    [DllImport(Lib)] internal static extern void srui_ui_reannounce_with_context(IntPtr ui);
+    [DllImport(Lib)] internal static extern ulong srui_ui_add_ticker(IntPtr ui, ulong intervalMs);
+    [DllImport(Lib)] internal static extern void srui_ui_remove_ticker(IntPtr ui, ulong id);
     [DllImport(Lib)] internal static extern void srui_ui_set_primary(IntPtr ui, ulong node);
     [DllImport(Lib)] internal static extern void srui_ui_set_cancel(IntPtr ui, ulong node);
     [DllImport(Lib)] internal static extern void srui_ui_push_layer(IntPtr ui);
@@ -59,6 +62,7 @@ internal static partial class NativeMethods
     [DllImport(Lib)] [return: MarshalAs(UnmanagedType.I1)] internal static extern bool srui_ui_checkbox_checked(IntPtr ui, ulong node);
     [DllImport(Lib)] internal static extern IntPtr srui_ui_editbox_text(IntPtr ui, ulong node);
     [DllImport(Lib)] internal static extern void srui_ui_set_editbox_text(IntPtr ui, ulong node, [MarshalAs(UnmanagedType.LPUTF8Str)] string text);
+    [DllImport(Lib)] internal static extern void srui_ui_set_editbox_read_only(IntPtr ui, ulong node, [MarshalAs(UnmanagedType.I1)] bool readOnly);
     [DllImport(Lib)] internal static extern long srui_ui_listbox_selected(IntPtr ui, ulong node);
     [DllImport(Lib)] internal static extern IntPtr srui_ui_listbox_selected_item(IntPtr ui, ulong node);
     [DllImport(Lib)] internal static extern void srui_ui_set_list_items(IntPtr ui, ulong node, IntPtr[] items, nuint itemsLen);

@@ -40,7 +40,13 @@ app.SetPrimary(greet);
 app.SetCancel(quit);
 
 greet.Activated += Greet;
-quit.Activated += app.Quit;
+// Shift+Enter on Greet opens a reviewable status dialog.
+greet.SecondaryActivated += () => app.ShowStatus(
+    "About",
+    "SRUI demo, C sharp edition.\nA screen-reader-first UI toolkit.\n"
+        + "This text lives in a read-only edit box: arrows, words, and\n"
+        + "selection all work. Escape or Close returns to the demo.");
+quit.Activated += () => app.Confirm("Really quit?", onYes: app.Quit);
 
 // Host-side bindings: Ctrl+G greets from anywhere.
 app.UnhandledInput = input =>
@@ -52,6 +58,11 @@ app.UnhandledInput = input =>
     }
     return false;
 };
+
+// A ticker: once a minute, note the uptime.
+var minutes = 0;
+var ticker = app.StartTicker(60_000);
+ticker.Tick += () => app.Announce($"Demo running for {++minutes} minute{(minutes == 1 ? "" : "s")}.");
 
 app.Run();
 return;

@@ -38,6 +38,9 @@ public abstract record OutputEvent
 
     /// <summary>A widget's state changed (text, selection, slider...).</summary>
     public sealed record Changed(NodeId Node) : OutputEvent;
+
+    /// <summary>A ticker's interval elapsed (see Ui.AddTicker).</summary>
+    public sealed record Tick(ulong Ticker) : OutputEvent;
 }
 
 /// <summary>One pumped host event.</summary>

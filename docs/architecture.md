@@ -55,6 +55,8 @@ Programs build and change UI by mutating the tree: insert a node under a parent 
 
 The tree maintains a stack of layers for modal UI. Each layer has its own roots, focus, and default primary/cancel widgets (Enter and Escape targets). Only the top layer is navigable. Pushing a layer opens a dialog or palette; popping it removes the layer's nodes and restores the previous layer's focus. The base layer cannot be popped.
 
+Dialog conventions live in the bindings, not the core: there is no dialog role (the prompt is a Label preceding the widgets, announced as a context label via the focused-with-context re-announcement), Escape closes a dialog automatically when no cancel widget claims it, and the canned dialogs (message, confirm, custom button rows, reviewable read-only status text) are language-level helpers — `SruiDialogs` in C# — because they are too high-level to share across languages profitably.
+
 # 5. Widget Behavior
 
 Widget behavior is trait-dispatched: each node holds an implementation of a `Widget` trait that handles logical input directed at the node when focused, mutates its own state, and emits output events. Built-in roles ship with the core.
@@ -71,11 +73,15 @@ A `KeyCombo` is a physical key plus ctrl/alt/shift modifier state, with a spoken
 
 Input events are pushed to the core one at a time from a host-side queue; there is no frame granularity. Each event is dispatched in a fixed claim order: the focused node's widget gets first claim (guided by its role's reserved-key table), then the host's key bindings, then framework navigation (tab ring, hierarchy navigation, mnemonics). Whatever handles the event emits the corresponding output events; unclaimed input falls through to the host.
 
+## 6.3. Time
+
+The core has no clock; the host feeds one through `set_now` (monotonic milliseconds), ideally once per loop iteration. Typeahead timeouts and tickers are both observed there. A ticker (`add_ticker`) emits a `Tick` output event each time its interval elapses, at `set_now` resolution, drift-tolerant: a late check fires once rather than bursting to catch up.
+
 # 7. Output Events and Readers
 
 ## 7.1. Event streams
 
-The core produces a single ordered stream of output events in two families. Accessibility events describe perception: focus moved (with the full label and any context labels), text typed or deleted (with line, grapheme, and word payloads), cursor moved, selection changed, list item changed (with position), tab changed, slider changed, filter results changed, boundary hit, plus a free-form announce escape hatch. Widget events describe intent for the program: activated, toggled, value changed, selection changed. Programs react to widget events; readers react to accessibility events.
+The core produces a single ordered stream of output events in three families. Accessibility events describe perception: focus moved (with the full label and any context labels), text typed or deleted, cursor moved, selection changed, list item changed (with position), tab changed, slider changed, filter results changed, boundary hit, plus a free-form announce escape hatch. Editor events deliberately carry only perceptual content (the grapheme, the echoed word, the spoken context) — never document text; a reader that needs the line at the cursor queries the editor through the node. Widget events describe intent for the program: activated, toggled, value changed, selection changed. Tick events report elapsed ticker intervals. Programs react to widget and tick events; readers react to accessibility events.
 
 ## 7.2. Draining and coalescing
 

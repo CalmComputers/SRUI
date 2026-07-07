@@ -25,6 +25,8 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     public Action? AltTap { get; set; }
 
     private readonly Dictionary<NodeId, Widget> _widgets = new();
+    private readonly Dictionary<ulong, Ticker> _tickers = new();
+    private readonly Stack<Dialog> _dialogs = new();
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private bool _running;
 
@@ -49,22 +51,60 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     internal void Register(Widget widget) => _widgets[widget.Node] = widget;
 
     /// <summary>Drop a widget and every registered descendant (walked
-    /// via the C#-side parent chain) from the event router.</summary>
+    /// via the C#-side container chain) from the event router.</summary>
     internal void UnregisterSubtree(Widget root)
     {
-        var doomed = _widgets.Values.Where(w => IsSelfOrDescendant(w, root)).ToList();
+        var doomed = _widgets.Values
+            .Where(w => ReferenceEquals(w, root) || (root is IWidgetContainer c && w.IsInside(c)))
+            .ToList();
         foreach (var widget in doomed)
             _widgets.Remove(widget.Node);
     }
 
-    private static bool IsSelfOrDescendant(Widget widget, Widget root)
+    // ── Dialogs ──
+
+    /// <summary>Open a modal dialog: a fresh layer that widgets are then
+    /// created into. Focus it and call AnnounceOpened when built (the
+    /// canned dialogs in SruiDialogs do all of this).</summary>
+    public Dialog OpenDialog()
     {
-        for (var current = widget; current is not null; current = current.Parent)
+        var dialog = new Dialog(this);
+        _dialogs.Push(dialog);
+        return dialog;
+    }
+
+    internal void CloseDialog(Dialog dialog)
+    {
+        // Unregister the dialog's widgets, pop its layer. Dialogs close
+        // strictly LIFO; closing a buried dialog closes those above it.
+        while (_dialogs.Count > 0)
         {
-            if (ReferenceEquals(current, root))
-                return true;
+            var top = _dialogs.Pop();
+            var doomed = _widgets.Values.Where(w => w.IsInside(top)).ToList();
+            foreach (var widget in doomed)
+                _widgets.Remove(widget.Node);
+            Ui.PopLayer();
+            if (ReferenceEquals(top, dialog))
+                break;
+            top.Close();
         }
-        return false;
+    }
+
+    // ── Tickers ──
+
+    /// <summary>Start a periodic ticker; subscribe to its Tick event.
+    /// Resolution is the event-loop cadence (~5ms).</summary>
+    public Ticker StartTicker(uint intervalMs)
+    {
+        var ticker = new Ticker(this, Ui.AddTicker(intervalMs));
+        _tickers[ticker.Id] = ticker;
+        return ticker;
+    }
+
+    internal void StopTicker(Ticker ticker)
+    {
+        _tickers.Remove(ticker.Id);
+        Ui.RemoveTicker(ticker.Id);
     }
 
     /// <summary>Enter anywhere presses this widget (unless the focused
@@ -87,6 +127,8 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
         _running = true;
         while (_running)
         {
+            // Every iteration, not just on input: tickers fire from here.
+            Ui.SetNow((ulong)_clock.ElapsedMilliseconds);
             foreach (var hostEvent in Host.Pump(5))
             {
                 switch (hostEvent)
@@ -101,9 +143,15 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
                         AltTap?.Invoke();
                         break;
                     case HostEvent.Input(var input):
-                        Ui.SetNow((ulong)_clock.ElapsedMilliseconds);
                         if (!Ui.HandleInput(input))
-                            UnhandledInput?.Invoke(input);
+                        {
+                            // Escape closes an open dialog with no
+                            // explicit cancel widget.
+                            if (input.Kind == InputKind.Dismiss && _dialogs.Count > 0)
+                                _dialogs.Peek().Dismiss();
+                            else
+                                UnhandledInput?.Invoke(input);
+                        }
                         break;
                 }
             }
@@ -138,6 +186,9 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
                 break;
             case OutputEvent.Changed(var node):
                 _widgets.GetValueOrDefault(node)?.OnChanged();
+                break;
+            case OutputEvent.Tick(var id):
+                _tickers.GetValueOrDefault(id)?.OnTick();
                 break;
         }
     }

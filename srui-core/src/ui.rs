@@ -25,10 +25,18 @@ pub struct Ui {
     focus_memory: FocusMemory,
     events: Vec<OutputEvent>,
     /// Host-supplied monotonic clock in milliseconds. Drives typeahead
-    /// timeouts; without `set_now` calls, timeouts never fire.
+    /// timeouts and tickers; without `set_now` calls, neither fires.
     now_ms: u64,
     /// Injected platform clipboard; every editbox gets it for free.
     clipboard: Box<dyn Clipboard>,
+    tickers: Vec<Ticker>,
+    next_ticker_id: u64,
+}
+
+struct Ticker {
+    id: u64,
+    interval_ms: u64,
+    next_fire_ms: u64,
 }
 
 impl Ui {
@@ -40,6 +48,8 @@ impl Ui {
             events: Vec::new(),
             now_ms: 0,
             clipboard: Box::new(NoClipboard),
+            tickers: Vec::new(),
+            next_ticker_id: 0,
         }
     }
 
@@ -48,10 +58,37 @@ impl Ui {
         self.clipboard = clipboard;
     }
 
-    /// Advance the host clock (monotonic milliseconds). Call before each
-    /// input batch; wall-clock source is the host's choice.
+    /// Advance the host clock (monotonic milliseconds). Call every loop
+    /// iteration (not just on input): typeahead timeouts and tickers are
+    /// checked here, so ticker resolution is the call cadence.
     pub fn set_now(&mut self, now_ms: u64) {
         self.now_ms = now_ms;
+        for ticker in &mut self.tickers {
+            if now_ms >= ticker.next_fire_ms {
+                self.events.push(OutputEvent::Tick { ticker: ticker.id });
+                // Drift-tolerant: the next interval starts now, so a late
+                // check fires once rather than bursting to catch up.
+                ticker.next_fire_ms = now_ms + ticker.interval_ms;
+            }
+        }
+    }
+
+    /// Register a periodic ticker: a `Tick` event fires each time
+    /// `interval_ms` elapses, observed at `set_now` resolution. Returns
+    /// the id carried by the events.
+    pub fn add_ticker(&mut self, interval_ms: u64) -> u64 {
+        self.next_ticker_id += 1;
+        let interval = interval_ms.max(1);
+        self.tickers.push(Ticker {
+            id: self.next_ticker_id,
+            interval_ms: interval,
+            next_fire_ms: self.now_ms + interval,
+        });
+        self.next_ticker_id
+    }
+
+    pub fn remove_ticker(&mut self, id: u64) {
+        self.tickers.retain(|t| t.id != id);
     }
 
     // ── Tree construction ──
@@ -675,7 +712,7 @@ mod tests {
             .iter()
             .filter_map(|ev| match ev {
                 OutputEvent::Accessibility(a) => speech::render_event(a),
-                OutputEvent::Widget(_) => None,
+                OutputEvent::Widget(_) | OutputEvent::Tick { .. } => None,
             })
             .collect()
     }
@@ -1497,6 +1534,39 @@ mod tests {
             ui.widget::<FilterListBox>(list).unwrap().selected_item(),
             Some("Quit".to_string())
         );
+    }
+
+    // ── Tickers ──
+
+    #[test]
+    fn ticker_fires_on_clock_advance() {
+        let mut ui = Ui::new();
+        let ticker = ui.add_ticker(100);
+
+        ui.set_now(50);
+        assert!(ui.drain_events().is_empty());
+
+        ui.set_now(100);
+        assert_eq!(ui.drain_events(), vec![OutputEvent::Tick { ticker }]);
+
+        // A long gap fires once, not once per missed interval.
+        ui.set_now(950);
+        assert_eq!(ui.drain_events(), vec![OutputEvent::Tick { ticker }]);
+        // Next interval starts from the late check.
+        ui.set_now(1000);
+        assert!(ui.drain_events().is_empty());
+        ui.set_now(1050);
+        assert_eq!(ui.drain_events(), vec![OutputEvent::Tick { ticker }]);
+    }
+
+    #[test]
+    fn removed_ticker_stops_firing() {
+        let mut ui = Ui::new();
+        let a = ui.add_ticker(10);
+        let b = ui.add_ticker(10);
+        ui.remove_ticker(a);
+        ui.set_now(20);
+        assert_eq!(ui.drain_events(), vec![OutputEvent::Tick { ticker: b }]);
     }
 
     #[test]

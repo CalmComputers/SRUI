@@ -94,13 +94,14 @@ fn main() -> Result<(), String> {
     let start = Instant::now();
     let mut running = true;
     while running {
+        // Every iteration, not just on input: tickers fire from here.
+        ui.set_now(start.elapsed().as_millis() as u64);
         for event in host.pump(5) {
             match event {
                 HostEvent::Quit => running = false,
                 HostEvent::KeyDown => voice.stop(),
                 HostEvent::AltTap => {}
                 HostEvent::Input(input) => {
-                    ui.set_now(start.elapsed().as_millis() as u64);
                     if !ui.handle_input(&input) {
                         // Host-side bindings: unconsumed input is ours to
                         // match. Ctrl+G greets from anywhere.
@@ -133,7 +134,7 @@ fn main() -> Result<(), String> {
                     OutputEvent::Widget(WidgetEvent::Activated { node }) if node == greet_btn => {
                         greet(&mut ui, name_field, fruits, wrap);
                     }
-                    OutputEvent::Widget(_) => {}
+                    OutputEvent::Widget(_) | OutputEvent::Tick { .. } => {}
                 }
             }
         }

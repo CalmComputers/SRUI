@@ -14,6 +14,10 @@ pub enum OutputEvent {
     Accessibility(AccessibilityEvent),
     /// What the program should react to. Consumed by application code.
     Widget(WidgetEvent),
+    /// A ticker's interval elapsed (see `Ui::add_ticker`). Fires at most
+    /// once per `set_now` call per ticker, so its resolution is the
+    /// host's clock cadence.
+    Tick { ticker: u64 },
 }
 
 /// Semantic events for the program: user intent, not perception.
@@ -48,12 +52,12 @@ pub enum AccessibilityEvent {
         context_labels: Vec<String>,
     },
 
-    /// Text was inserted or deleted in an editor.
+    /// Text was inserted or deleted in an editor. Deliberately carries
+    /// only the perceptual content (what the user hears), not document
+    /// text — readers that need the line or surrounding text query the
+    /// editor through the node.
     Typing {
         node: NodeId,
-        /// Current line at cursor (post-edit). Empty if the resulting
-        /// line is empty.
-        line: String,
         /// Single grapheme for `Insert`/`Delete`; empty for `DeleteWord`.
         grapheme: String,
         /// `Some(word)` when an insert just crossed a word boundary or
@@ -62,11 +66,10 @@ pub enum AccessibilityEvent {
         kind: TypingKind,
     },
 
-    /// Cursor moved within text without an edit.
+    /// Cursor moved within text without an edit. Carries perceptual
+    /// content only; query the editor for document text.
     TextNav {
         node: NodeId,
-        /// Current line at cursor.
-        line: String,
         /// Grapheme at the post-move cursor position.
         grapheme_at_cursor: String,
         /// Spoken context for the landing position at this granularity —
@@ -190,7 +193,7 @@ pub fn coalesce(events: Vec<OutputEvent>) -> Vec<OutputEvent> {
                 | AccessibilityEvent::Filter { .. } => Some(discriminant(a)),
                 _ => None,
             },
-            OutputEvent::Widget(_) => None,
+            OutputEvent::Widget(_) | OutputEvent::Tick { .. } => None,
         }
     }
 

@@ -44,6 +44,16 @@ public sealed class Ui : IDisposable
     /// <summary>Queue a free-form announcement for the readers.</summary>
     public void Announce(string text) => NativeMethods.srui_ui_announce(Handle, text);
 
+    /// <summary>Re-announce the focused node with its context labels
+    /// (preceding Label siblings) — the dialog-open announcement.</summary>
+    public void ReannounceWithContext() => NativeMethods.srui_ui_reannounce_with_context(Handle);
+
+    /// <summary>Register a periodic ticker; Tick events fire at SetNow
+    /// resolution. Returns the id carried by the events.</summary>
+    public ulong AddTicker(ulong intervalMs) => NativeMethods.srui_ui_add_ticker(Handle, intervalMs);
+
+    public void RemoveTicker(ulong id) => NativeMethods.srui_ui_remove_ticker(Handle, id);
+
     // ── Layers and defaults ──
 
     public void SetPrimary(NodeId node) => NativeMethods.srui_ui_set_primary(Handle, node.Value);
@@ -126,6 +136,9 @@ public sealed class Ui : IDisposable
     public void SetEditboxText(NodeId node, string text) =>
         NativeMethods.srui_ui_set_editbox_text(Handle, node.Value, text);
 
+    public void SetEditboxReadOnly(NodeId node, bool readOnly) =>
+        NativeMethods.srui_ui_set_editbox_read_only(Handle, node.Value, readOnly);
+
     /// <summary>-1 when the node is not a listbox.</summary>
     public long ListboxSelected(NodeId node) => NativeMethods.srui_ui_listbox_selected(Handle, node.Value);
 
@@ -185,6 +198,7 @@ public sealed class Ui : IDisposable
                     101 => new OutputEvent.SecondaryActivated(node),
                     102 => new OutputEvent.Toggled(node, e.Num0 != 0),
                     103 => new OutputEvent.Changed(node),
+                    200 => new OutputEvent.Tick((ulong)e.Num0),
                     _ => null,
                 };
                 if (mapped is not null) result.Add(mapped);

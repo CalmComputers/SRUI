@@ -72,6 +72,18 @@ public class EditBox : Widget
         get => Ui.EditboxText(Node);
         set => Ui.SetEditboxText(Node, value);
     }
+
+    private bool _readOnly;
+
+    public bool ReadOnly
+    {
+        get => _readOnly;
+        set
+        {
+            _readOnly = value;
+            Ui.SetEditboxReadOnly(Node, value);
+        }
+    }
 }
 
 /// <summary>Single-selection list with arrow navigation and typeahead.

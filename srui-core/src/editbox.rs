@@ -158,10 +158,6 @@ fn nav_context(editor: &EditorState, kind: NavKind) -> String {
     }
 }
 
-fn current_line(editor: &EditorState) -> String {
-    text_nav::current_line_text(&editor.rope, editor.cursor)
-}
-
 fn is_top_boundary(forward: bool) -> bool {
     !forward
 }
@@ -321,7 +317,6 @@ pub fn handle_editbox(
                 && prev_cursor < editor_state.len();
             result.push(AccessibilityEvent::TextNav {
                 node,
-                line: current_line(editor_state),
                 grapheme_at_cursor: raw_grapheme_at_cursor(editor_state),
                 context: nav_context(editor_state, nav_kind),
                 granularity: nav_kind.to_granularity(),
@@ -336,7 +331,6 @@ pub fn handle_editbox(
             };
             result.push(AccessibilityEvent::TextNav {
                 node,
-                line: current_line(editor_state),
                 grapheme_at_cursor: raw_grapheme_at_cursor(editor_state),
                 context: nav_context(editor_state, nav_kind),
                 granularity: nav_kind.to_granularity(),
@@ -372,7 +366,6 @@ pub fn handle_editbox(
                 // the cursor char like a regular Char nav.
                 result.push(AccessibilityEvent::TextNav {
                     node,
-                    line: current_line(editor_state),
                     grapheme_at_cursor: raw_grapheme_at_cursor(editor_state),
                     context: cursor_speak_char(editor_state, false),
                     granularity: NavGranularity::Char,
@@ -452,7 +445,6 @@ pub fn handle_editbox(
 
         result.push(AccessibilityEvent::Typing {
             node,
-            line: current_line(editor_state),
             grapheme,
             last_word,
             kind: TypingKind::Insert,
@@ -489,7 +481,6 @@ pub fn handle_editbox(
 
         result.push(AccessibilityEvent::Typing {
             node,
-            line: current_line(editor_state),
             grapheme: "\n".to_string(),
             last_word,
             kind: TypingKind::Insert,
@@ -553,7 +544,6 @@ pub fn handle_editbox(
         };
         result.push(AccessibilityEvent::Typing {
             node,
-            line: current_line(editor_state),
             grapheme,
             last_word,
             kind,
