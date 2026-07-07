@@ -17,6 +17,9 @@ using var app = new SruiApp("SRUI Demo (C#)");
 Console.WriteLine($"speech backend: {app.Voice.BackendName}");
 
 using var audio = new SoundManager();
+// Cosmos convention: angle 0 faces +X (east). Face +Y (north/forward)
+// so fruit positions along X read as left/right.
+audio.SetListener(0.0f, 0.0f, 0.0f, 90.0f);
 using var sfxBus = audio.CreateGroup();
 var pingWav = Path.Combine(Path.GetTempPath(), "srui-demo-ping.wav");
 WritePingWav(pingWav);

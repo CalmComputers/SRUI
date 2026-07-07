@@ -6,6 +6,10 @@ namespace Srui.Audio;
 /// listener) to advance pitch tweens and refresh spatialization. Not
 /// thread-safe: one manager, one thread. Steady-state Tick/SetListener
 /// allocate nothing.
+///
+/// The listener starts at the origin facing +X (angle 0, "east"); games
+/// that treat +Y as forward should call
+/// <c>SetListener(x, y, z, 90)</c> once up front.
 /// </summary>
 public sealed class SoundManager : IDisposable
 {

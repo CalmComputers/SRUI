@@ -8,6 +8,8 @@ var wav = Path.Combine(Path.GetTempPath(), "srui-audio-ping.wav");
 WritePingWav(wav);
 
 using var manager = new SoundManager();
+// Face +Y (angle 90); the cosmos default of 0 faces +X (east).
+manager.SetListener(0.0f, 0.0f, 0.0f, 90.0f);
 Console.WriteLine($"sample rate: {manager.SampleRate}, HRTF: {manager.IsHrtfAvailable}");
 
 // 1. HRTF circle: the ping orbits the listener.
