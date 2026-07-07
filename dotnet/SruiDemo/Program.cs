@@ -6,108 +6,61 @@
 // binding), and it reads the live name, list, and checkbox state.
 // Escape (or Enter on Quit, or closing the window) exits.
 
-using System.Diagnostics;
 using Srui;
 
-using var host = new SdlHost("SRUI Demo (C#)", 400, 300);
-using var voice = new Speech();
-Console.WriteLine($"speech backend: {voice.BackendName}");
+using var app = new SruiApp("SRUI Demo (C#)");
+Console.WriteLine($"speech backend: {app.Voice.BackendName}");
 
-using var ui = new Ui();
-host.ProvideClipboard(ui);
-ui.TextLabel(NodeId.None, "SRUI demo, C sharp edition");
-var nameField = ui.Editbox(NodeId.None, "Your name");
-ui.Editbox(NodeId.None, "Notes", multiline: true);
-var greetBtn = ui.Button(NodeId.None, "Greet");
-var wrap = ui.Checkbox(NodeId.None, "Word Wrap", false);
-var options = ui.Group(NodeId.None, "Options");
-ui.Checkbox(options, "Autosave", true);
-ui.Checkbox(options, "Telemetry", false);
-var fruits = ui.Listbox(
-    NodeId.None,
-    "Fruits",
+new Label(app, "SRUI demo, C sharp edition");
+var name = new EditBox(app, "Your name");
+new EditBox(app, "Notes", multiline: true);
+var greet = new Button(app, "Greet");
+var wrap = new CheckBox(app, "Word Wrap");
+var options = new Group(app, "Options");
+new CheckBox(options, "Autosave", isChecked: true);
+new CheckBox(options, "Telemetry");
+var fruits = new ListBox(
+    app, "Fruits",
     ["apple", "banana", "cherry", "date", "elderberry"],
     numbered: true);
-ui.Slider(NodeId.None, "Volume", 50, 0, 100, unit: "%");
-ui.TabControl(NodeId.None, "Views", ["Library", "Playlist", "Effects"]);
-ui.FilterListbox(
-    NodeId.None,
-    "Commands",
+new Slider(app, "Volume", 50, 0, 100, unit: "%");
+new TabControl(app, "Views", ["Library", "Playlist", "Effects"]);
+new FilterListBox(
+    app, "Commands",
     [
         "Save File", "Save As", "Open File", "Open Recent", "Close Tab",
         "Find", "Find Next", "Replace", "Go To Line", "Toggle Word Wrap",
         "Zoom In", "Zoom Out",
     ]);
-ui.ShortcutField(NodeId.None, "Custom shortcut");
-var quit = ui.Button(NodeId.None, "Quit");
+new ShortcutField(app, "Custom shortcut");
+var quit = new Button(app, "Quit");
+
 // Enter anywhere presses Greet; Escape anywhere presses Quit.
-ui.SetPrimary(greetBtn);
-ui.SetCancel(quit);
-ui.EnsureFocus();
+app.SetPrimary(greet);
+app.SetCancel(quit);
 
-var clock = Stopwatch.StartNew();
-var running = true;
-while (running)
+greet.Activated += Greet;
+quit.Activated += app.Quit;
+
+// Host-side bindings: Ctrl+G greets from anywhere.
+app.UnhandledInput = input =>
 {
-    foreach (var hostEvent in host.Pump(5))
+    if (input.IsRawKey(Keys.Char('g'), Mods.Ctrl))
     {
-        switch (hostEvent)
-        {
-            case HostEvent.Quit:
-                running = false;
-                break;
-            case HostEvent.KeyDown:
-                voice.Stop();
-                break;
-            case HostEvent.AltTap:
-                break;
-            case HostEvent.Input(var input):
-                ui.SetNow((ulong)clock.ElapsedMilliseconds);
-                if (!ui.HandleInput(input))
-                {
-                    // Host-side bindings: unconsumed input is ours to
-                    // match. Ctrl+G greets from anywhere.
-                    if (input.IsRawKey(Keys.Char('g'), Mods.Ctrl))
-                        Greet();
-                }
-                break;
-        }
+        Greet();
+        return true;
     }
+    return false;
+};
 
-    // Drain until quiescent: reactions to widget events (the Greet
-    // announcement) queue further output that must be spoken this
-    // iteration, not after the next pump.
-    while (true)
-    {
-        var batch = ui.Drain();
-        if (batch.Count == 0) break;
-        foreach (var output in batch)
-        {
-            switch (output)
-            {
-                case OutputEvent.Speech(var text, _, _):
-                    voice.Speak(text);
-                    break;
-                case OutputEvent.Activated(var node) when node == quit:
-                    running = false;
-                    break;
-                case OutputEvent.Activated(var node) when node == greetBtn:
-                    Greet();
-                    break;
-            }
-        }
-    }
-}
-
+app.Run();
 return;
 
 // Compose and queue the greeting from live widget state.
 void Greet()
 {
-    var fruit = ui.ListboxSelectedItem(fruits) ?? "nothing";
-    var wrapped = ui.CheckboxChecked(wrap);
-    var name = ui.EditboxText(nameField);
-    var who = string.IsNullOrEmpty(name) ? "stranger" : name;
-    ui.Announce(
-        $"Hello, {who}. The fruit is {fruit}, and word wrap is {(wrapped ? "on" : "off")}.");
+    var who = string.IsNullOrEmpty(name.Text) ? "stranger" : name.Text;
+    var fruit = fruits.SelectedItem ?? "nothing";
+    app.Announce(
+        $"Hello, {who}. The fruit is {fruit}, and word wrap is {(wrap.Checked ? "on" : "off")}.");
 }
