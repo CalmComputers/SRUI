@@ -4,6 +4,9 @@
 //! typeahead work in the list; Space toggles the checkbox. Greet is the
 //! primary widget: Enter anywhere presses it (Ctrl+G too, as a host-side
 //! binding), and it reads the live name, list, and checkbox state.
+//! Widget shortcuts: Alt+F jumps to the fruit list, Ctrl+Q presses Quit.
+//! The Arena (a custom widget, no role) shows game-style input: with it
+//! focused, Q's press and release announce separately.
 //! Escape (or Enter on Quit, or closing the window) exits.
 
 use std::time::Instant;
@@ -13,6 +16,7 @@ use srui_core::input::LogicalInput;
 use srui_core::key_combo::{Key, KeyCombo};
 use srui_core::speech;
 use srui_core::tree::NodeId;
+use srui_core::types::ShortcutAction;
 use srui_core::ui::Ui;
 use srui_core::widget::{CheckBox, EditBox, ListBox};
 use srui_prism::Speech;
@@ -85,10 +89,26 @@ fn main() -> Result<(), String> {
         .collect(),
     );
     let _shortcut = ui.shortcut_field(None, "Custom shortcut");
+    // A custom widget: no role word, no built-in behavior — the host
+    // reacts to the physical key stream while it is focused.
+    let arena = ui.custom(None, "Arena");
+    ui.set_node_description(arena, "hold and release Q");
     let quit = ui.button(None, "Quit");
     // Enter anywhere presses Greet; Escape anywhere presses Quit.
     ui.set_primary(greet_btn);
     ui.set_cancel(quit);
+    // Widget shortcuts: Alt+F jumps to the fruit list (a mnemonic), and
+    // Ctrl+Q presses Quit from anywhere without moving focus.
+    ui.add_shortcut(
+        fruits,
+        KeyCombo::alt(Key::Char('f')),
+        ShortcutAction::Jump,
+    );
+    ui.add_shortcut(
+        quit,
+        KeyCombo::ctrl(Key::Char('q')),
+        ShortcutAction::Activate,
+    );
     ui.ensure_focus();
 
     let start = Instant::now();
@@ -101,6 +121,19 @@ fn main() -> Result<(), String> {
                 HostEvent::Quit => running = false,
                 HostEvent::KeyDown => voice.stop(),
                 HostEvent::AltTap => {}
+                HostEvent::Key {
+                    combo,
+                    pressed,
+                    repeat,
+                } => {
+                    // Game-style input: with the Arena focused, Q's
+                    // initial press and its release announce distinctly
+                    // (auto-repeats are ignored).
+                    if ui.focus() == Some(arena) && combo.key == Key::Char('q') && !repeat {
+                        ui.announce(if pressed { "Q down." } else { "Q up." });
+                    }
+                }
+                HostEvent::FocusLost => {}
                 HostEvent::Input(input) => {
                     if !ui.handle_input(&input) {
                         // Host-side bindings: unconsumed input is ours to

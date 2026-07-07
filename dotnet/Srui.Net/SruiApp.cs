@@ -21,6 +21,16 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     /// host-side key bindings. Return true when handled.</summary>
     public Func<InputEvent, bool>? UnhandledInput { get; set; }
 
+    /// <summary>Called with physical key transitions (press, repeat,
+    /// release) the focused widget's BindKey handlers didn't claim —
+    /// the place for focus-independent game input. Return true when
+    /// handled.</summary>
+    public Func<KeyInput, bool>? UnhandledKey { get; set; }
+
+    /// <summary>The window lost keyboard focus. Held-key releases will
+    /// not arrive; zero any held-key state here.</summary>
+    public Action? FocusLost { get; set; }
+
     /// <summary>A clean Alt tap (commonly a menu or palette).</summary>
     public Action? AltTap { get; set; }
 
@@ -150,6 +160,15 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
                         break;
                     case HostEvent.AltTap:
                         AltTap?.Invoke();
+                        break;
+                    case HostEvent.Key(var keyInput):
+                        // Physical key stream: the focused widget's
+                        // bindings first, then the app-global hook.
+                        if (_widgets.GetValueOrDefault(Ui.Focus)?.TryHandleKey(keyInput) != true)
+                            UnhandledKey?.Invoke(keyInput);
+                        break;
+                    case HostEvent.FocusLost:
+                        FocusLost?.Invoke();
                         break;
                     case HostEvent.Input(var input):
                         if (!Ui.HandleInput(input))

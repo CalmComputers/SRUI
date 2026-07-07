@@ -129,11 +129,13 @@ pub fn announce_focus(label: &WidgetLabel) -> String {
         }
     }
 
-    // Role
-    if !result.is_empty() {
-        result.push(' ');
+    // Role (empty for Custom — such widgets announce without a role word)
+    if !role_str.is_empty() {
+        if !result.is_empty() {
+            result.push(' ');
+        }
+        result.push_str(&role_str);
     }
-    result.push_str(&role_str);
 
     // Value
     if !label.value.is_empty() {
@@ -159,11 +161,11 @@ pub fn announce_focus(label: &WidgetLabel) -> String {
         result.push_str(&label.description);
     }
 
-    // Shortcut
-    if let Some(ch) = label.shortcut {
+    // Shortcut — the first one attached to the widget, in spoken form
+    // ("alt w", "control shift s").
+    if let Some(shortcut) = label.shortcuts.first() {
         result.push(' ');
-        result.push_str("Alt ");
-        result.push(ch.to_ascii_uppercase());
+        result.push_str(&shortcut.combo.display_name());
     }
 
     result
@@ -256,9 +258,22 @@ mod tests {
 
     #[test]
     fn announce_button_with_shortcut() {
+        use crate::key_combo::{Key, KeyCombo};
+        use crate::types::{ShortcutAction, WidgetShortcut};
+
         let mut label = WidgetLabel::new("Save", Role::Button);
-        label.shortcut = Some('s');
-        assert_eq!(announce_focus(&label), "Save button Alt S");
+        label.shortcuts.push(WidgetShortcut {
+            combo: KeyCombo::alt(Key::Char('s')),
+            action: ShortcutAction::Jump,
+        });
+        assert_eq!(announce_focus(&label), "Save button alt s");
+
+        // Only the first shortcut is announced.
+        label.shortcuts.push(WidgetShortcut {
+            combo: KeyCombo::ctrl(Key::Char('s')),
+            action: ShortcutAction::Activate,
+        });
+        assert_eq!(announce_focus(&label), "Save button alt s");
     }
 
     #[test]
@@ -284,6 +299,15 @@ mod tests {
         label.value = "readme.txt".into();
         label.state_text = "1 of 3".into();
         assert_eq!(announce_focus(&label), "Files list readme.txt 1 of 3");
+    }
+
+    #[test]
+    fn announce_custom_widget_skips_role() {
+        let mut label = WidgetLabel::new("Arena", Role::Custom);
+        assert_eq!(announce_focus(&label), "Arena");
+
+        label.description = "arrow keys move".into();
+        assert_eq!(announce_focus(&label), "Arena arrow keys move");
     }
 
     #[test]

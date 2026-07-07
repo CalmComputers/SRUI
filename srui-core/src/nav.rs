@@ -1,7 +1,9 @@
-//! Navigation algorithms — Tab, Shift+Tab, Alt+arrows, focus recovery.
+//! Navigation algorithms — Tab, Shift+Tab, Alt+arrows, widget shortcuts,
+//! focus recovery.
 
+use crate::key_combo::KeyCombo;
 use crate::tree::{NodeId, Tree};
-use crate::types::{is_focusable, States};
+use crate::types::{is_focusable, ShortcutAction, States};
 
 /// Direction for tree navigation (Alt+arrows).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,16 +99,15 @@ pub fn tree_nav(tree: &Tree, current: NodeId, direction: TreeDirection) -> Optio
     }
 }
 
-/// Find the first non-hidden focusable widget whose `label.shortcut`
-/// matches `ch` (case-insensitive). Depth-first from the tree roots,
-/// so the match order follows insertion order. Returns `None` if no
-/// widget claims the letter.
-pub fn find_shortcut(tree: &Tree, ch: char) -> Option<NodeId> {
-    let lower = ch.to_ascii_lowercase();
+/// Find the first reachable (focusable, outside hidden subtrees) widget
+/// with a shortcut bound to `combo`, and the action of its first matching
+/// binding. Depth-first from the tree roots, so the match order follows
+/// insertion order. Returns `None` if no widget claims the combo.
+pub fn find_shortcut(tree: &Tree, combo: KeyCombo) -> Option<(NodeId, ShortcutAction)> {
     for &id in &collect_focusable_dfs(tree) {
         if let Some(node) = tree.get(id) {
-            if node.label.shortcut == Some(lower) {
-                return Some(id);
+            if let Some(shortcut) = node.label.shortcuts.iter().find(|s| s.combo == combo) {
+                return Some((id, shortcut.action));
             }
         }
     }

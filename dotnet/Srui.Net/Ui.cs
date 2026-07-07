@@ -79,6 +79,16 @@ public sealed class Ui : IDisposable
     public void SetNodeDescription(NodeId node, string description) =>
         NativeMethods.srui_ui_set_node_description(Handle, node.Value, description);
 
+    /// <summary>Attach a shortcut to a node. <paramref name="combo"/> is
+    /// the config form ("ctrl+shift+s"). Returns false when the combo
+    /// fails to parse.</summary>
+    public bool AddShortcut(NodeId node, string combo, ShortcutAction action) =>
+        NativeMethods.srui_ui_add_shortcut(Handle, node.Value, combo, (uint)action);
+
+    /// <summary>Remove every shortcut from a node.</summary>
+    public void ClearShortcuts(NodeId node) =>
+        NativeMethods.srui_ui_clear_shortcuts(Handle, node.Value);
+
     // ── Widgets ──
 
     public NodeId TextLabel(NodeId parent, string text) =>
@@ -86,6 +96,11 @@ public sealed class Ui : IDisposable
 
     public NodeId Group(NodeId parent, string name) =>
         new(NativeMethods.srui_ui_group(Handle, parent.Value, name));
+
+    /// <summary>A custom widget: focusable, no spoken role, no built-in
+    /// behavior — every key falls through to the host's bindings.</summary>
+    public NodeId Custom(NodeId parent, string name) =>
+        new(NativeMethods.srui_ui_custom(Handle, parent.Value, name));
 
     public NodeId Button(NodeId parent, string name) =>
         new(NativeMethods.srui_ui_button(Handle, parent.Value, name));

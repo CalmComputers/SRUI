@@ -1,5 +1,16 @@
 namespace Srui;
 
+/// <summary>What pressing a widget shortcut does.</summary>
+public enum ShortcutAction
+{
+    /// <summary>Move focus to the widget (the mnemonic behavior).</summary>
+    Jump = 0,
+    /// <summary>Raise the widget's Activated event without moving focus.</summary>
+    Activate = 1,
+    /// <summary>Move focus to the widget, then activate it.</summary>
+    JumpAndActivate = 2,
+}
+
 /// <summary>Anything a widget can be created inside: the app root or a
 /// Group.</summary>
 public interface IWidgetContainer
@@ -92,6 +103,72 @@ public abstract class Widget
             Ui.SetDisabled(Node, value);
         }
     }
+
+    private List<(uint Key, Mods Mods, KeyPhase Phase, Action Handler)>? _keyBindings;
+
+    /// <summary>Bind a handler to a physical key transition delivered
+    /// while this widget is focused — game-style input, independent of
+    /// the logical input stream (a Press binding fires even for keys the
+    /// widget consumes, e.g. letters in an edit box). Press and Repeat
+    /// match the exact combo ("q", "shift+q" are distinct bindings);
+    /// Release matches the key alone, so a modifier pressed mid-hold
+    /// cannot orphan the release. Throws ArgumentException on an
+    /// unparseable combo or a Release combo with modifiers.</summary>
+    public void BindKey(string combo, KeyPhase phase, Action handler)
+    {
+        if (!Keys.TryParse(combo, out var key, out var mods))
+            throw new ArgumentException($"unparseable combo \"{combo}\"", nameof(combo));
+        if (phase == KeyPhase.Release && mods != Mods.None)
+            throw new ArgumentException(
+                $"release bindings match the key regardless of modifiers; bind the bare key instead of \"{combo}\"",
+                nameof(combo));
+        (_keyBindings ??= []).Add((key, mods, phase, handler));
+    }
+
+    /// <summary>Remove every handler bound to this combo and phase.
+    /// Returns true when any was removed.</summary>
+    public bool UnbindKey(string combo, KeyPhase phase)
+    {
+        if (_keyBindings is null || !Keys.TryParse(combo, out var key, out var mods))
+            return false;
+        return _keyBindings.RemoveAll(b =>
+            b.Phase == phase && b.Key == key && (phase == KeyPhase.Release || b.Mods == mods)) > 0;
+    }
+
+    /// <summary>Dispatch a key transition to this widget's bindings.
+    /// True when any handler fired.</summary>
+    internal bool TryHandleKey(in KeyInput input)
+    {
+        if (_keyBindings is null)
+            return false;
+        var handled = false;
+        // Snapshot: handlers may bind/unbind while we iterate.
+        foreach (var b in _keyBindings.ToArray())
+        {
+            if (b.Phase != input.Phase)
+                continue;
+            var matches = input.Phase == KeyPhase.Release
+                ? b.Key == input.Key
+                : b.Key == input.Key && b.Mods == input.Mods;
+            if (matches)
+            {
+                b.Handler();
+                handled = true;
+            }
+        }
+        return handled;
+    }
+
+    /// <summary>Attach a shortcut ("ctrl+shift+s" config form): pressing
+    /// it jumps to this widget, activates it, or both. A widget may carry
+    /// any number of shortcuts; the first added is the one focus
+    /// announcements speak. A hidden or disabled widget's shortcuts are
+    /// inert. Returns false when the combo fails to parse.</summary>
+    public bool AddShortcut(string combo, ShortcutAction action = ShortcutAction.Jump) =>
+        Ui.AddShortcut(Node, combo, action);
+
+    /// <summary>Remove every shortcut from this widget.</summary>
+    public void ClearShortcuts() => Ui.ClearShortcuts(Node);
 
     /// <summary>Rename the widget; re-announces when focused.</summary>
     public void SetName(string name) => Ui.SetNodeName(Node, name);

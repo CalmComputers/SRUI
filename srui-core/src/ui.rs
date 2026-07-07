@@ -11,9 +11,10 @@ use crate::clipboard::{Clipboard, NoClipboard};
 use crate::events::{self, AccessibilityEvent, OutputEvent, WidgetEvent};
 use crate::focus::FocusMemory;
 use crate::input::LogicalInput;
+use crate::key_combo::KeyCombo;
 use crate::nav::{self, TreeDirection};
 use crate::tree::{NodeId, Tree};
-use crate::types::{is_focusable, Role, States, WidgetLabel};
+use crate::types::{is_focusable, Role, ShortcutAction, States, WidgetLabel, WidgetShortcut};
 use crate::widget::{
     Button, CheckBox, EditBox, FilterListBox, ListBox, ShortcutField, Slider, TabControl, Widget,
     WidgetCtx,
@@ -167,10 +168,26 @@ impl Ui {
         self.with_widget::<ListBox>(id, |list, label| list.set_items(items, label));
     }
 
-    /// Move a listbox's selection programmatically (clamped). Re-announces
-    /// if the listbox is focused and its label changed.
+    /// Move a listbox's selection programmatically (clamped). A change
+    /// while focused speaks like a user-driven one — the item alone, not
+    /// a full re-announcement.
     pub fn set_list_selected(&mut self, id: NodeId, index: usize) {
-        self.with_widget::<ListBox>(id, |list, label| list.set_selected(index, label));
+        let Some(widget) = self.widgets.get_mut(id) else {
+            return;
+        };
+        let Some(list) = widget.as_any_mut().downcast_mut::<ListBox>() else {
+            return;
+        };
+        let Some(node) = self.tree.get_mut(id) else {
+            return;
+        };
+        let prev = list.selected();
+        list.set_selected(index, &mut node.label);
+        if list.selected() != prev && self.tree.focus() == Some(id) {
+            if let Some(event) = list.change_event(id, None) {
+                self.events.push(OutputEvent::Accessibility(event));
+            }
+        }
     }
 
     /// Mutate a node's widget state and label together; re-announces if
@@ -222,9 +239,25 @@ impl Ui {
         self.insert_widget(parent, label, Box::new(slider))
     }
 
-    /// Move a slider programmatically (clamped). Re-announces if focused.
+    /// Move a slider programmatically (clamped). A change while focused
+    /// speaks like a user-driven one — the new value alone, not a full
+    /// re-announcement — so ticking progress bars stay terse.
     pub fn set_slider_value(&mut self, id: NodeId, value: i32) {
-        self.with_widget::<Slider>(id, |slider, label| slider.set_value(value, label));
+        let Some(widget) = self.widgets.get_mut(id) else {
+            return;
+        };
+        let Some(slider) = widget.as_any_mut().downcast_mut::<Slider>() else {
+            return;
+        };
+        let Some(node) = self.tree.get_mut(id) else {
+            return;
+        };
+        let prev = slider.value();
+        slider.set_value(value, &mut node.label);
+        if slider.value() != prev && self.tree.focus() == Some(id) {
+            let event = slider.change_event(id);
+            self.events.push(OutputEvent::Accessibility(event));
+        }
     }
 
     /// Convenience: a tab control.
@@ -241,10 +274,26 @@ impl Ui {
         self.insert_widget(parent, label, Box::new(widget))
     }
 
-    /// Switch a tab control programmatically (clamped). Re-announces if
-    /// focused.
+    /// Switch a tab control programmatically (clamped). A change while
+    /// focused speaks like a user-driven one — the tab name alone, not a
+    /// full re-announcement.
     pub fn set_active_tab(&mut self, id: NodeId, index: usize) {
-        self.with_widget::<TabControl>(id, |tc, label| tc.set_active(index, label));
+        let Some(widget) = self.widgets.get_mut(id) else {
+            return;
+        };
+        let Some(tabs) = widget.as_any_mut().downcast_mut::<TabControl>() else {
+            return;
+        };
+        let Some(node) = self.tree.get_mut(id) else {
+            return;
+        };
+        let prev = tabs.active();
+        tabs.set_active(index, &mut node.label);
+        if tabs.active() != prev && self.tree.focus() == Some(id) {
+            if let Some(event) = tabs.change_event(id) {
+                self.events.push(OutputEvent::Accessibility(event));
+            }
+        }
     }
 
     /// Convenience: a shortcut-capture field.
@@ -342,6 +391,15 @@ impl Ui {
     /// Convenience: a group container.
     pub fn group(&mut self, parent: Option<NodeId>, name: impl Into<String>) -> NodeId {
         self.insert(parent, WidgetLabel::new(name, Role::Group))
+    }
+
+    /// Convenience: a custom widget — focusable, no spoken role, no
+    /// built-in behavior. Every key falls through the core to the host's
+    /// bindings; the announcement is the name (plus value, states,
+    /// description, and shortcut when set). For game surfaces and other
+    /// app-defined interaction.
+    pub fn custom(&mut self, parent: Option<NodeId>, name: impl Into<String>) -> NodeId {
+        self.insert(parent, WidgetLabel::new(name, Role::Custom))
     }
 
     /// Convenience: a static text label.
@@ -448,6 +506,23 @@ impl Ui {
         self.update_label(id, |label| label.description = description.to_string());
     }
 
+    /// Attach a shortcut to a widget: pressing `combo` jumps to it,
+    /// activates it, or both. A widget may carry any number of shortcuts;
+    /// the first added is the one focus announcements speak. Alt+letter
+    /// mnemonics are the conventional jump case. When several widgets
+    /// bind the same combo, the first reachable one in depth-first tree
+    /// order wins.
+    pub fn add_shortcut(&mut self, id: NodeId, combo: KeyCombo, action: ShortcutAction) {
+        self.update_label(id, |label| {
+            label.shortcuts.push(WidgetShortcut { combo, action })
+        });
+    }
+
+    /// Remove every shortcut from a widget.
+    pub fn clear_shortcuts(&mut self, id: NodeId) {
+        self.update_label(id, |label| label.shortcuts.clear());
+    }
+
     /// When the focused node is no longer reachable (not focusable, or
     /// under a hidden ancestor), move focus to the nearest focusable
     /// node and announce it. Returns true if focus moved.
@@ -455,7 +530,7 @@ impl Ui {
         let Some(focused) = self.tree.focus() else {
             return false;
         };
-        if self.focus_reachable(focused) {
+        if self.reachable(focused) {
             return false;
         }
         let parent = self.tree.parent(focused);
@@ -469,7 +544,10 @@ impl Ui {
         false
     }
 
-    fn focus_reachable(&self, id: NodeId) -> bool {
+    /// Whether the user can currently reach this node: focusable in
+    /// itself (visible, enabled, focusable role) and not inside a hidden
+    /// subtree. Gates focus recovery and primary/cancel activation.
+    fn reachable(&self, id: NodeId) -> bool {
         let Some(node) = self.tree.get(id) else {
             return false;
         };
@@ -648,7 +726,7 @@ impl Ui {
         }
 
         // 2. Framework navigation and layer defaults.
-        match input {
+        let consumed = match input {
             LogicalInput::NavigateNext => {
                 if let Some(next) = nav::tab_next(&self.tree, self.tree.focus()) {
                     self.set_focus_internal(next);
@@ -677,13 +755,6 @@ impl Ui {
                 self.tree_nav(TreeDirection::Right);
                 true
             }
-            LogicalInput::Shortcut(ch) => {
-                if let Some(target) = nav::find_shortcut(&self.tree, *ch) {
-                    self.set_focus_internal(target);
-                    return true;
-                }
-                false
-            }
             LogicalInput::SpeakFocus => {
                 if let Some(id) = self.tree.focus() {
                     self.emit_focused(id);
@@ -691,25 +762,60 @@ impl Ui {
                 true
             }
             LogicalInput::Activate => {
+                // A hidden or disabled primary does not activate; the
+                // input falls through unconsumed.
                 if let Some(primary) = self.tree.primary() {
-                    self.events.push(OutputEvent::Widget(WidgetEvent::Activated {
-                        node: primary,
-                    }));
-                    return true;
+                    if self.reachable(primary) {
+                        self.events.push(OutputEvent::Widget(WidgetEvent::Activated {
+                            node: primary,
+                        }));
+                        return true;
+                    }
                 }
                 false
             }
             LogicalInput::Dismiss => {
+                // Same for the cancel widget: unconsumed Dismiss lets the
+                // host fall back (e.g. closing a dialog directly).
                 if let Some(cancel) = self.tree.cancel() {
-                    self.events.push(OutputEvent::Widget(WidgetEvent::Activated {
-                        node: cancel,
-                    }));
-                    return true;
+                    if self.reachable(cancel) {
+                        self.events.push(OutputEvent::Widget(WidgetEvent::Activated {
+                            node: cancel,
+                        }));
+                        return true;
+                    }
                 }
                 false
             }
             _ => false,
+        };
+        if consumed {
+            return true;
         }
+
+        // 3. Widget shortcuts. Mnemonics arrive as `Shortcut(ch)` and
+        //    match through their alt+letter combo form; everything else
+        //    matches its own combo. An unreachable widget's shortcuts are
+        //    inert, and unclaimed combos fall through to the host.
+        if let Some(combo) = KeyCombo::from_logical(input) {
+            if let Some((target, action)) = nav::find_shortcut(&self.tree, combo) {
+                if matches!(
+                    action,
+                    ShortcutAction::Jump | ShortcutAction::JumpAndActivate
+                ) {
+                    self.set_focus_internal(target);
+                }
+                if matches!(
+                    action,
+                    ShortcutAction::Activate | ShortcutAction::JumpAndActivate
+                ) {
+                    self.events
+                        .push(OutputEvent::Widget(WidgetEvent::Activated { node: target }));
+                }
+                return true;
+            }
+        }
+        false
     }
 
     fn tree_nav(&mut self, direction: TreeDirection) {
@@ -775,6 +881,7 @@ impl Default for Ui {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::key_combo::Key;
     use crate::speech;
 
     /// Render every accessibility event in a drained batch, in order.
@@ -890,6 +997,75 @@ mod tests {
     }
 
     #[test]
+    fn hidden_primary_does_not_activate() {
+        let mut ui = Ui::new();
+        let wrap = ui.checkbox(None, "Word Wrap", false);
+        let ok = ui.button(None, "OK");
+        ui.set_primary(ok);
+        ui.set_hidden(ok, true);
+        ui.set_focus(wrap);
+        ui.drain_events();
+
+        assert!(!ui.handle_input(&LogicalInput::Activate));
+        assert!(!ui
+            .drain_events()
+            .iter()
+            .any(|ev| matches!(ev, OutputEvent::Widget(WidgetEvent::Activated { .. }))));
+    }
+
+    #[test]
+    fn disabled_primary_does_not_activate() {
+        let mut ui = Ui::new();
+        let wrap = ui.checkbox(None, "Word Wrap", false);
+        let ok = ui.button(None, "OK");
+        ui.set_primary(ok);
+        ui.set_disabled(ok, true);
+        ui.set_focus(wrap);
+        ui.drain_events();
+
+        assert!(!ui.handle_input(&LogicalInput::Activate));
+        assert!(!ui
+            .drain_events()
+            .iter()
+            .any(|ev| matches!(ev, OutputEvent::Widget(WidgetEvent::Activated { .. }))));
+    }
+
+    #[test]
+    fn primary_under_hidden_ancestor_does_not_activate() {
+        let mut ui = Ui::new();
+        let wrap = ui.checkbox(None, "Word Wrap", false);
+        let panel = ui.group(None, "Panel");
+        let ok = ui.button(Some(panel), "OK");
+        ui.set_primary(ok);
+        ui.set_hidden(panel, true);
+        ui.set_focus(wrap);
+        ui.drain_events();
+
+        assert!(!ui.handle_input(&LogicalInput::Activate));
+        assert!(!ui
+            .drain_events()
+            .iter()
+            .any(|ev| matches!(ev, OutputEvent::Widget(WidgetEvent::Activated { .. }))));
+    }
+
+    #[test]
+    fn disabled_cancel_leaves_dismiss_unconsumed() {
+        let mut ui = Ui::new();
+        let _body = ui.button(None, "Body");
+        let cancel = ui.button(None, "Cancel");
+        ui.set_cancel(cancel);
+        ui.set_disabled(cancel, true);
+        ui.ensure_focus();
+        ui.drain_events();
+
+        assert!(!ui.handle_input(&LogicalInput::Dismiss));
+        assert!(!ui
+            .drain_events()
+            .iter()
+            .any(|ev| matches!(ev, OutputEvent::Widget(WidgetEvent::Activated { .. }))));
+    }
+
+    #[test]
     fn dismiss_activates_cancel() {
         let mut ui = Ui::new();
         let _edit = ui.button(None, "Body");
@@ -914,12 +1090,134 @@ mod tests {
     #[test]
     fn mnemonic_jumps_to_widget() {
         let (mut ui, _save, _options, wrap) = demo_ui();
-        ui.update_label(wrap, |l| l.shortcut = Some('w'));
+        ui.add_shortcut(wrap, KeyCombo::alt(Key::Char('w')), ShortcutAction::Jump);
         ui.ensure_focus();
         ui.drain_events();
 
         assert!(ui.handle_input(&LogicalInput::Shortcut('w')));
         assert_eq!(ui.focus(), Some(wrap));
+    }
+
+    #[test]
+    fn shortcut_jump_focuses_and_announces() {
+        let (mut ui, save, _options, wrap) = demo_ui();
+        ui.add_shortcut(wrap, KeyCombo::ctrl(Key::Char('w')), ShortcutAction::Jump);
+        ui.set_focus(save);
+        ui.drain_events();
+
+        let ctrl_w = LogicalInput::RawKey(KeyCombo::ctrl(Key::Char('w')));
+        assert!(ui.handle_input(&ctrl_w));
+        assert_eq!(ui.focus(), Some(wrap));
+        // The jump announces the focus move, shortcut included.
+        assert_eq!(
+            spoken(&ui.drain_events()),
+            vec!["Word Wrap check box not checked control w"]
+        );
+    }
+
+    #[test]
+    fn shortcut_activate_fires_without_moving_focus() {
+        let (mut ui, save, _options, wrap) = demo_ui();
+        ui.add_shortcut(save, KeyCombo::ctrl(Key::Char('g')), ShortcutAction::Activate);
+        ui.set_focus(wrap);
+        ui.drain_events();
+
+        assert!(ui.handle_input(&LogicalInput::RawKey(KeyCombo::ctrl(Key::Char('g')))));
+        let events = ui.drain_events();
+        assert!(events.contains(&OutputEvent::Widget(WidgetEvent::Activated { node: save })));
+        assert_eq!(ui.focus(), Some(wrap));
+        assert!(spoken(&events).is_empty());
+    }
+
+    #[test]
+    fn shortcut_jump_and_activate_does_both() {
+        let (mut ui, save, _options, wrap) = demo_ui();
+        ui.add_shortcut(
+            save,
+            KeyCombo::ctrl(Key::Char('s')),
+            ShortcutAction::JumpAndActivate,
+        );
+        ui.set_focus(wrap);
+        ui.drain_events();
+
+        assert!(ui.handle_input(&LogicalInput::RawKey(KeyCombo::ctrl(Key::Char('s')))));
+        let events = ui.drain_events();
+        assert_eq!(ui.focus(), Some(save));
+        assert!(events.contains(&OutputEvent::Widget(WidgetEvent::Activated { node: save })));
+        assert_eq!(spoken(&events), vec!["Save button control s"]);
+    }
+
+    #[test]
+    fn shortcut_on_unreachable_widget_is_inert() {
+        let (mut ui, save, options, wrap) = demo_ui();
+        ui.add_shortcut(wrap, KeyCombo::ctrl(Key::Char('w')), ShortcutAction::Jump);
+        ui.set_focus(save);
+        ui.drain_events();
+
+        let ctrl_w = LogicalInput::RawKey(KeyCombo::ctrl(Key::Char('w')));
+
+        ui.set_disabled(wrap, true);
+        assert!(!ui.handle_input(&ctrl_w));
+        assert_eq!(ui.focus(), Some(save));
+
+        ui.set_disabled(wrap, false);
+        ui.set_hidden(options, true);
+        assert!(!ui.handle_input(&ctrl_w));
+        assert_eq!(ui.focus(), Some(save));
+    }
+
+    #[test]
+    fn focused_widget_beats_shortcut() {
+        let mut ui = Ui::new();
+        let notes = ui.editbox(None, "Notes", "");
+        let other = ui.button(None, "Other");
+        // A plain-letter shortcut is fine while a button is focused...
+        ui.add_shortcut(other, KeyCombo::plain(Key::Char('x')), ShortcutAction::Jump);
+        ui.set_focus(other);
+        ui.drain_events();
+        // (jumping to the already-focused widget is a consumed no-op)
+        assert!(ui.handle_input(&LogicalInput::TypeChar('x')));
+        assert_eq!(ui.focus(), Some(other));
+
+        // ...but an edit box consumes the keystroke first.
+        ui.set_focus(notes);
+        ui.drain_events();
+        assert!(ui.handle_input(&LogicalInput::TypeChar('x')));
+        assert_eq!(ui.focus(), Some(notes));
+        assert_eq!(ui.widget::<EditBox>(notes).unwrap().text(), "x");
+    }
+
+    #[test]
+    fn first_claimant_in_tree_order_wins() {
+        let mut ui = Ui::new();
+        let first = ui.button(None, "First");
+        let second = ui.button(None, "Second");
+        let combo = KeyCombo::ctrl(Key::Char('k'));
+        ui.add_shortcut(second, combo, ShortcutAction::Jump);
+        ui.add_shortcut(first, combo, ShortcutAction::Jump);
+        ui.set_focus(second);
+        ui.drain_events();
+
+        assert!(ui.handle_input(&LogicalInput::RawKey(combo)));
+        assert_eq!(ui.focus(), Some(first));
+
+        // When the first claimant becomes unreachable, the next one wins.
+        ui.set_hidden(first, true);
+        ui.drain_events();
+        ui.set_focus(second);
+        assert!(ui.handle_input(&LogicalInput::RawKey(combo)));
+        assert_eq!(ui.focus(), Some(second));
+    }
+
+    #[test]
+    fn clear_shortcuts_removes_bindings_and_announcement() {
+        let (mut ui, save, ..) = demo_ui();
+        ui.add_shortcut(save, KeyCombo::ctrl(Key::Char('s')), ShortcutAction::Activate);
+        ui.clear_shortcuts(save);
+        ui.ensure_focus();
+
+        assert_eq!(spoken(&ui.drain_events()), vec!["Save button"]);
+        assert!(!ui.handle_input(&LogicalInput::RawKey(KeyCombo::ctrl(Key::Char('s')))));
     }
 
     #[test]
@@ -1404,6 +1702,74 @@ mod tests {
             .any(|e| matches!(e, OutputEvent::Widget(WidgetEvent::Changed { .. }))));
     }
 
+    #[test]
+    fn set_slider_value_speaks_value_only_when_focused() {
+        let mut ui = Ui::new();
+        let progress = ui.slider_widget(
+            None,
+            "Progress",
+            crate::widget::Slider::new(0, 0, 100).with_unit("%"),
+        );
+        ui.set_focus(progress);
+        ui.drain_events();
+
+        // A programmatic move speaks like a user-driven one: the value,
+        // not "Progress slider 30%".
+        ui.set_slider_value(progress, 30);
+        assert_eq!(spoken(&ui.drain_events()), vec!["30%"]);
+        assert_eq!(ui.widget::<Slider>(progress).unwrap().value(), 30);
+
+        // No change (clamped to the same value): silent.
+        ui.set_slider_value(progress, 200);
+        ui.drain_events();
+        ui.set_slider_value(progress, 150);
+        assert!(ui.drain_events().is_empty());
+        assert_eq!(ui.widget::<Slider>(progress).unwrap().value(), 100);
+    }
+
+    #[test]
+    fn set_slider_value_silent_when_unfocused() {
+        let mut ui = Ui::new();
+        let progress = ui.slider(None, "Progress", 0, 0, 100);
+        let other = ui.button(None, "Other");
+        ui.set_focus(other);
+        ui.drain_events();
+
+        ui.set_slider_value(progress, 30);
+        assert!(ui.drain_events().is_empty());
+        assert_eq!(ui.widget::<Slider>(progress).unwrap().value(), 30);
+    }
+
+    #[test]
+    fn set_list_selected_speaks_item_only_when_focused() {
+        let (mut ui, files) = list_ui(true);
+
+        ui.set_list_selected(files, 1);
+        assert_eq!(spoken(&ui.drain_events()), vec!["bravo.txt 2 of 3"]);
+        assert_eq!(ui.widget::<ListBox>(files).unwrap().selected(), 1);
+
+        // Same index again: silent.
+        ui.set_list_selected(files, 1);
+        assert!(ui.drain_events().is_empty());
+    }
+
+    #[test]
+    fn set_active_tab_speaks_tab_only_when_focused() {
+        let mut ui = Ui::new();
+        let tabs = ui.tab_control(
+            None,
+            "Views",
+            vec!["Files".into(), "Playlist".into(), "FX".into()],
+            0,
+        );
+        ui.set_focus(tabs);
+        ui.drain_events();
+
+        ui.set_active_tab(tabs, 1);
+        assert_eq!(spoken(&ui.drain_events()), vec!["Playlist"]);
+        assert_eq!(ui.widget::<TabControl>(tabs).unwrap().active(), 1);
+    }
+
     // ── TabControl ──
 
     #[test]
@@ -1474,7 +1840,7 @@ mod tests {
         let group = ui.group(None, "Options");
         let field = ui.shortcut_field(Some(group), "Shortcut");
         let other = ui.button(None, "Other");
-        ui.update_label(other, |l| l.shortcut = Some('o'));
+        ui.add_shortcut(other, KeyCombo::alt(Key::Char('o')), ShortcutAction::Jump);
         ui.set_focus(field);
         ui.drain_events();
 
@@ -1605,6 +1971,33 @@ mod tests {
             ui.widget::<FilterListBox>(list).unwrap().selected_item(),
             Some("Quit".to_string())
         );
+    }
+
+    // ── Custom widgets ──
+
+    #[test]
+    fn custom_widget_focuses_and_passes_input_through() {
+        let mut ui = Ui::new();
+        let before = ui.button(None, "Before");
+        let arena = ui.custom(None, "Arena");
+        let ok = ui.button(None, "OK");
+        ui.set_primary(ok);
+        ui.set_focus(before);
+        ui.drain_events();
+
+        // In the tab ring, announced by bare name.
+        ui.handle_input(&LogicalInput::NavigateNext);
+        assert_eq!(ui.focus(), Some(arena));
+        assert_eq!(spoken(&ui.drain_events()), vec!["Arena"]);
+
+        // No built-in behavior: typing and arrows fall through to the
+        // host; Enter still reaches the layer's primary.
+        assert!(!ui.handle_input(&LogicalInput::TypeChar('q')));
+        assert!(!ui.handle_input(&LogicalInput::MoveUp));
+        assert!(ui.handle_input(&LogicalInput::Activate));
+        assert!(ui
+            .drain_events()
+            .contains(&OutputEvent::Widget(WidgetEvent::Activated { node: ok })));
     }
 
     // ── Dynamic state ──

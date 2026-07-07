@@ -22,6 +22,12 @@ pub enum Role {
     ShortcutField,
     SearchField,
     Slider,
+    /// A focusable widget with no spoken role and no built-in behavior:
+    /// announcements carry name, value, states, description, and shortcut
+    /// only, and every key falls through the core to the host's own
+    /// bindings. The building block for app-defined interaction — game
+    /// surfaces, canvases, bespoke controls driven by host-side input.
+    Custom,
 }
 
 impl Role {
@@ -143,7 +149,9 @@ impl Role {
                 false
             }
 
-            Role::Group | Role::Label => false,
+            // Custom widgets have no built-in behavior; whatever the host
+            // binds on them is outside the core's knowledge.
+            Role::Group | Role::Label | Role::Custom => false,
         }
     }
 
@@ -181,8 +189,31 @@ impl fmt::Display for Role {
             Role::ShortcutField => write!(f, "shortcut field"),
             Role::SearchField => write!(f, "search"),
             Role::Slider => write!(f, "slider"),
+            // Deliberately empty: a custom widget announces without a
+            // role word (speech skips the empty field).
+            Role::Custom => Ok(()),
         }
     }
+}
+
+/// What pressing a widget shortcut does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ShortcutAction {
+    /// Move focus to the widget (the mnemonic behavior).
+    Jump,
+    /// Emit `WidgetEvent::Activated` for the widget without moving focus.
+    Activate,
+    /// Move focus to the widget, then activate it.
+    JumpAndActivate,
+}
+
+/// A key combo attached to a widget, with what pressing it does. A widget
+/// may carry any number; the first added is the one focus announcements
+/// speak.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct WidgetShortcut {
+    pub combo: KeyCombo,
+    pub action: ShortcutAction,
 }
 
 bitflags! {
@@ -216,7 +247,10 @@ pub struct WidgetLabel {
     /// Dynamic state text spoken before bitflag states (e.g. "filter ed", "no filter").
     pub state_text: String,
     pub description: String,
-    pub shortcut: Option<char>,
+    /// Shortcuts attached to the widget (see `Ui::add_shortcut`). Focus
+    /// announcements speak the first one; Alt+letter mnemonics are the
+    /// conventional jump case.
+    pub shortcuts: Vec<WidgetShortcut>,
 }
 
 impl WidgetLabel {
@@ -229,7 +263,7 @@ impl WidgetLabel {
             states: States::empty(),
             state_text: String::new(),
             description: String::new(),
-            shortcut: None,
+            shortcuts: Vec::new(),
         }
     }
 
@@ -244,7 +278,7 @@ impl WidgetLabel {
             states: States::empty(),
             state_text: String::new(),
             description: String::new(),
-            shortcut: None,
+            shortcuts: Vec::new(),
         }
     }
 
@@ -267,7 +301,8 @@ pub fn is_focusable(role: Role, states: States) -> bool {
         | Role::TabControl
         | Role::ShortcutField
         | Role::SearchField
-        | Role::Slider => true,
+        | Role::Slider
+        | Role::Custom => true,
         Role::Group | Role::Label => false,
     }
 }

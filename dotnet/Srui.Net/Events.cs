@@ -56,4 +56,12 @@ public abstract record HostEvent
     public sealed record AltTap : HostEvent;
 
     public sealed record Input(InputEvent Event) : HostEvent;
+
+    /// <summary>A physical key transition (press, repeat, or release),
+    /// parallel to and independent of the Input stream.</summary>
+    public sealed record Key(KeyInput Event) : HostEvent;
+
+    /// <summary>The window lost keyboard focus. Held-key releases will
+    /// not arrive; zero any held-key state.</summary>
+    public sealed record FocusLost : HostEvent;
 }

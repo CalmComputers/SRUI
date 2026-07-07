@@ -18,6 +18,7 @@ use srui_core::input::LogicalInput;
 use srui_core::key_combo::{Key, KeyCombo};
 use srui_core::speech::render_event;
 use srui_core::tree::NodeId;
+use srui_core::types::ShortcutAction;
 use srui_core::ui::Ui;
 use srui_core::widget::{CheckBox, EditBox, FilterListBox, ListBox, ShortcutField, Slider, TabControl};
 use srui_prism::Speech;
@@ -376,6 +377,40 @@ pub unsafe extern "C" fn srui_ui_set_node_description(
     }
 }
 
+/// Attach a shortcut to a widget. `combo` is the config form
+/// ("ctrl+shift+s"); `action` is 0 = jump, 1 = activate, 2 = both.
+/// Returns false when the combo fails to parse or the action is unknown.
+#[no_mangle]
+pub unsafe extern "C" fn srui_ui_add_shortcut(
+    ui: *mut Ui,
+    node: u64,
+    combo: *const c_char,
+    action: u32,
+) -> bool {
+    let Some(id) = node_in(node) else {
+        return false;
+    };
+    let Ok(combo) = KeyCombo::parse_config(str_in(combo)) else {
+        return false;
+    };
+    let action = match action {
+        0 => ShortcutAction::Jump,
+        1 => ShortcutAction::Activate,
+        2 => ShortcutAction::JumpAndActivate,
+        _ => return false,
+    };
+    (*ui).add_shortcut(id, combo, action);
+    true
+}
+
+/// Remove every shortcut from a widget.
+#[no_mangle]
+pub unsafe extern "C" fn srui_ui_clear_shortcuts(ui: *mut Ui, node: u64) {
+    if let Some(id) = node_in(node) {
+        (*ui).clear_shortcuts(id);
+    }
+}
+
 // ── Node constructors ──
 
 #[no_mangle]
@@ -390,6 +425,13 @@ pub unsafe extern "C" fn srui_ui_text_label(
 #[no_mangle]
 pub unsafe extern "C" fn srui_ui_group(ui: *mut Ui, parent: u64, name: *const c_char) -> u64 {
     (*ui).group(node_in(parent), str_in(name)).to_ffi()
+}
+
+/// A custom widget: focusable, no spoken role, no built-in behavior —
+/// every key falls through the core to the host's bindings.
+#[no_mangle]
+pub unsafe extern "C" fn srui_ui_custom(ui: *mut Ui, parent: u64, name: *const c_char) -> u64 {
+    (*ui).custom(node_in(parent), str_in(name)).to_ffi()
 }
 
 #[no_mangle]
@@ -710,7 +752,10 @@ pub unsafe extern "C" fn srui_events_free(events: *mut SruiEvent, len: usize) {
 // ── SDL host ──
 
 /// One pumped host event. kind: 0 = quit, 1 = key-down, 2 = alt-tap,
-/// 3 = input (input_kind/ch/key/mods per the input encoding).
+/// 3 = input (input_kind/ch/key/mods per the input encoding), 4 = a
+/// physical key transition for game-style input (key/mods = the combo;
+/// input_kind = flags: bit 0 pressed, bit 1 repeat), 5 = the window lost
+/// keyboard focus (hosts zero held-key state — releases won't arrive).
 #[repr(C)]
 pub struct SruiHostEvent {
     pub kind: u32,
@@ -764,6 +809,14 @@ pub unsafe extern "C" fn srui_host_pump(
                 let (input_kind, ch, key, mods) = encode_input(&input);
                 SruiHostEvent { kind: 3, input_kind, ch, key, mods }
             }
+            HostEvent::Key { combo, pressed, repeat } => SruiHostEvent {
+                kind: 4,
+                input_kind: (pressed as u32) | ((repeat as u32) << 1),
+                ch: 0,
+                key: encode_key(combo.key),
+                mods: (combo.ctrl as u32) | ((combo.alt as u32) << 1) | ((combo.shift as u32) << 2),
+            },
+            HostEvent::FocusLost => SruiHostEvent { kind: 5, input_kind: 0, ch: 0, key: 0, mods: 0 },
         })
         .collect();
     let boxed = flattened.into_boxed_slice();
@@ -777,6 +830,27 @@ pub unsafe extern "C" fn srui_host_pump(
 pub unsafe extern "C" fn srui_host_events_free(events: *mut SruiHostEvent, len: usize) {
     if !events.is_null() {
         drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(events, len)));
+    }
+}
+
+/// Parse a config-form combo ("ctrl+shift+s") into the flat key/mods
+/// encoding used by inputs and host key events. Returns false (outputs
+/// untouched) on parse failure.
+#[no_mangle]
+pub unsafe extern "C" fn srui_combo_parse(
+    combo: *const c_char,
+    out_key: *mut u32,
+    out_mods: *mut u32,
+) -> bool {
+    match KeyCombo::parse_config(str_in(combo)) {
+        Ok(parsed) => {
+            *out_key = encode_key(parsed.key);
+            *out_mods = (parsed.ctrl as u32)
+                | ((parsed.alt as u32) << 1)
+                | ((parsed.shift as u32) << 2);
+            true
+        }
+        Err(_) => false,
     }
 }
 

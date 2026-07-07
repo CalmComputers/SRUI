@@ -250,17 +250,24 @@ impl Slider {
         label.value = format!("{}{}", self.value, self.unit);
     }
 
+    /// The value-change announcement, shared between user-driven
+    /// adjustment and programmatic `Ui::set_slider_value`.
+    pub(crate) fn change_event(&self, node: NodeId) -> AccessibilityEvent {
+        AccessibilityEvent::SliderChange {
+            node,
+            value: self.value,
+            unit: self.unit.clone(),
+        }
+    }
+
     fn adjust(&mut self, delta: i32, ctx: &mut WidgetCtx) {
         self.value = (self.value + delta).clamp(self.min, self.max);
         self.announce(ctx);
     }
 
     fn announce(&self, ctx: &mut WidgetCtx) {
-        ctx.emit_accessibility(AccessibilityEvent::SliderChange {
-            node: ctx.node,
-            value: self.value,
-            unit: self.unit.clone(),
-        });
+        let event = self.change_event(ctx.node);
+        ctx.emit_accessibility(event);
     }
 }
 
@@ -346,14 +353,22 @@ impl TabControl {
         }
     }
 
+    /// The tab-change announcement, shared between user-driven switching
+    /// and programmatic `Ui::set_active_tab`. `None` when there are no tabs.
+    pub(crate) fn change_event(&self, node: NodeId) -> Option<AccessibilityEvent> {
+        Some(AccessibilityEvent::TabChange {
+            node,
+            tab_name: self.tabs.get(self.active)?.clone(),
+            position: (self.active, self.tabs.len()),
+        })
+    }
+
     fn switch(&mut self, to: usize, ctx: &mut WidgetCtx) {
         self.active = to;
         self.sync_label(ctx.label);
-        ctx.emit_accessibility(AccessibilityEvent::TabChange {
-            node: ctx.node,
-            tab_name: self.tabs[to].clone(),
-            position: (to, self.tabs.len()),
-        });
+        if let Some(event) = self.change_event(ctx.node) {
+            ctx.emit_accessibility(event);
+        }
         ctx.emit_widget(WidgetEvent::Changed { node: ctx.node });
     }
 }
@@ -732,20 +747,32 @@ impl ListBox {
         }
     }
 
-    /// Emit an ItemNav for the current selection.
-    fn emit_item(&self, ctx: &mut WidgetCtx, boundary: Option<Boundary>) {
-        let item = self.items[self.selected].clone();
+    /// The selection announcement, shared between user-driven navigation
+    /// and programmatic `Ui::set_list_selected`. `None` when empty.
+    pub(crate) fn change_event(
+        &self,
+        node: NodeId,
+        boundary: Option<Boundary>,
+    ) -> Option<AccessibilityEvent> {
+        let item = self.items.get(self.selected)?.clone();
         let position = if self.numbered {
             Some((self.selected, self.items.len()))
         } else {
             None
         };
-        ctx.emit_accessibility(AccessibilityEvent::ItemNav {
-            node: ctx.node,
+        Some(AccessibilityEvent::ItemNav {
+            node,
             item,
             position,
             boundary,
-        });
+        })
+    }
+
+    /// Emit an ItemNav for the current selection.
+    fn emit_item(&self, ctx: &mut WidgetCtx, boundary: Option<Boundary>) {
+        if let Some(event) = self.change_event(ctx.node, boundary) {
+            ctx.emit_accessibility(event);
+        }
     }
 
     /// Selection moved by input: sync label, announce, notify the program.

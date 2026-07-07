@@ -28,6 +28,9 @@ internal static partial class NativeMethods
     // ── Strings ──
     [DllImport(Lib)] internal static extern void srui_string_free(IntPtr s);
 
+    // ── Key combos ──
+    [DllImport(Lib)] [return: MarshalAs(UnmanagedType.I1)] internal static extern bool srui_combo_parse([MarshalAs(UnmanagedType.LPUTF8Str)] string combo, out uint key, out uint mods);
+
     // ── Ui lifecycle ──
     [DllImport(Lib)] internal static extern IntPtr srui_ui_new();
     [DllImport(Lib)] internal static extern void srui_ui_free(IntPtr ui);
@@ -49,10 +52,13 @@ internal static partial class NativeMethods
     [DllImport(Lib)] internal static extern void srui_ui_set_disabled(IntPtr ui, ulong node, [MarshalAs(UnmanagedType.I1)] bool disabled);
     [DllImport(Lib)] internal static extern void srui_ui_set_node_name(IntPtr ui, ulong node, [MarshalAs(UnmanagedType.LPUTF8Str)] string name);
     [DllImport(Lib)] internal static extern void srui_ui_set_node_description(IntPtr ui, ulong node, [MarshalAs(UnmanagedType.LPUTF8Str)] string description);
+    [DllImport(Lib)] [return: MarshalAs(UnmanagedType.I1)] internal static extern bool srui_ui_add_shortcut(IntPtr ui, ulong node, [MarshalAs(UnmanagedType.LPUTF8Str)] string combo, uint action);
+    [DllImport(Lib)] internal static extern void srui_ui_clear_shortcuts(IntPtr ui, ulong node);
 
     // ── Node constructors ──
     [DllImport(Lib)] internal static extern ulong srui_ui_text_label(IntPtr ui, ulong parent, [MarshalAs(UnmanagedType.LPUTF8Str)] string text);
     [DllImport(Lib)] internal static extern ulong srui_ui_group(IntPtr ui, ulong parent, [MarshalAs(UnmanagedType.LPUTF8Str)] string name);
+    [DllImport(Lib)] internal static extern ulong srui_ui_custom(IntPtr ui, ulong parent, [MarshalAs(UnmanagedType.LPUTF8Str)] string name);
     [DllImport(Lib)] internal static extern ulong srui_ui_button(IntPtr ui, ulong parent, [MarshalAs(UnmanagedType.LPUTF8Str)] string name);
     [DllImport(Lib)] internal static extern ulong srui_ui_checkbox(IntPtr ui, ulong parent, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, [MarshalAs(UnmanagedType.I1)] bool isChecked);
     [DllImport(Lib)] internal static extern ulong srui_ui_editbox(IntPtr ui, ulong parent, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, [MarshalAs(UnmanagedType.LPUTF8Str)] string text, [MarshalAs(UnmanagedType.I1)] bool multiline);

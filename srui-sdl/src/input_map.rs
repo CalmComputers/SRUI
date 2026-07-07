@@ -241,6 +241,16 @@ impl Default for InputMapper {
     }
 }
 
+/// The physical combo for an SDL key event, when the key has a KeyCombo
+/// representation. Bare modifier presses (Ctrl, Alt, Shift alone) have
+/// none and return `None`.
+pub fn physical_combo(keycode: Keycode, keymod: Mod) -> Option<KeyCombo> {
+    let ctrl = keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD);
+    let alt = keymod.intersects(Mod::LALTMOD | Mod::RALTMOD);
+    let shift = keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD);
+    keycode_to_key(keycode).map(|key| KeyCombo::new(key, ctrl, alt, shift))
+}
+
 fn keycode_to_letter(keycode: Keycode) -> Option<char> {
     match keycode {
         Keycode::A => Some('a'),

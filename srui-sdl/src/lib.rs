@@ -9,9 +9,10 @@ pub mod input_map;
 
 pub use input_map::InputMapper;
 
-use sdl3::event::Event;
+use sdl3::event::{Event, WindowEvent};
 use srui_core::clipboard::Clipboard;
 use srui_core::input::LogicalInput;
+use srui_core::key_combo::KeyCombo;
 
 /// The system clipboard via SDL.
 pub struct SdlClipboard {
@@ -40,9 +41,23 @@ pub enum HostEvent {
     /// `Input`, so the loop can silence speech first — this keeps NVDA's
     /// missed-key heuristic from re-speaking on our behalf.
     KeyDown,
+    /// A physical key transition, for game-style input: the initial
+    /// press (`pressed`, not `repeat`), auto-repeats (`pressed` and
+    /// `repeat`), and the release. Runs parallel to the logical `Input`
+    /// stream and independent of it — a press fires here even when the
+    /// core consumes the corresponding input. Bare modifier presses have
+    /// no `KeyCombo` form and do not appear.
+    Key {
+        combo: KeyCombo,
+        pressed: bool,
+        repeat: bool,
+    },
     /// A clean Alt tap (press and release with nothing in between).
     /// Hosts commonly bind this to a menu or command palette.
     AltTap,
+    /// The window lost keyboard focus. Game-style hosts zero their
+    /// held-key state here: the matching releases will never arrive.
+    FocusLost,
     /// The window manager asked us to quit.
     Quit,
 }
@@ -116,6 +131,42 @@ impl SdlHost {
         }
         if matches!(event, Event::KeyDown { .. }) {
             out.push(HostEvent::KeyDown);
+        }
+        // The physical key stream, ahead of the logical Input so a
+        // game reacts before the input's side effects land.
+        match event {
+            Event::KeyDown {
+                keycode: Some(keycode),
+                keymod,
+                repeat,
+                ..
+            } => {
+                if let Some(combo) = input_map::physical_combo(*keycode, *keymod) {
+                    out.push(HostEvent::Key {
+                        combo,
+                        pressed: true,
+                        repeat: *repeat,
+                    });
+                }
+            }
+            Event::KeyUp {
+                keycode: Some(keycode),
+                keymod,
+                ..
+            } => {
+                if let Some(combo) = input_map::physical_combo(*keycode, *keymod) {
+                    out.push(HostEvent::Key {
+                        combo,
+                        pressed: false,
+                        repeat: false,
+                    });
+                }
+            }
+            Event::Window {
+                win_event: WindowEvent::FocusLost,
+                ..
+            } => out.push(HostEvent::FocusLost),
+            _ => {}
         }
         if let Some(logical) = self.mapper.map(event) {
             out.push(HostEvent::Input(logical));

@@ -417,6 +417,12 @@ pub fn handle_editbox(
     }
     // ── Editing: TypeChar ──
     else if let LogicalInput::TypeChar(ch) = input {
+        if editor_state.read_only {
+            // Nothing was inserted, so there is nothing to echo — even
+            // with keyboard echo on, a read-only editor swallows typing
+            // silently.
+            return EditboxResult::just_consumed();
+        }
         let had_sel = editor_state.has_selection();
         let _ = editor_state.insert_char(*ch);
 
@@ -453,7 +459,7 @@ pub fn handle_editbox(
     }
     // ── Editing: Enter ──
     else if matches!(input, LogicalInput::Activate) {
-        if !editor_state.multiline {
+        if !editor_state.multiline || editor_state.read_only {
             // Don't consume — let the primary widget handle it
             return EditboxResult::ignored();
         }
@@ -742,6 +748,26 @@ mod tests {
             "Repeated End should say Bottom, got: {:?}",
             speech(&result)
         );
+    }
+
+    #[test]
+    fn read_only_typing_is_silent() {
+        let mut editor = EditorState::new("hello", false);
+        editor.read_only = true;
+        let result = handle(&LogicalInput::TypeChar('x'), &mut editor);
+        assert!(result.consumed);
+        assert!(!result.changed);
+        assert!(result.events.is_empty());
+        assert_eq!(editor.text(), "hello");
+    }
+
+    #[test]
+    fn read_only_multiline_enter_falls_through() {
+        let mut editor = EditorState::new("hello", true);
+        editor.read_only = true;
+        let result = handle(&LogicalInput::Activate, &mut editor);
+        assert!(!result.consumed);
+        assert_eq!(editor.text(), "hello");
     }
 
     #[test]

@@ -29,7 +29,7 @@ Application vocabulary stays out of the core: no application command names, no c
 | Layer | Language | Role |
 |---|---|---|
 | `srui-core` | Rust | Retained tree, widget behavior, focus/navigation, input vocabulary, output events, speech rendering library. Pure; no platform dependencies. |
-| `srui-sdl` | Rust | SDL3 host layer: a focus-receiving window, the event pump, and physical→logical input translation. Optional — any host that can produce `LogicalInput` works. |
+| `srui-sdl` | Rust | SDL3 host layer: a focus-receiving window, the event pump, physical→logical input translation, and the physical key stream (section 6.4). Optional — any host that can produce `LogicalInput` works. |
 | `srui-prism` / `srui-prism-sys` | Rust over C | Speech and braille output through Prism (vendored; builds via CMake), which routes to the running screen reader or platform TTS. The reference speech reader's output channel. |
 | `srui-ffi` | Rust (cdylib) | C ABI over the core, the SDL host, and Prism speech — one native surface for bindings: opaque handles, flat input/event structs, event drain. |
 | `Srui.Net` | C# | Idiomatic .NET wrapper over the C ABI: classes, records, hand-written P/Invoke. `dotnet/SruiDemo` mirrors the Rust demo. |
@@ -46,11 +46,11 @@ The tree owns all nodes in a slotmap; a `NodeId` is a generational handle that i
 
 ## 4.2. The golden six
 
-Every node carries the six semantic properties a screen reader announces, in NVDA order: name, role, value, states, description, shortcut. `Role` identifies the control type (button, check box, edit box, list, group, label, tab control, slider, and so on) and knows which keys that control type consumes during normal interaction — the basis of shortcut conflict detection. `States` is a bitflag set of conditions the user cannot directly change (focused, disabled, required, warning, hidden). A node's name is optional; a nameless node announces as role and value only, for widgets whose identity is carried by their container.
+Every node carries the six semantic properties a screen reader announces, in NVDA order: name, role, value, states, description, shortcut. `Role` identifies the control type (button, check box, edit box, list, group, label, tab control, slider, and so on) and knows which keys that control type consumes during normal interaction — the basis of shortcut conflict detection. The `Custom` role is deliberately empty: focusable, no spoken role word, no reserved keys, no built-in behavior — a widget whose entire interaction is host-defined (section 6.4), the usual base for game surfaces. `States` is a bitflag set of conditions the user cannot directly change (focused, disabled, required, warning, hidden). The shortcut slot holds the widget's shortcut list (section 8); announcements speak the first shortcut added, in its spoken display form. A node's name is optional; a nameless node announces as role and value only, for widgets whose identity is carried by their container.
 
 ## 4.3. Mutation
 
-Programs build and change UI by mutating the tree: insert a node under a parent at an index, remove a subtree, reparent, and set label fields or widget state through the handle. Mutations are synchronous and immediately visible. Mutations that affect what the user is perceiving (the focused node's value changes, the focused subtree is removed) cause the core to emit appropriate accessibility events; mutations elsewhere in the tree are silent.
+Programs build and change UI by mutating the tree: insert a node under a parent at an index, remove a subtree, reparent, and set label fields or widget state through the handle. Mutations are synchronous and immediately visible. Mutations that affect what the user is perceiving (the focused node's value changes, the focused subtree is removed) cause the core to emit appropriate accessibility events; mutations elsewhere in the tree are silent. A programmatic change to a focused widget's single value state — a slider's value, a list's selection, the active tab — speaks exactly what the equivalent user-driven change speaks (the new value alone, so a ticking progress slider stays terse); other label changes re-announce the widget in full.
 
 ## 4.4. Layers
 
@@ -62,7 +62,7 @@ Dialog conventions live in the bindings, not the core: there is no dialog role (
 
 Widget behavior is trait-dispatched: each node holds an implementation of a `Widget` trait that handles logical input directed at the node when focused, mutates its own state, and emits output events. Built-in roles ship with the core.
 
-Custom widgets — new `Widget` implementations — are written in Rust only. The trait is not implementable across the FFI boundary; the cost (function-pointer vtables, reentrancy across languages) outweighs the benefit. Other languages extend the toolkit by composing primitives and by subclassing their binding-side wrapper classes: a C# subclass of a wrapper adds application semantics, event handling, and composition around a node whose core behavior remains in Rust.
+Custom widgets — new `Widget` implementations — are written in Rust only. The trait is not implementable across the FFI boundary; the cost (function-pointer vtables, reentrancy across languages) outweighs the benefit. Other languages extend the toolkit by composing primitives and by subclassing their binding-side wrapper classes: a C# subclass of a wrapper adds application semantics, event handling, and composition around a node whose core behavior remains in Rust. A `Role::Custom` node is the degenerate case: it carries no `Widget` implementation and needs none — its interaction lives entirely in host bindings over the physical key stream (section 6.4).
 
 # 6. Input
 
@@ -72,17 +72,23 @@ A `KeyCombo` is a physical key plus ctrl/alt/shift modifier state, with a spoken
 
 ## 6.2. Dispatch
 
-Input events are pushed to the core one at a time from a host-side queue; there is no frame granularity. Each event is dispatched in a fixed claim order: the focused node's widget gets first claim (guided by its role's reserved-key table), then the host's key bindings, then framework navigation (tab ring, hierarchy navigation, mnemonics). Whatever handles the event emits the corresponding output events; unclaimed input falls through to the host.
+Input events are pushed to the core one at a time from a host-side queue; there is no frame granularity. Each event is dispatched in a fixed claim order: the focused node's widget gets first claim (guided by its role's reserved-key table), then framework navigation and layer defaults (tab ring, hierarchy navigation, primary/cancel), then widget shortcuts (section 8), then the host's key bindings. Whatever handles the event emits the corresponding output events; unclaimed input falls through to the host.
 
 ## 6.3. Time
 
 The core has no clock; the host feeds one through `set_now` (monotonic milliseconds), ideally once per loop iteration. Typeahead timeouts and tickers are both observed there. A ticker (`add_ticker`) emits a `Tick` output event each time its interval elapses, at `set_now` resolution, drift-tolerant: a late check fires once rather than bursting to catch up.
 
+## 6.4. The physical key stream
+
+Alongside the logical stream, the host layer reports raw key transitions for game-style input: the initial press, auto-repeats, and the release of every key with a `KeyCombo` form (bare modifier taps have none). This stream never enters the core — the core is semantic, and key bindings are host policy (section 9) — and it is independent of the claim order: a press is reported even when the corresponding logical input is consumed. Because a release can never be consumed and a press can never be hidden, the pairing a game relies on is unconditional. The host also signals the window losing keyboard focus, which orphans held keys: game state that tracks them must be zeroed, as the releases will never arrive.
+
+The C# binding builds per-widget key bindings on this stream: handlers attach to any widget for a combo and phase (press, repeat, release) and fire while that widget is focused, with unclaimed transitions falling to an app-level hook. Press and repeat match the exact combo; release matches the key alone, so a modifier pressed mid-hold cannot orphan the release.
+
 # 7. Output Events and Readers
 
 ## 7.1. Event streams
 
-The core produces a single ordered stream of output events in three families. Accessibility events describe perception: focus moved (with the full label and any context labels), text typed or deleted, cursor moved, selection changed, list item changed (with position), tab changed, slider changed, filter results changed, boundary hit, plus a free-form announce escape hatch. Editor events deliberately carry only perceptual content (the grapheme, the echoed word, the spoken context) — never document text; a reader that needs the line at the cursor queries the editor through the node. Widget events describe intent for the program: activated, toggled, value changed, selection changed. Tick events report elapsed ticker intervals. Programs react to widget and tick events; readers react to accessibility events.
+The core produces a single ordered stream of output events in three families. Accessibility events describe perception: focus moved (with the full label and any context labels), text typed or deleted, cursor moved, selection changed, list item changed (with position), tab changed, slider changed, filter results changed, boundary hit, plus a free-form announce escape hatch. Editor events deliberately carry only perceptual content (the grapheme, the echoed word, the spoken context) — never document text; a reader that needs the line at the cursor queries the editor through the node. A read-only editor swallows typing silently — nothing was inserted, so there is nothing to echo — and lets Enter fall through to the layer's primary widget. Widget events describe intent for the program: activated, toggled, value changed, selection changed. Tick events report elapsed ticker intervals. Programs react to widget and tick events; readers react to accessibility events.
 
 ## 7.2. Draining and coalescing
 
@@ -94,11 +100,13 @@ A reader is any consumer of accessibility events. The reference reader is a self
 
 # 8. Focus and Navigation
 
-Enter and Escape follow the Windows dialog convention: each layer may designate a primary and a cancel widget, Enter activates the primary and Escape the cancel, and only buttons claim Enter for themselves. Non-button widgets never claim Enter — there is no per-widget "item activated" event; acting on a list selection is the primary widget's job (it reads the selection) or that of an explicitly bound command.
+Enter and Escape follow the Windows dialog convention: each layer may designate a primary and a cancel widget, Enter activates the primary and Escape the cancel, and only buttons claim Enter for themselves. A primary or cancel widget the user cannot currently reach — disabled, hidden, or inside a hidden subtree — does not activate; the input falls through unconsumed. Non-button widgets never claim Enter — there is no per-widget "item activated" event; acting on a list selection is the primary widget's job (it reads the selection) or that of an explicitly bound command.
 
 Navigation has three axes. The tab ring visits every focusable node in depth-first tree order with wraparound; hidden subtrees and disabled nodes are skipped, and groups and labels are never focusable. Hierarchy navigation moves along the tree structure itself: to parent, first visible child, or previous/next sibling with wraparound. Widget-internal navigation (arrows inside a list or edit box) is the focused widget's own affair and takes precedence through the claim order.
 
-Mnemonics (Alt plus a letter) jump directly to the first focusable node claiming that letter. Focus memory remembers the last-focused child of each container so re-entering a container restores position. When the focused node is removed, focus recovers to the nearest surviving focusable node; when a layer is popped, the previous layer's focus is restored. Focus changes emit a focused accessibility event exactly once per settled change.
+Any widget may carry shortcuts: key combos with a per-shortcut action — jump to the widget, activate it (the program receives an activated event, without a focus move), or both, jump first. A widget may carry any number of shortcuts, and the first one added is the one focus announcements speak (the shortcut slot of the golden six). Shortcuts fire only while their widget is reachable — visible, enabled, outside hidden subtrees — and when several widgets bind the same combo, the first reachable claimant in depth-first tree order wins. Mnemonics (Alt plus a letter) are the conventional jump-action case; the framework treats them as ordinary shortcuts on the Alt+letter combo.
+
+Focus memory remembers the last-focused child of each container so re-entering a container restores position. When the focused node is removed, focus recovers to the nearest surviving focusable node; when a layer is popped, the previous layer's focus is restored. Focus changes emit a focused accessibility event exactly once per settled change.
 
 # 9. Commands and Key Bindings
 

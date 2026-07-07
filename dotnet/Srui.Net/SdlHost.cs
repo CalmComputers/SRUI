@@ -40,6 +40,15 @@ public sealed class SdlHost : IDisposable
                     0 => new HostEvent.Quit(),
                     1 => new HostEvent.KeyDown(),
                     2 => new HostEvent.AltTap(),
+                    // Physical key transition: input_kind is flags
+                    // (bit 0 pressed, bit 1 repeat).
+                    4 => new HostEvent.Key(new KeyInput(
+                        e.Key,
+                        (Mods)e.Mods,
+                        (e.InputKind & 1) == 0 ? KeyPhase.Release
+                            : (e.InputKind & 2) != 0 ? KeyPhase.Repeat
+                            : KeyPhase.Press)),
+                    5 => new HostEvent.FocusLost(),
                     _ => new HostEvent.Input(new InputEvent((InputKind)e.InputKind, e.Ch, e.Key, (Mods)e.Mods)),
                 });
             }

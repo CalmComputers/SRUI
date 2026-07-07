@@ -80,7 +80,32 @@ public static class Keys
 
     public static uint Char(char c) => CharBase | c;
     public static uint F(byte n) => FBase | n;
+
+    /// <summary>Parse a config-form combo ("ctrl+shift+s") into the flat
+    /// key/mods encoding. False when the string does not parse.</summary>
+    public static bool TryParse(string combo, out uint key, out Mods mods)
+    {
+        var ok = NativeMethods.srui_combo_parse(combo, out key, out var rawMods);
+        mods = (Mods)rawMods;
+        return ok;
+    }
 }
+
+/// <summary>Phase of a physical key transition.</summary>
+public enum KeyPhase
+{
+    /// <summary>The initial press (not an auto-repeat).</summary>
+    Press,
+    /// <summary>An auto-repeat while the key is held.</summary>
+    Repeat,
+    /// <summary>The release.</summary>
+    Release,
+}
+
+/// <summary>A physical key transition — game-style input, parallel to
+/// the logical input stream. Key/Mods use the flat encoding (see
+/// Keys).</summary>
+public readonly record struct KeyInput(uint Key, Mods Mods, KeyPhase Phase);
 
 /// <summary>A logical input event as it crosses the FFI boundary.</summary>
 public readonly record struct InputEvent(InputKind Kind, uint Ch, uint Key, Mods Mods)

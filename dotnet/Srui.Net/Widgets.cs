@@ -23,6 +23,23 @@ public class Group : Widget, IWidgetContainer
     NodeId IWidgetContainer.ContainerNode => Node;
 }
 
+/// <summary>A focusable widget with no spoken role and no built-in
+/// behavior: it announces as its bare name, every key falls through the
+/// core, and interaction is whatever the app binds on it (BindKey for
+/// press/release, shortcuts, host bindings). The building block for game
+/// surfaces and bespoke controls; may contain children, like a
+/// Group.</summary>
+public class CustomWidget : Widget, IWidgetContainer
+{
+    public CustomWidget(IWidgetContainer parent, string name) : base(parent)
+    {
+        Node = App.Ui.Custom(parent.ContainerNode, name);
+        Register();
+    }
+
+    NodeId IWidgetContainer.ContainerNode => Node;
+}
+
 /// <summary>Enter or Space presses it (or Enter anywhere, as the layer's
 /// primary; Escape anywhere, as the cancel).</summary>
 public class Button : Widget
@@ -104,7 +121,7 @@ public class ListBox : Widget
 
     public string? SelectedItem => Ui.ListboxSelectedItem(Node);
 
-    public void SetItems(IReadOnlyList<string> items) => Ui.SetListItems(Node, items);
+    public virtual void SetItems(IReadOnlyList<string> items) => Ui.SetListItems(Node, items);
 }
 
 /// <summary>Type-to-filter list: printable characters build a fuzzy
