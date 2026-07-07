@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Srui.Net\Srui.Net.csproj" />
+    <ProjectReference Include="..\Srui.Audio\Srui.Audio.csproj" />
   </ItemGroup>
 
   <!-- Native dependencies from the Rust workspace build; the cargo
@@ -23,6 +24,8 @@
     <None Include="$(SruiNativeDir)srui_ffi.dll" CopyToOutputDirectory="PreserveNewest" />
     <None Include="$(SruiNativeDir)prism.dll" CopyToOutputDirectory="PreserveNewest" />
     <None Include="$(SruiNativeDir)SDL3.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(SruiNativeDir)cosmos.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(SruiNativeDir)phonon.dll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
