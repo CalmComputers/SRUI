@@ -56,7 +56,7 @@ Programs build and change UI by mutating the tree: insert a node under a parent 
 
 The tree maintains a stack of layers for modal UI. Each layer has its own roots, focus, and default primary/cancel widgets (Enter and Escape targets). Only the top layer is navigable. Pushing a layer opens a dialog or palette; popping it removes the layer's nodes and restores the previous layer's focus. The base layer cannot be popped.
 
-Dialog conventions live in the bindings, not the core: there is no dialog role (the prompt is a Label preceding the widgets, announced as a context label via the focused-with-context re-announcement), Escape closes a dialog automatically when no cancel widget claims it, and the canned dialogs (message, confirm, custom button rows, reviewable read-only status text) are language-level helpers — `SruiDialogs` in C# — because they are too high-level to share across languages profitably.
+Dialog conventions live in the bindings, not the core: there is no dialog role (the prompt is a Label preceding the widgets, announced as a context label via the focused-with-context re-announcement), Escape closes a dialog automatically when no cancel widget claims it, and the canned dialogs (message, confirm, custom button rows, reviewable read-only status text) are language-level helpers — `SruiDialogs` in C# — because they are too high-level to share across languages profitably. Canned dialog buttons carry the Windows-conventional Alt+letter activation shortcut, assigned first-free-letter within the dialog and spoken with the button; widget shortcuts only match within the active layer, so these never collide with the window underneath.
 
 # 5. Widget Behavior
 

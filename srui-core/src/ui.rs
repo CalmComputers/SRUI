@@ -1210,6 +1210,36 @@ mod tests {
     }
 
     #[test]
+    fn shortcuts_in_lower_layers_are_inert() {
+        let mut ui = Ui::new();
+        let save = ui.button(None, "Save");
+        let combo = KeyCombo::ctrl(Key::Char('s'));
+        ui.add_shortcut(save, combo, ShortcutAction::Activate);
+        ui.ensure_focus();
+        ui.drain_events();
+
+        // With a dialog layer on top, the base layer's shortcut neither
+        // fires nor consumes — dialog mnemonics own the combo space.
+        ui.push_layer();
+        let _confirm = ui.button(None, "Confirm");
+        ui.ensure_focus();
+        ui.drain_events();
+        assert!(!ui.handle_input(&LogicalInput::RawKey(combo)));
+        assert!(!ui
+            .drain_events()
+            .iter()
+            .any(|ev| matches!(ev, OutputEvent::Widget(WidgetEvent::Activated { .. }))));
+
+        // Popping the layer restores it.
+        ui.pop_layer();
+        ui.drain_events();
+        assert!(ui.handle_input(&LogicalInput::RawKey(combo)));
+        assert!(ui
+            .drain_events()
+            .contains(&OutputEvent::Widget(WidgetEvent::Activated { node: save })));
+    }
+
+    #[test]
     fn clear_shortcuts_removes_bindings_and_announcement() {
         let (mut ui, save, ..) = demo_ui();
         ui.add_shortcut(save, KeyCombo::ctrl(Key::Char('s')), ShortcutAction::Activate);
