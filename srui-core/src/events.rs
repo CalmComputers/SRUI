@@ -69,6 +69,10 @@ pub enum AccessibilityEvent {
         line: String,
         /// Grapheme at the post-move cursor position.
         grapheme_at_cursor: String,
+        /// Spoken context for the landing position at this granularity —
+        /// the expanded character, the word, or the line. Composed by the
+        /// widget because it depends on cursor-adjacent state.
+        context: String,
         granularity: NavGranularity,
         /// `Some` when nav was attempted past an edge and the cursor
         /// did not move.

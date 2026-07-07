@@ -8,6 +8,9 @@
 
 use std::any::Any;
 
+use crate::clipboard::Clipboard;
+use crate::editbox::{editbox_label_value, handle_editbox};
+use crate::editor::EditorState;
 use crate::events::{AccessibilityEvent, Boundary, OutputEvent, WidgetEvent};
 use crate::input::LogicalInput;
 use crate::tree::NodeId;
@@ -17,13 +20,15 @@ use crate::types::WidgetLabel;
 const TYPE_AHEAD_TIMEOUT_MS: u64 = 400;
 
 /// Everything a widget may touch while handling input: its own node id,
-/// its label (kept in sync with widget state), the output queue, and the
-/// host-supplied monotonic clock (see `Ui::set_now`).
+/// its label (kept in sync with widget state), the output queue, the
+/// host-supplied monotonic clock (see `Ui::set_now`), and the injected
+/// clipboard.
 pub struct WidgetCtx<'a> {
     pub node: NodeId,
     pub label: &'a mut WidgetLabel,
     pub events: &'a mut Vec<OutputEvent>,
     pub now_ms: u64,
+    pub clipboard: &'a mut dyn Clipboard,
 }
 
 impl WidgetCtx<'_> {
@@ -115,6 +120,74 @@ impl Widget for CheckBox {
             }
             _ => false,
         }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+/// EditBox — a single- or multi-line text editor with full cursor
+/// navigation, selection, clipboard, and typing echo. Enter inserts a
+/// newline in multiline editors and falls through to the layer's primary
+/// widget in single-line ones.
+#[derive(Debug)]
+pub struct EditBox {
+    editor: EditorState,
+}
+
+impl EditBox {
+    pub fn new(text: &str, multiline: bool) -> Self {
+        Self {
+            editor: EditorState::new(text, multiline),
+        }
+    }
+
+    pub fn editor(&self) -> &EditorState {
+        &self.editor
+    }
+
+    pub fn text(&self) -> String {
+        self.editor.text()
+    }
+
+    /// Replace the content (cursor clamped, selection cleared).
+    pub(crate) fn set_text(&mut self, text: &str, label: &mut WidgetLabel) {
+        self.editor.set_text(text);
+        self.sync_label(label);
+    }
+
+    pub(crate) fn set_read_only(&mut self, read_only: bool, label: &mut WidgetLabel) {
+        self.editor.read_only = read_only;
+        if let crate::types::Role::EditBox { read_only: ro, .. } = &mut label.role {
+            *ro = read_only;
+        }
+        self.sync_label(label);
+    }
+
+    /// Label value mirrors the selection or the current line at cursor.
+    pub(crate) fn sync_label(&self, label: &mut WidgetLabel) {
+        label.value = editbox_label_value(&self.editor);
+    }
+}
+
+impl Widget for EditBox {
+    fn handle_input(&mut self, input: &LogicalInput, ctx: &mut WidgetCtx) -> bool {
+        let result = handle_editbox(ctx.node, input, &mut self.editor, ctx.clipboard);
+        if !result.consumed {
+            return false;
+        }
+        for event in result.events {
+            ctx.emit_accessibility(event);
+        }
+        if result.changed {
+            ctx.emit_widget(WidgetEvent::Changed { node: ctx.node });
+        }
+        self.sync_label(ctx.label);
+        true
     }
 
     fn as_any(&self) -> &dyn Any {

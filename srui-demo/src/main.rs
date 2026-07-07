@@ -11,7 +11,7 @@ use std::time::Instant;
 use srui_core::events::{OutputEvent, WidgetEvent};
 use srui_core::speech;
 use srui_core::ui::Ui;
-use srui_core::widget::{CheckBox, ListBox};
+use srui_core::widget::{CheckBox, EditBox, ListBox};
 use srui_prism::Speech;
 use srui_sdl::{HostEvent, SdlHost};
 
@@ -21,7 +21,11 @@ fn main() -> Result<(), String> {
     println!("speech backend: {}", voice.backend_name());
 
     let mut ui = Ui::new();
+    ui.set_clipboard(host.clipboard());
     ui.text_label(None, "SRUI demo");
+    let name_field = ui.editbox(None, "Your name", "");
+    let notes = ui.editbox_multiline(None, "Notes", "");
+    let _ = notes;
     let greet = ui.button(None, "Greet");
     let wrap = ui.checkbox(None, "Word Wrap", false);
     let options = ui.group(None, "Options");
@@ -83,8 +87,13 @@ fn main() -> Result<(), String> {
                             .to_string();
                         let wrapped =
                             ui.widget::<CheckBox>(wrap).map(|c| c.checked).unwrap_or(false);
+                        let who = ui
+                            .widget::<EditBox>(name_field)
+                            .map(|e| e.text())
+                            .filter(|t| !t.is_empty())
+                            .unwrap_or_else(|| "stranger".to_string());
                         ui.announce(format!(
-                            "Hello. The fruit is {fruit}, and word wrap is {}.",
+                            "Hello, {who}. The fruit is {fruit}, and word wrap is {}.",
                             if wrapped { "on" } else { "off" }
                         ));
                     }

@@ -6,9 +6,7 @@
 //! core does not yet ship (editor text, filters) are provisional and will
 //! be finalized alongside those widgets and their tests.
 
-use crate::events::{
-    AccessibilityEvent, Boundary, ClipboardOp, NavGranularity, SelectionKind, TypingKind,
-};
+use crate::events::{AccessibilityEvent, Boundary, ClipboardOp, SelectionKind, TypingKind};
 use crate::types::{States, WidgetLabel};
 
 /// Maximum characters to announce verbatim for selections; beyond this we say
@@ -38,42 +36,35 @@ pub fn render_event(event: &AccessibilityEvent) -> Option<String> {
             kind,
             ..
         } => match kind {
-            TypingKind::Insert => match last_word {
-                Some(word) => Some(word.clone()),
-                None if !grapheme.is_empty() => Some(speak_char(grapheme)),
-                None => None,
-            },
+            // On a word boundary the just-completed word is echoed before
+            // the separator: "hello space". For deletes, `grapheme` is
+            // already in spoken form (speak_char passes multi-char strings
+            // through unchanged, so re-rendering is harmless).
+            TypingKind::Insert => {
+                let char_speech = speak_char(grapheme);
+                match last_word {
+                    Some(word) => Some(format!("{word} {char_speech}")),
+                    None if !grapheme.is_empty() => Some(char_speech),
+                    None => None,
+                }
+            }
             TypingKind::Delete if !grapheme.is_empty() => Some(speak_char(grapheme)),
             TypingKind::Delete => None,
             TypingKind::DeleteWord => last_word.clone(),
         },
 
         AccessibilityEvent::TextNav {
-            line,
-            grapheme_at_cursor,
-            granularity,
-            ..
-        } => match granularity {
-            NavGranularity::LineUp | NavGranularity::LineDown => {
-                if line.is_empty() {
-                    Some("blank".to_string())
-                } else {
-                    Some(line.clone())
-                }
-            }
-            _ => {
-                if grapheme_at_cursor.is_empty() {
-                    Some("blank".to_string())
-                } else {
-                    Some(speak_char(grapheme_at_cursor))
-                }
-            }
-        },
+            context, boundary, ..
+        } => Some(match boundary {
+            Some(Boundary::Top) => format!("Top, {context}"),
+            Some(Boundary::Bottom) => format!("Bottom, {context}"),
+            _ => context.clone(),
+        }),
 
         AccessibilityEvent::Selection { delta, kind, .. } => match kind {
-            SelectionKind::Selected | SelectionKind::All => Some(format!("selected {delta}")),
-            SelectionKind::Unselected => Some(format!("unselected {delta}")),
-            SelectionKind::Cleared => Some("selection removed".to_string()),
+            SelectionKind::Selected | SelectionKind::All => Some(format!("{delta} selected")),
+            SelectionKind::Unselected => Some(format!("{delta} unselected")),
+            SelectionKind::Cleared => Some("Selection removed".to_string()),
         },
 
         AccessibilityEvent::ItemNav {
@@ -118,9 +109,9 @@ pub fn render_event(event: &AccessibilityEvent) -> Option<String> {
 
         AccessibilityEvent::Clipboard { op, .. } => Some(
             match op {
-                ClipboardOp::Copy => "copied",
-                ClipboardOp::Cut => "cut",
-                ClipboardOp::Paste => "pasted",
+                ClipboardOp::Copy => "Copy",
+                ClipboardOp::Cut => "Cut",
+                ClipboardOp::Paste => "Paste",
             }
             .to_string(),
         ),
@@ -374,7 +365,7 @@ mod tests {
             node: id,
             op: ClipboardOp::Copy,
         };
-        assert_eq!(render_event(&ev).as_deref(), Some("copied"));
+        assert_eq!(render_event(&ev).as_deref(), Some("Copy"));
     }
 
     #[test]

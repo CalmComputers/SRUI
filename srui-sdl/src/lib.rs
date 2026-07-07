@@ -10,7 +10,26 @@ pub mod input_map;
 pub use input_map::InputMapper;
 
 use sdl3::event::Event;
+use srui_core::clipboard::Clipboard;
 use srui_core::input::LogicalInput;
+
+/// The system clipboard via SDL.
+pub struct SdlClipboard {
+    clipboard: sdl3::clipboard::ClipboardUtil,
+}
+
+impl Clipboard for SdlClipboard {
+    fn read(&mut self) -> Option<String> {
+        match self.clipboard.clipboard_text() {
+            Ok(text) if !text.is_empty() => Some(text),
+            _ => None,
+        }
+    }
+
+    fn write(&mut self, text: &str) {
+        let _ = self.clipboard.set_clipboard_text(text);
+    }
+}
 
 /// One thing the host loop reacts to.
 #[derive(Debug, Clone, PartialEq)]
@@ -58,6 +77,13 @@ impl SdlHost {
             _video: video,
             _sdl: sdl,
             mapper: InputMapper::new(),
+        })
+    }
+
+    /// The system clipboard, for `Ui::set_clipboard`.
+    pub fn clipboard(&self) -> Box<SdlClipboard> {
+        Box::new(SdlClipboard {
+            clipboard: self._video.clipboard(),
         })
     }
 

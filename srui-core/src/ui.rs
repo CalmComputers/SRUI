@@ -7,13 +7,14 @@
 
 use slotmap::SecondaryMap;
 
+use crate::clipboard::{Clipboard, NoClipboard};
 use crate::events::{self, AccessibilityEvent, OutputEvent, WidgetEvent};
 use crate::focus::FocusMemory;
 use crate::input::LogicalInput;
 use crate::nav::{self, TreeDirection};
 use crate::tree::{NodeId, Tree};
 use crate::types::{is_focusable, Role, States, WidgetLabel};
-use crate::widget::{Button, CheckBox, ListBox, Widget, WidgetCtx};
+use crate::widget::{Button, CheckBox, EditBox, ListBox, Widget, WidgetCtx};
 
 pub struct Ui {
     tree: Tree,
@@ -23,6 +24,8 @@ pub struct Ui {
     /// Host-supplied monotonic clock in milliseconds. Drives typeahead
     /// timeouts; without `set_now` calls, timeouts never fire.
     now_ms: u64,
+    /// Injected platform clipboard; every editbox gets it for free.
+    clipboard: Box<dyn Clipboard>,
 }
 
 impl Ui {
@@ -33,7 +36,13 @@ impl Ui {
             focus_memory: FocusMemory::new(),
             events: Vec::new(),
             now_ms: 0,
+            clipboard: Box::new(NoClipboard),
         }
+    }
+
+    /// Install a platform clipboard (defaults to a no-op).
+    pub fn set_clipboard(&mut self, clipboard: Box<dyn Clipboard>) {
+        self.clipboard = clipboard;
     }
 
     /// Advance the host clock (monotonic milliseconds). Call before each
@@ -136,6 +145,74 @@ impl Ui {
         };
         let before = node.label.clone();
         f(list, &mut node.label);
+        if self.tree.focus() == Some(id) && self.tree.get(id).unwrap().label != before {
+            self.emit_focused(id);
+        }
+    }
+
+    /// Convenience: a single-line edit box with initial text.
+    pub fn editbox(
+        &mut self,
+        parent: Option<NodeId>,
+        name: impl Into<String>,
+        text: &str,
+    ) -> NodeId {
+        self.editbox_impl(parent, Some(name.into()), text, false)
+    }
+
+    /// Convenience: a multi-line edit box with initial text.
+    pub fn editbox_multiline(
+        &mut self,
+        parent: Option<NodeId>,
+        name: impl Into<String>,
+        text: &str,
+    ) -> NodeId {
+        self.editbox_impl(parent, Some(name.into()), text, true)
+    }
+
+    fn editbox_impl(
+        &mut self,
+        parent: Option<NodeId>,
+        name: Option<String>,
+        text: &str,
+        multiline: bool,
+    ) -> NodeId {
+        let widget = EditBox::new(text, multiline);
+        let role = Role::EditBox {
+            read_only: false,
+            multiline,
+        };
+        let mut label = match name {
+            Some(name) => WidgetLabel::new(name, role),
+            None => WidgetLabel::nameless(role),
+        };
+        widget.sync_label(&mut label);
+        self.insert_widget(parent, label, Box::new(widget))
+    }
+
+    /// Replace an editbox's content (cursor clamped, selection cleared).
+    /// Re-announces if the editbox is focused and its label changed.
+    pub fn set_editbox_text(&mut self, id: NodeId, text: &str) {
+        self.with_editbox(id, |edit, label| edit.set_text(text, label));
+    }
+
+    /// Toggle an editbox's read-only state.
+    pub fn set_editbox_read_only(&mut self, id: NodeId, read_only: bool) {
+        self.with_editbox(id, |edit, label| edit.set_read_only(read_only, label));
+    }
+
+    fn with_editbox(&mut self, id: NodeId, f: impl FnOnce(&mut EditBox, &mut WidgetLabel)) {
+        let Some(widget) = self.widgets.get_mut(id) else {
+            return;
+        };
+        let Some(edit) = widget.as_any_mut().downcast_mut::<EditBox>() else {
+            return;
+        };
+        let Some(node) = self.tree.get_mut(id) else {
+            return;
+        };
+        let before = node.label.clone();
+        f(edit, &mut node.label);
         if self.tree.focus() == Some(id) && self.tree.get(id).unwrap().label != before {
             self.emit_focused(id);
         }
@@ -373,6 +450,7 @@ impl Ui {
                         label: &mut node.label,
                         events: &mut self.events,
                         now_ms: self.now_ms,
+                        clipboard: self.clipboard.as_mut(),
                     };
                     if widget.handle_input(input, &mut ctx) {
                         return true;
@@ -969,6 +1047,133 @@ mod tests {
 
         ui.set_list_items(files, vec!["b".into()]);
         assert!(ui.drain_events().is_empty());
+    }
+
+    // ── EditBox ──
+
+    #[test]
+    fn editbox_focus_announcement() {
+        let mut ui = Ui::new();
+        let notes = ui.editbox(None, "Notes", "");
+        ui.set_focus(notes);
+        assert_eq!(spoken(&ui.drain_events()), vec!["Notes edit blank"]);
+    }
+
+    #[test]
+    fn editbox_typing_echoes_and_updates_state() {
+        let mut ui = Ui::new();
+        let notes = ui.editbox(None, "Notes", "");
+        ui.set_focus(notes);
+        ui.drain_events();
+
+        assert!(ui.handle_input(&LogicalInput::TypeChar('h')));
+        let events = ui.drain_events();
+        assert_eq!(spoken(&events), vec!["h"]);
+        assert!(events.contains(&OutputEvent::Widget(WidgetEvent::Changed { node: notes })));
+
+        ui.handle_input(&LogicalInput::TypeChar('i'));
+        ui.drain_events();
+        assert_eq!(ui.widget::<EditBox>(notes).unwrap().text(), "hi");
+        assert_eq!(ui.label(notes).unwrap().value, "hi");
+    }
+
+    #[test]
+    fn editbox_word_echo_on_boundary() {
+        let mut ui = Ui::new();
+        let notes = ui.editbox(None, "Notes", "");
+        ui.set_focus(notes);
+        for ch in ['h', 'e', 'y'] {
+            ui.handle_input(&LogicalInput::TypeChar(ch));
+        }
+        ui.drain_events();
+        ui.handle_input(&LogicalInput::TypeChar(' '));
+        assert_eq!(spoken(&ui.drain_events()), vec!["hey space"]);
+    }
+
+    #[test]
+    fn editbox_arrow_navigation_speaks_chars() {
+        let mut ui = Ui::new();
+        let notes = ui.editbox(None, "Notes", "ab");
+        ui.set_focus(notes);
+        ui.drain_events();
+
+        // Cursor at 0; left is the top boundary.
+        assert!(ui.handle_input(&LogicalInput::MoveLeft));
+        assert_eq!(spoken(&ui.drain_events()), vec!["Top, a"]);
+
+        assert!(ui.handle_input(&LogicalInput::MoveRight));
+        assert_eq!(spoken(&ui.drain_events()), vec!["b"]);
+    }
+
+    #[test]
+    fn editbox_enter_single_line_falls_through_to_primary() {
+        let mut ui = Ui::new();
+        let notes = ui.editbox(None, "Notes", "");
+        let ok = ui.button(None, "OK");
+        ui.set_primary(ok);
+        ui.set_focus(notes);
+        ui.drain_events();
+
+        assert!(ui.handle_input(&LogicalInput::Activate));
+        assert!(ui
+            .drain_events()
+            .contains(&OutputEvent::Widget(WidgetEvent::Activated { node: ok })));
+        assert_eq!(ui.widget::<EditBox>(notes).unwrap().text(), "");
+    }
+
+    #[test]
+    fn editbox_enter_multiline_inserts_newline() {
+        let mut ui = Ui::new();
+        let notes = ui.editbox_multiline(None, "Notes", "");
+        ui.set_focus(notes);
+        ui.drain_events();
+
+        assert!(ui.handle_input(&LogicalInput::Activate));
+        assert_eq!(spoken(&ui.drain_events()), vec!["new line"]);
+        assert_eq!(ui.widget::<EditBox>(notes).unwrap().text(), "\n");
+    }
+
+    #[test]
+    fn editbox_select_all_and_copy() {
+        struct MemClipboard(Option<String>);
+        impl crate::clipboard::Clipboard for MemClipboard {
+            fn read(&mut self) -> Option<String> {
+                self.0.clone()
+            }
+            fn write(&mut self, text: &str) {
+                self.0 = Some(text.to_string());
+            }
+        }
+
+        let mut ui = Ui::new();
+        ui.set_clipboard(Box::new(MemClipboard(None)));
+        let notes = ui.editbox(None, "Notes", "hello");
+        ui.set_focus(notes);
+        ui.drain_events();
+
+        ui.handle_input(&LogicalInput::SelectAll);
+        assert_eq!(spoken(&ui.drain_events()), vec!["hello selected"]);
+
+        ui.handle_input(&LogicalInput::Copy);
+        assert_eq!(spoken(&ui.drain_events()), vec!["Copy"]);
+
+        // Paste at the end doubles the text via the injected clipboard.
+        ui.handle_input(&LogicalInput::MoveToDocEnd);
+        ui.handle_input(&LogicalInput::Paste);
+        ui.drain_events();
+        assert_eq!(ui.widget::<EditBox>(notes).unwrap().text(), "hellohello");
+    }
+
+    #[test]
+    fn set_editbox_text_reannounces_when_focused() {
+        let mut ui = Ui::new();
+        let notes = ui.editbox(None, "Notes", "old");
+        ui.set_focus(notes);
+        ui.drain_events();
+
+        ui.set_editbox_text(notes, "new text");
+        assert_eq!(spoken(&ui.drain_events()), vec!["Notes edit new text"]);
+        assert_eq!(ui.widget::<EditBox>(notes).unwrap().text(), "new text");
     }
 
     #[test]
