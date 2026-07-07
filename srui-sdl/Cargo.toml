@@ -1,0 +1,8 @@
+[package]
+name = "srui-sdl"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+srui-core = { path = "../srui-core" }
+sdl3 = { version = "0.17", features = ["build-from-source"] }
