@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Srui.Net/Srui.Net.csproj" />
+  <Project Path="SruiDemo/SruiDemo.csproj" />
+</Solution>

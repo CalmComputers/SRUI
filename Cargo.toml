@@ -6,4 +6,5 @@ members = [
     "srui-prism",
     "srui-sdl",
     "srui-demo",
+    "srui-ffi",
 ]

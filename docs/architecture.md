@@ -31,8 +31,8 @@ Application vocabulary stays out of the core: no application command names, no c
 | `srui-core` | Rust | Retained tree, widget behavior, focus/navigation, input vocabulary, output events, speech rendering library. Pure; no platform dependencies. |
 | `srui-sdl` | Rust | SDL3 host layer: a focus-receiving window, the event pump, and physical→logical input translation. Optional — any host that can produce `LogicalInput` works. |
 | `srui-prism` / `srui-prism-sys` | Rust over C | Speech and braille output through Prism (vendored; builds via CMake), which routes to the running screen reader or platform TTS. The reference speech reader's output channel. |
-| `srui-ffi` | Rust (cdylib) | C ABI over the core: opaque handles, flat data, event drain. |
-| `Srui.Net` | C# | Idiomatic .NET wrapper over the C ABI: classes, properties, events. Prism's own .NET bindings (Prismatoid) are a candidate for the speech side. |
+| `srui-ffi` | Rust (cdylib) | C ABI over the core, the SDL host, and Prism speech — one native surface for bindings: opaque handles, flat input/event structs, event drain. |
+| `Srui.Net` | C# | Idiomatic .NET wrapper over the C ABI: classes, records, hand-written P/Invoke. `dotnet/SruiDemo` mirrors the Rust demo. |
 | Readers | host-side | Consumers of the output event stream: self-voicing speech, braille, UIA provider, logging/test readers. |
 
 Rust programs consume `srui-core` directly; there is no FFI on the Rust path. A reactive layer over the retained API is anticipated but deferred. `srui-demo` wires the whole stack together end to end: SDL events in, Prism speech out.
@@ -101,7 +101,9 @@ The core contributes three mechanisms to that host machinery. `reserved_reason` 
 
 # 10. FFI and the C# Binding
 
-The C ABI follows a small set of rules. All objects are opaque handles: the UI context is a pointer-sized handle, nodes are the `u64` form of `NodeId`. All strings are UTF-8. There are no callbacks; the host polls, and events cross the boundary through a drain call. The ABI is hand-designed (not generated from the Rust API), and the C# P/Invoke layer is generated from it with csbindgen, then wrapped in idiomatic, subclassable .NET classes.
+The C ABI follows a small set of rules. All objects are opaque handles: contexts are pointers, nodes are the `u64` form of `NodeId` with zero meaning "no node". All strings are UTF-8; strings returned by the library are released through `srui_string_free`. There are no callbacks; the host polls, and events cross the boundary through drain calls returning flat struct arrays. Logical inputs cross as a flat (kind, char, key, modifiers) encoding with a round-trip test on the Rust side. The ABI is hand-designed and the C# P/Invoke layer hand-written (all booleans marshal as one byte, matching Rust's `bool`).
+
+Accessibility events currently cross the boundary pre-rendered: each carries its utterance (composed by `speech::render_event`) plus the event variant and node, which is what a speech reader needs. Full structured payload marshaling for braille/UIA readers over FFI is deliberately deferred until such a reader exists.
 
 The core is not thread-safe and does not need to be: one UI context belongs to one thread, and each binding enforces single-threaded access to a context. Multiple contexts on different threads are fine.
 
