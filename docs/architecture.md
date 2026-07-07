@@ -1,0 +1,108 @@
+# SRUI Architecture
+
+# 1. Overview
+
+SRUI is a screen-reader-first UI toolkit. It maintains a retained semantic tree of widgets, processes keyboard input against that tree, and emits structured output events describing what the user should perceive. It produces no pixels and never will: visual rendering is permanently out of scope. What a host application does with the output events — synthesize speech, drive a braille display, back a platform accessibility API — is the host's decision, made by attaching readers (section 7).
+
+The toolkit is usable from Rust natively and from C# through a C ABI. The core is written in Rust; bindings never reimplement behavior.
+
+# 2. Design Principles
+
+## 2.1. Sans-IO core
+
+The core owns no platform resources: no TTS engine, no clipboard, no window, no event loop, no file access, no wall clock (time is injected). The host pushes input in and drains events out. Platform services the core needs (clipboard) are injected as trait objects. This keeps the entire engine headless and deterministic under test.
+
+## 2.2. The tree is the source of truth for widget state
+
+Widget-local state — an edit box's text, a list's selection index, a checkbox's value — lives in the node, not in the application model. Programs mutate nodes through handles and learn about user-driven changes through output events. Application state synchronization is the program's responsibility (a future reactive layer will automate it).
+
+## 2.3. Structured events out; readers render
+
+The core never speaks. It emits structured accessibility events carrying complete semantic payloads. Speech composition is provided as a pure library (event in, utterance string out, verbosity-parameterized) that readers may use or bypass. This is what lets one event stream feed a self-voicing reader, a braille reader, a UIA provider, and a test harness simultaneously.
+
+## 2.4. Policy-free
+
+Application vocabulary stays out of the core: no application command names, no command categories, no persistence formats, no application-global shortcuts. The core supplies mechanisms (key combos, binding maps, conflict detection) and the host supplies policy. Serialization of user configuration is host-owned; the core exposes stable string forms (for example `"ctrl+shift+s"` for key combos) and plain data structures.
+
+# 3. Layering
+
+| Layer | Language | Role |
+|---|---|---|
+| `srui-core` | Rust | Retained tree, widget behavior, focus/navigation, input vocabulary, output events, speech rendering library. Pure; no platform dependencies. |
+| `srui-sdl` | Rust | SDL3 host layer: a focus-receiving window, the event pump, and physical→logical input translation. Optional — any host that can produce `LogicalInput` works. |
+| `srui-prism` / `srui-prism-sys` | Rust over C | Speech and braille output through Prism (vendored; builds via CMake), which routes to the running screen reader or platform TTS. The reference speech reader's output channel. |
+| `srui-ffi` | Rust (cdylib) | C ABI over the core: opaque handles, flat data, event drain. |
+| `Srui.Net` | C# | Idiomatic .NET wrapper over the C ABI: classes, properties, events. Prism's own .NET bindings (Prismatoid) are a candidate for the speech side. |
+| Readers | host-side | Consumers of the output event stream: self-voicing speech, braille, UIA provider, logging/test readers. |
+
+Rust programs consume `srui-core` directly; there is no FFI on the Rust path. A reactive layer over the retained API is anticipated but deferred. `srui-demo` wires the whole stack together end to end: SDL events in, Prism speech out.
+
+# 4. The Semantic Tree
+
+## 4.1. Nodes and handles
+
+The tree owns all nodes in a slotmap; a `NodeId` is a generational handle that is O(1) to resolve, stable for the node's lifetime, and never dangles silently (a stale handle resolves to nothing rather than to a reused slot). `NodeId` converts losslessly to and from `u64`, which is its FFI representation. Each node stores its parent, an ordered child list, its semantic label, and its widget behavior/state.
+
+## 4.2. The golden six
+
+Every node carries the six semantic properties a screen reader announces, in NVDA order: name, role, value, states, description, shortcut. `Role` identifies the control type (button, check box, edit box, list, group, label, tab control, slider, and so on) and knows which keys that control type consumes during normal interaction — the basis of shortcut conflict detection. `States` is a bitflag set of conditions the user cannot directly change (focused, disabled, required, warning, hidden). A node's name is optional; a nameless node announces as role and value only, for widgets whose identity is carried by their container.
+
+## 4.3. Mutation
+
+Programs build and change UI by mutating the tree: insert a node under a parent at an index, remove a subtree, reparent, and set label fields or widget state through the handle. Mutations are synchronous and immediately visible. Mutations that affect what the user is perceiving (the focused node's value changes, the focused subtree is removed) cause the core to emit appropriate accessibility events; mutations elsewhere in the tree are silent.
+
+## 4.4. Layers
+
+The tree maintains a stack of layers for modal UI. Each layer has its own roots, focus, and default primary/cancel widgets (Enter and Escape targets). Only the top layer is navigable. Pushing a layer opens a dialog or palette; popping it removes the layer's nodes and restores the previous layer's focus. The base layer cannot be popped.
+
+# 5. Widget Behavior
+
+Widget behavior is trait-dispatched: each node holds an implementation of a `Widget` trait that handles logical input directed at the node when focused, mutates its own state, and emits output events. Built-in roles ship with the core.
+
+Custom widgets — new `Widget` implementations — are written in Rust only. The trait is not implementable across the FFI boundary; the cost (function-pointer vtables, reentrancy across languages) outweighs the benefit. Other languages extend the toolkit by composing primitives and by subclassing their binding-side wrapper classes: a C# subclass of a wrapper adds application semantics, event handling, and composition around a node whose core behavior remains in Rust.
+
+# 6. Input
+
+## 6.1. Vocabulary
+
+A `KeyCombo` is a physical key plus ctrl/alt/shift modifier state, with a spoken display form ("control shift s") and a compact config form ("ctrl+shift+s") that round-trips through parsing. A `LogicalInput` is the semantic layer above it: navigation (next/previous, hierarchy moves, mnemonic), widget verbs (activate, move by character/word/line, select, type, delete, clipboard), `SpeakFocus`, `Dismiss`, and `RawKey` for combos with no semantic mapping. The default physical-to-logical map is host-replaceable; the host is responsible for translating platform key events into `KeyCombo`s.
+
+## 6.2. Dispatch
+
+Input events are pushed to the core one at a time from a host-side queue; there is no frame granularity. Each event is dispatched in a fixed claim order: the focused node's widget gets first claim (guided by its role's reserved-key table), then the host's key bindings, then framework navigation (tab ring, hierarchy navigation, mnemonics). Whatever handles the event emits the corresponding output events; unclaimed input falls through to the host.
+
+# 7. Output Events and Readers
+
+## 7.1. Event streams
+
+The core produces a single ordered stream of output events in two families. Accessibility events describe perception: focus moved (with the full label and any context labels), text typed or deleted (with line, grapheme, and word payloads), cursor moved, selection changed, list item changed (with position), tab changed, slider changed, filter results changed, boundary hit, plus a free-form announce escape hatch. Widget events describe intent for the program: activated, toggled, value changed, selection changed. Programs react to widget events; readers react to accessibility events.
+
+## 7.2. Draining and coalescing
+
+The host drains the event queue when it chooses (typically after each input event or mutation batch). Coalescing is applied at drain time: for state-describing events (focus, selection, item/tab/slider/filter changes), only the latest instance of each event kind survives a drain — an intermediate focus move is discarded in favor of the settled one; transient events (typing echoes, announcements) and all widget events survive in order. Interruption policy — silencing speech on a keypress, utterance length limits — belongs to the speech reader, not the core.
+
+## 7.3. Readers
+
+A reader is any consumer of accessibility events. The reference reader is a self-voicing speech reader: it renders events to utterances using the core's speech rendering library and forwards them to a host-provided synthesizer. The rendering library composes announcements from the golden six in NVDA order and handles character echo (punctuation expansion, capital indication), with verbosity as an explicit parameter so a terse and a verbose reader are the same code. Anticipated additional readers include braille, a UIA provider (the retained tree maps directly onto platform accessibility trees), and logging readers for tests.
+
+# 8. Focus and Navigation
+
+Enter and Escape follow the Windows dialog convention: each layer may designate a primary and a cancel widget, Enter activates the primary and Escape the cancel, and only buttons claim Enter for themselves. Non-button widgets never claim Enter — there is no per-widget "item activated" event; acting on a list selection is the primary widget's job (it reads the selection) or that of an explicitly bound command.
+
+Navigation has three axes. The tab ring visits every focusable node in depth-first tree order with wraparound; hidden subtrees and disabled nodes are skipped, and groups and labels are never focusable. Hierarchy navigation moves along the tree structure itself: to parent, first visible child, or previous/next sibling with wraparound. Widget-internal navigation (arrows inside a list or edit box) is the focused widget's own affair and takes precedence through the claim order.
+
+Mnemonics (Alt plus a letter) jump directly to the first focusable node claiming that letter. Focus memory remembers the last-focused child of each container so re-entering a container restores position. When the focused node is removed, focus recovers to the nearest surviving focusable node; when a layer is popped, the previous layer's focus is restored. Focus changes emit a focused accessibility event exactly once per settled change.
+
+# 9. Commands and Key Bindings
+
+The core provides the mechanism for user-rebindable shortcuts: a bidirectional map between host-defined command identities and key combos, and two-tier conflict detection. Reserved combos (the tab ring, mnemonics, hierarchy navigation) are categorically unbindable, each refusal carrying a spoken reason; soft conflicts (collisions with other bindings or with keys the focused role reserves) produce a structured report the host's bind UI can present. Command identity, categories, palettes, and persistence are host policy. The concrete API is deliberately undesigned at this stage and will be shaped by the first host that needs it.
+
+# 10. FFI and the C# Binding
+
+The C ABI follows a small set of rules. All objects are opaque handles: the UI context is a pointer-sized handle, nodes are the `u64` form of `NodeId`. All strings are UTF-8. There are no callbacks; the host polls, and events cross the boundary through a drain call. The ABI is hand-designed (not generated from the Rust API), and the C# P/Invoke layer is generated from it with csbindgen, then wrapped in idiomatic, subclassable .NET classes.
+
+The core is not thread-safe and does not need to be: one UI context belongs to one thread, and each binding enforces single-threaded access to a context. Multiple contexts on different threads are fine.
+
+# 11. Testing
+
+The entire core runs headless. Invariants are property-tested, including: the tab ring lands only on valid focusable nodes and visits each exactly once per cycle; announcement composition always contains name and role in order; binding maps keep forward and reverse views consistent. Speech output is asserted as strings through test readers. New behavior is expected to arrive with its invariants encoded the same way.

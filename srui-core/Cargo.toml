@@ -1,0 +1,12 @@
+[package]
+name = "srui-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+slotmap = "1"
+smallvec = "1"
+bitflags = "2"
+
+[dev-dependencies]
+proptest = "1"

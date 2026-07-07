@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = [
+    "srui-core",
+    "srui-prism-sys",
+    "srui-prism",
+    "srui-sdl",
+    "srui-demo",
+]
