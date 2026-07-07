@@ -12,7 +12,9 @@ use crate::clipboard::Clipboard;
 use crate::editbox::{editbox_label_value, handle_editbox};
 use crate::editor::EditorState;
 use crate::events::{AccessibilityEvent, Boundary, OutputEvent, WidgetEvent};
+use crate::filter::filter_items;
 use crate::input::LogicalInput;
+use crate::key_combo::{Key, KeyCombo};
 use crate::tree::NodeId;
 use crate::types::WidgetLabel;
 
@@ -188,6 +190,457 @@ impl Widget for EditBox {
         }
         self.sync_label(ctx.label);
         true
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+/// Slider — arrows adjust by the small step, Shift+arrows and
+/// PageUp/PageDown by the large step, Home/End jump to the range edges.
+/// Adjustments at a range edge re-announce the clamped value.
+#[derive(Debug)]
+pub struct Slider {
+    value: i32,
+    min: i32,
+    max: i32,
+    small_step: i32,
+    large_step: i32,
+    /// Spoken and displayed immediately after the value ("%" → "50%").
+    unit: String,
+}
+
+impl Slider {
+    pub fn new(value: i32, min: i32, max: i32) -> Self {
+        Self {
+            value: value.clamp(min, max),
+            min,
+            max,
+            small_step: 1,
+            large_step: 10,
+            unit: String::new(),
+        }
+    }
+
+    pub fn with_steps(mut self, small: i32, large: i32) -> Self {
+        self.small_step = small;
+        self.large_step = large;
+        self
+    }
+
+    pub fn with_unit(mut self, unit: impl Into<String>) -> Self {
+        self.unit = unit.into();
+        self
+    }
+
+    pub fn value(&self) -> i32 {
+        self.value
+    }
+
+    pub(crate) fn set_value(&mut self, value: i32, label: &mut WidgetLabel) {
+        self.value = value.clamp(self.min, self.max);
+        self.sync_label(label);
+    }
+
+    pub(crate) fn sync_label(&self, label: &mut WidgetLabel) {
+        label.value = format!("{}{}", self.value, self.unit);
+    }
+
+    fn adjust(&mut self, delta: i32, ctx: &mut WidgetCtx) {
+        self.value = (self.value + delta).clamp(self.min, self.max);
+        self.announce(ctx);
+    }
+
+    fn announce(&self, ctx: &mut WidgetCtx) {
+        ctx.emit_accessibility(AccessibilityEvent::SliderChange {
+            node: ctx.node,
+            value: self.value,
+            unit: self.unit.clone(),
+        });
+    }
+}
+
+impl Widget for Slider {
+    fn handle_input(&mut self, input: &LogicalInput, ctx: &mut WidgetCtx) -> bool {
+        let prev = self.value;
+        let delta: Option<i32> = match input {
+            LogicalInput::MoveRight | LogicalInput::MoveUp => Some(self.small_step),
+            LogicalInput::MoveLeft | LogicalInput::MoveDown => Some(-self.small_step),
+            LogicalInput::SelectRight | LogicalInput::SelectLineUp => Some(self.large_step),
+            LogicalInput::SelectLeft | LogicalInput::SelectLineDown => Some(-self.large_step),
+            LogicalInput::MoveToLineStart => {
+                self.value = self.min;
+                self.announce(ctx);
+                None
+            }
+            LogicalInput::MoveToLineEnd => {
+                self.value = self.max;
+                self.announce(ctx);
+                None
+            }
+            LogicalInput::RawKey(combo) if !combo.ctrl && !combo.alt => match combo.key {
+                Key::PageUp => Some(self.large_step),
+                Key::PageDown => Some(-self.large_step),
+                _ => return false,
+            },
+            _ => return false,
+        };
+        if let Some(d) = delta {
+            self.adjust(d, ctx);
+        }
+        self.sync_label(ctx.label);
+        if self.value != prev {
+            ctx.emit_widget(WidgetEvent::Changed { node: ctx.node });
+        }
+        true
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+/// TabControl — Left/Right cycle through tabs with wraparound.
+#[derive(Debug)]
+pub struct TabControl {
+    tabs: Vec<String>,
+    active: usize,
+}
+
+impl TabControl {
+    pub fn new(tabs: Vec<String>, active: usize) -> Self {
+        let active = if tabs.is_empty() {
+            0
+        } else {
+            active.min(tabs.len() - 1)
+        };
+        Self { tabs, active }
+    }
+
+    pub fn active(&self) -> usize {
+        self.active
+    }
+
+    pub fn active_tab(&self) -> Option<&str> {
+        self.tabs.get(self.active).map(|s| s.as_str())
+    }
+
+    pub(crate) fn set_active(&mut self, index: usize, label: &mut WidgetLabel) {
+        if self.tabs.is_empty() {
+            return;
+        }
+        self.active = index.min(self.tabs.len() - 1);
+        self.sync_label(label);
+    }
+
+    pub(crate) fn sync_label(&self, label: &mut WidgetLabel) {
+        if let Some(name) = self.tabs.get(self.active) {
+            label.value = name.clone();
+        }
+    }
+
+    fn switch(&mut self, to: usize, ctx: &mut WidgetCtx) {
+        self.active = to;
+        self.sync_label(ctx.label);
+        ctx.emit_accessibility(AccessibilityEvent::TabChange {
+            node: ctx.node,
+            tab_name: self.tabs[to].clone(),
+            position: (to, self.tabs.len()),
+        });
+        ctx.emit_widget(WidgetEvent::Changed { node: ctx.node });
+    }
+}
+
+impl Widget for TabControl {
+    fn handle_input(&mut self, input: &LogicalInput, ctx: &mut WidgetCtx) -> bool {
+        if self.tabs.is_empty() {
+            return false;
+        }
+        match input {
+            LogicalInput::MoveRight => {
+                let next = if self.active + 1 < self.tabs.len() {
+                    self.active + 1
+                } else {
+                    0
+                };
+                self.switch(next, ctx);
+                true
+            }
+            LogicalInput::MoveLeft => {
+                let prev = if self.active > 0 {
+                    self.active - 1
+                } else {
+                    self.tabs.len() - 1
+                };
+                self.switch(prev, ctx);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+/// ShortcutField — captures whatever combo the user presses as its value.
+/// Delete/Backspace clear it; Tab, Escape, and SpeakFocus pass through so
+/// the user can still leave the field.
+#[derive(Debug, Default)]
+pub struct ShortcutField {
+    combo: Option<KeyCombo>,
+    /// When false, capturing a combo produces no speech feedback.
+    pub echo: bool,
+}
+
+impl ShortcutField {
+    pub fn new() -> Self {
+        Self {
+            combo: None,
+            echo: true,
+        }
+    }
+
+    pub fn combo(&self) -> Option<KeyCombo> {
+        self.combo
+    }
+
+    pub(crate) fn set_combo(&mut self, combo: Option<KeyCombo>, label: &mut WidgetLabel) {
+        self.combo = combo;
+        self.sync_label(label);
+    }
+
+    pub(crate) fn sync_label(&self, label: &mut WidgetLabel) {
+        label.value = match &self.combo {
+            Some(combo) => combo.display_name(),
+            None => "blank".to_string(),
+        };
+    }
+
+    fn capture(&mut self, combo: KeyCombo, ctx: &mut WidgetCtx) {
+        self.combo = Some(combo);
+        self.sync_label(ctx.label);
+        if self.echo {
+            self.say_value(combo.display_name(), ctx);
+        }
+        ctx.emit_widget(WidgetEvent::Changed { node: ctx.node });
+    }
+
+    /// A shortcut field has no indexable concept, so its value changes
+    /// ride ItemNav with no position.
+    fn say_value(&self, value: String, ctx: &mut WidgetCtx) {
+        ctx.emit_accessibility(AccessibilityEvent::ItemNav {
+            node: ctx.node,
+            item: value,
+            position: None,
+            boundary: None,
+        });
+    }
+}
+
+impl Widget for ShortcutField {
+    fn handle_input(&mut self, input: &LogicalInput, ctx: &mut WidgetCtx) -> bool {
+        match input {
+            // Delete/Backspace clears the shortcut
+            LogicalInput::DeleteBackward | LogicalInput::DeleteForward => {
+                if self.combo.is_some() {
+                    self.combo = None;
+                    self.sync_label(ctx.label);
+                    self.say_value("blank".to_string(), ctx);
+                    ctx.emit_widget(WidgetEvent::Changed { node: ctx.node });
+                }
+                true
+            }
+
+            // RawKey — capture the combo directly
+            LogicalInput::RawKey(combo) => {
+                self.capture(*combo, ctx);
+                true
+            }
+
+            // Let Tab, Escape, and framework inputs through
+            LogicalInput::NavigateNext
+            | LogicalInput::NavigatePrev
+            | LogicalInput::Dismiss
+            | LogicalInput::SpeakFocus => false,
+
+            // Any other input with a KeyCombo mapping — capture it
+            other => {
+                if let Some(combo) = KeyCombo::from_logical(other) {
+                    if matches!(combo.key, Key::Tab | Key::Escape) {
+                        // Let through for navigation/dismiss
+                        false
+                    } else {
+                        self.capture(combo, ctx);
+                        true
+                    }
+                } else {
+                    // Unknown input — consume silently
+                    true
+                }
+            }
+        }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+/// FilterListBox — type-to-filter list. Printable characters build a
+/// fuzzy-match query, Backspace erases it, arrows and Home/End navigate
+/// the filtered results. Enter is not claimed (the layer's primary reads
+/// the selection).
+#[derive(Debug, Default)]
+pub struct FilterListBox {
+    items: Vec<String>,
+    filter: String,
+    selected: usize,
+}
+
+impl FilterListBox {
+    pub fn new(items: Vec<String>) -> Self {
+        Self {
+            items,
+            filter: String::new(),
+            selected: 0,
+        }
+    }
+
+    pub fn filter(&self) -> &str {
+        &self.filter
+    }
+
+    /// The items currently matching the filter, best match first.
+    pub fn filtered(&self) -> Vec<String> {
+        filter_items(&self.filter, &self.items)
+    }
+
+    pub fn selected_item(&self) -> Option<String> {
+        self.filtered().into_iter().nth(self.selected)
+    }
+
+    /// Replace the full item list; the filter is kept, the selection reset.
+    pub(crate) fn set_items(&mut self, items: Vec<String>, label: &mut WidgetLabel) {
+        self.items = items;
+        self.selected = 0;
+        self.sync_label(label);
+    }
+
+    /// Clear the filter and selection.
+    pub(crate) fn clear_filter(&mut self, label: &mut WidgetLabel) {
+        self.filter.clear();
+        self.selected = 0;
+        self.sync_label(label);
+    }
+
+    /// Label value mirrors the selected result; state_text carries the
+    /// filter ("no filter" / "filter {query}").
+    pub(crate) fn sync_label(&self, label: &mut WidgetLabel) {
+        let filtered = self.filtered();
+        match filtered.get(self.selected) {
+            Some(item) => label.value = item.clone(),
+            None => label.value = "empty".to_string(),
+        }
+        label.state_text = if self.filter.is_empty() {
+            "no filter".to_string()
+        } else {
+            format!("filter {}", self.filter)
+        };
+    }
+
+    fn emit_item(&self, filtered: &[String], ctx: &mut WidgetCtx, boundary: Option<Boundary>) {
+        ctx.emit_accessibility(AccessibilityEvent::ItemNav {
+            node: ctx.node,
+            item: filtered[self.selected].clone(),
+            position: Some((self.selected, filtered.len())),
+            boundary,
+        });
+    }
+
+    fn select_and_announce(&mut self, filtered: &[String], index: usize, ctx: &mut WidgetCtx) {
+        self.selected = index;
+        self.sync_label(ctx.label);
+        self.emit_item(filtered, ctx, None);
+        ctx.emit_widget(WidgetEvent::Changed { node: ctx.node });
+    }
+
+    /// Filter text changed: reset the selection and report the new results.
+    fn filter_changed(&mut self, ctx: &mut WidgetCtx) {
+        self.selected = 0;
+        self.sync_label(ctx.label);
+        let filtered = self.filtered();
+        ctx.emit_accessibility(AccessibilityEvent::Filter {
+            node: ctx.node,
+            query: self.filter.clone(),
+            first_result: filtered.first().cloned(),
+            result_count: filtered.len(),
+        });
+        ctx.emit_widget(WidgetEvent::Changed { node: ctx.node });
+    }
+}
+
+impl Widget for FilterListBox {
+    fn handle_input(&mut self, input: &LogicalInput, ctx: &mut WidgetCtx) -> bool {
+        let filtered = self.filtered();
+        match input {
+            LogicalInput::MoveDown if !filtered.is_empty() => {
+                if self.selected + 1 < filtered.len() {
+                    self.select_and_announce(&filtered, self.selected + 1, ctx);
+                } else {
+                    self.emit_item(&filtered, ctx, Some(Boundary::Bottom));
+                }
+                true
+            }
+            LogicalInput::MoveUp if !filtered.is_empty() => {
+                if self.selected > 0 {
+                    self.select_and_announce(&filtered, self.selected - 1, ctx);
+                } else {
+                    self.emit_item(&filtered, ctx, Some(Boundary::Top));
+                }
+                true
+            }
+            LogicalInput::MoveToDocStart | LogicalInput::MoveToLineStart
+                if !filtered.is_empty() =>
+            {
+                if self.selected != 0 {
+                    self.select_and_announce(&filtered, 0, ctx);
+                }
+                true
+            }
+            LogicalInput::MoveToDocEnd | LogicalInput::MoveToLineEnd if !filtered.is_empty() => {
+                let last = filtered.len() - 1;
+                if self.selected != last {
+                    self.select_and_announce(&filtered, last, ctx);
+                }
+                true
+            }
+            LogicalInput::TypeChar(ch) => {
+                self.filter.push(ch.to_ascii_lowercase());
+                self.filter_changed(ctx);
+                true
+            }
+            LogicalInput::DeleteBackward if !self.filter.is_empty() => {
+                self.filter.pop();
+                self.filter_changed(ctx);
+                true
+            }
+            _ => false,
+        }
     }
 
     fn as_any(&self) -> &dyn Any {

@@ -14,7 +14,10 @@ use crate::input::LogicalInput;
 use crate::nav::{self, TreeDirection};
 use crate::tree::{NodeId, Tree};
 use crate::types::{is_focusable, Role, States, WidgetLabel};
-use crate::widget::{Button, CheckBox, EditBox, ListBox, Widget, WidgetCtx};
+use crate::widget::{
+    Button, CheckBox, EditBox, FilterListBox, ListBox, ShortcutField, Slider, TabControl, Widget,
+    WidgetCtx,
+};
 
 pub struct Ui {
     tree: Tree,
@@ -124,30 +127,124 @@ impl Ui {
     /// Replace a listbox's items (selection clamped). Re-announces if the
     /// listbox is focused and its label changed.
     pub fn set_list_items(&mut self, id: NodeId, items: Vec<String>) {
-        self.with_listbox(id, |list, label| list.set_items(items, label));
+        self.with_widget::<ListBox>(id, |list, label| list.set_items(items, label));
     }
 
     /// Move a listbox's selection programmatically (clamped). Re-announces
     /// if the listbox is focused and its label changed.
     pub fn set_list_selected(&mut self, id: NodeId, index: usize) {
-        self.with_listbox(id, |list, label| list.set_selected(index, label));
+        self.with_widget::<ListBox>(id, |list, label| list.set_selected(index, label));
     }
 
-    fn with_listbox(&mut self, id: NodeId, f: impl FnOnce(&mut ListBox, &mut WidgetLabel)) {
+    /// Mutate a node's widget state and label together; re-announces if
+    /// the node is focused and the label changed. All the typed `set_*`
+    /// mutators route through this.
+    fn with_widget<T: Widget>(&mut self, id: NodeId, f: impl FnOnce(&mut T, &mut WidgetLabel)) {
         let Some(widget) = self.widgets.get_mut(id) else {
             return;
         };
-        let Some(list) = widget.as_any_mut().downcast_mut::<ListBox>() else {
+        let Some(typed) = widget.as_any_mut().downcast_mut::<T>() else {
             return;
         };
         let Some(node) = self.tree.get_mut(id) else {
             return;
         };
         let before = node.label.clone();
-        f(list, &mut node.label);
+        f(typed, &mut node.label);
         if self.tree.focus() == Some(id) && self.tree.get(id).unwrap().label != before {
             self.emit_focused(id);
         }
+    }
+
+    /// Convenience: a slider. Configure steps/unit by inserting a
+    /// customized `Slider` via `insert_widget` instead.
+    pub fn slider(
+        &mut self,
+        parent: Option<NodeId>,
+        name: impl Into<String>,
+        value: i32,
+        min: i32,
+        max: i32,
+    ) -> NodeId {
+        self.slider_widget(parent, name, Slider::new(value, min, max))
+    }
+
+    /// Insert a pre-configured slider (steps, unit).
+    pub fn slider_widget(
+        &mut self,
+        parent: Option<NodeId>,
+        name: impl Into<String>,
+        slider: Slider,
+    ) -> NodeId {
+        let mut label = WidgetLabel::new(name, Role::Slider);
+        slider.sync_label(&mut label);
+        self.insert_widget(parent, label, Box::new(slider))
+    }
+
+    /// Move a slider programmatically (clamped). Re-announces if focused.
+    pub fn set_slider_value(&mut self, id: NodeId, value: i32) {
+        self.with_widget::<Slider>(id, |slider, label| slider.set_value(value, label));
+    }
+
+    /// Convenience: a tab control.
+    pub fn tab_control(
+        &mut self,
+        parent: Option<NodeId>,
+        name: impl Into<String>,
+        tabs: Vec<String>,
+        active: usize,
+    ) -> NodeId {
+        let widget = TabControl::new(tabs, active);
+        let mut label = WidgetLabel::new(name, Role::TabControl);
+        widget.sync_label(&mut label);
+        self.insert_widget(parent, label, Box::new(widget))
+    }
+
+    /// Switch a tab control programmatically (clamped). Re-announces if
+    /// focused.
+    pub fn set_active_tab(&mut self, id: NodeId, index: usize) {
+        self.with_widget::<TabControl>(id, |tc, label| tc.set_active(index, label));
+    }
+
+    /// Convenience: a shortcut-capture field.
+    pub fn shortcut_field(&mut self, parent: Option<NodeId>, name: impl Into<String>) -> NodeId {
+        let widget = ShortcutField::new();
+        let mut label = WidgetLabel::new(name, Role::ShortcutField);
+        widget.sync_label(&mut label);
+        self.insert_widget(parent, label, Box::new(widget))
+    }
+
+    /// Set or clear a shortcut field's combo programmatically.
+    pub fn set_shortcut_combo(
+        &mut self,
+        id: NodeId,
+        combo: Option<crate::key_combo::KeyCombo>,
+    ) {
+        self.with_widget::<ShortcutField>(id, |sf, label| sf.set_combo(combo, label));
+    }
+
+    /// Convenience: a type-to-filter list.
+    pub fn filter_listbox(
+        &mut self,
+        parent: Option<NodeId>,
+        name: impl Into<String>,
+        items: Vec<String>,
+    ) -> NodeId {
+        let widget = FilterListBox::new(items);
+        let mut label = WidgetLabel::new(name, Role::ListBox);
+        widget.sync_label(&mut label);
+        self.insert_widget(parent, label, Box::new(widget))
+    }
+
+    /// Replace a filter list's items (filter kept, selection reset).
+    /// Re-announces if focused and the label changed.
+    pub fn set_filter_items(&mut self, id: NodeId, items: Vec<String>) {
+        self.with_widget::<FilterListBox>(id, |fl, label| fl.set_items(items, label));
+    }
+
+    /// Clear a filter list's query and selection.
+    pub fn clear_filter(&mut self, id: NodeId) {
+        self.with_widget::<FilterListBox>(id, |fl, label| fl.clear_filter(label));
     }
 
     /// Convenience: a single-line edit box with initial text.
@@ -193,29 +290,12 @@ impl Ui {
     /// Replace an editbox's content (cursor clamped, selection cleared).
     /// Re-announces if the editbox is focused and its label changed.
     pub fn set_editbox_text(&mut self, id: NodeId, text: &str) {
-        self.with_editbox(id, |edit, label| edit.set_text(text, label));
+        self.with_widget::<EditBox>(id, |edit, label| edit.set_text(text, label));
     }
 
     /// Toggle an editbox's read-only state.
     pub fn set_editbox_read_only(&mut self, id: NodeId, read_only: bool) {
-        self.with_editbox(id, |edit, label| edit.set_read_only(read_only, label));
-    }
-
-    fn with_editbox(&mut self, id: NodeId, f: impl FnOnce(&mut EditBox, &mut WidgetLabel)) {
-        let Some(widget) = self.widgets.get_mut(id) else {
-            return;
-        };
-        let Some(edit) = widget.as_any_mut().downcast_mut::<EditBox>() else {
-            return;
-        };
-        let Some(node) = self.tree.get_mut(id) else {
-            return;
-        };
-        let before = node.label.clone();
-        f(edit, &mut node.label);
-        if self.tree.focus() == Some(id) && self.tree.get(id).unwrap().label != before {
-            self.emit_focused(id);
-        }
+        self.with_widget::<EditBox>(id, |edit, label| edit.set_read_only(read_only, label));
     }
 
     /// Convenience: a group container.
@@ -1174,6 +1254,206 @@ mod tests {
         ui.set_editbox_text(notes, "new text");
         assert_eq!(spoken(&ui.drain_events()), vec!["Notes edit new text"]);
         assert_eq!(ui.widget::<EditBox>(notes).unwrap().text(), "new text");
+    }
+
+    // ── Slider ──
+
+    #[test]
+    fn slider_adjusts_and_announces() {
+        let mut ui = Ui::new();
+        let vol = ui.slider_widget(
+            None,
+            "Volume",
+            crate::widget::Slider::new(50, 0, 100).with_unit("%"),
+        );
+        ui.set_focus(vol);
+        assert_eq!(spoken(&ui.drain_events()), vec!["Volume slider 50%"]);
+
+        assert!(ui.handle_input(&LogicalInput::MoveRight));
+        let events = ui.drain_events();
+        assert_eq!(spoken(&events), vec!["51%"]);
+        assert!(events.contains(&OutputEvent::Widget(WidgetEvent::Changed { node: vol })));
+
+        // Large steps via Shift+arrow and PageDown.
+        ui.handle_input(&LogicalInput::SelectRight);
+        assert_eq!(spoken(&ui.drain_events()), vec!["61%"]);
+        ui.handle_input(&LogicalInput::RawKey(crate::key_combo::KeyCombo::plain(
+            crate::key_combo::Key::PageDown,
+        )));
+        assert_eq!(spoken(&ui.drain_events()), vec!["51%"]);
+
+        // Home/End jump to the edges.
+        ui.handle_input(&LogicalInput::MoveToLineEnd);
+        assert_eq!(spoken(&ui.drain_events()), vec!["100%"]);
+        assert_eq!(ui.widget::<Slider>(vol).unwrap().value(), 100);
+
+        // Clamped at max: consumed, re-announced, but no Changed event.
+        ui.handle_input(&LogicalInput::MoveRight);
+        let events = ui.drain_events();
+        assert_eq!(spoken(&events), vec!["100%"]);
+        assert!(!events
+            .iter()
+            .any(|e| matches!(e, OutputEvent::Widget(WidgetEvent::Changed { .. }))));
+    }
+
+    // ── TabControl ──
+
+    #[test]
+    fn tab_control_cycles_with_wraparound() {
+        let mut ui = Ui::new();
+        let tabs = ui.tab_control(
+            None,
+            "Views",
+            vec!["Files".into(), "Playlist".into(), "FX".into()],
+            0,
+        );
+        ui.set_focus(tabs);
+        assert_eq!(spoken(&ui.drain_events()), vec!["Views tab control Files"]);
+
+        ui.handle_input(&LogicalInput::MoveRight);
+        assert_eq!(spoken(&ui.drain_events()), vec!["Playlist"]);
+        ui.handle_input(&LogicalInput::MoveRight);
+        assert_eq!(spoken(&ui.drain_events()), vec!["FX"]);
+        ui.handle_input(&LogicalInput::MoveRight); // wraps
+        assert_eq!(spoken(&ui.drain_events()), vec!["Files"]);
+
+        ui.handle_input(&LogicalInput::MoveLeft); // wraps backward
+        assert_eq!(spoken(&ui.drain_events()), vec!["FX"]);
+        assert_eq!(ui.widget::<TabControl>(tabs).unwrap().active(), 2);
+        assert_eq!(ui.label(tabs).unwrap().value, "FX");
+    }
+
+    // ── ShortcutField ──
+
+    #[test]
+    fn shortcut_field_captures_and_clears() {
+        use crate::key_combo::{Key, KeyCombo};
+
+        let mut ui = Ui::new();
+        let field = ui.shortcut_field(None, "Play shortcut");
+        ui.set_focus(field);
+        assert_eq!(
+            spoken(&ui.drain_events()),
+            vec!["Play shortcut shortcut field blank"]
+        );
+
+        // A raw combo is captured verbatim.
+        let ctrl_s = KeyCombo::ctrl(Key::Char('s'));
+        assert!(ui.handle_input(&LogicalInput::RawKey(ctrl_s)));
+        let events = ui.drain_events();
+        assert_eq!(spoken(&events), vec!["control s"]);
+        assert!(events.contains(&OutputEvent::Widget(WidgetEvent::Changed { node: field })));
+        assert_eq!(ui.widget::<ShortcutField>(field).unwrap().combo(), Some(ctrl_s));
+
+        // A semantically-mapped input is captured via its combo.
+        assert!(ui.handle_input(&LogicalInput::Copy));
+        assert_eq!(spoken(&ui.drain_events()), vec!["control c"]);
+
+        // Backspace clears.
+        assert!(ui.handle_input(&LogicalInput::DeleteBackward));
+        assert_eq!(spoken(&ui.drain_events()), vec!["blank"]);
+        assert_eq!(ui.widget::<ShortcutField>(field).unwrap().combo(), None);
+
+        // Tab still leaves the field.
+        assert!(ui.handle_input(&LogicalInput::NavigateNext));
+    }
+
+    // ── FilterListBox ──
+
+    fn filter_ui() -> (Ui, NodeId) {
+        let mut ui = Ui::new();
+        let list = ui.filter_listbox(
+            None,
+            "Commands",
+            vec![
+                "Save File".into(),
+                "Open Editor".into(),
+                "Quit".into(),
+            ],
+        );
+        ui.set_focus(list);
+        ui.drain_events();
+        (ui, list)
+    }
+
+    #[test]
+    fn filter_listbox_focus_announcement_carries_filter_state() {
+        let mut ui = Ui::new();
+        let list = ui.filter_listbox(None, "Commands", vec!["Save File".into()]);
+        ui.set_focus(list);
+        assert_eq!(
+            spoken(&ui.drain_events()),
+            vec!["Commands list Save File no filter"]
+        );
+    }
+
+    #[test]
+    fn filter_listbox_typing_filters_and_reports() {
+        let mut ui = Ui::new();
+        let list = ui.filter_listbox(
+            None,
+            "Commands",
+            vec![
+                "Save File".into(),
+                "Settings".into(),
+                "Open Editor".into(),
+                "Quit".into(),
+            ],
+        );
+        ui.set_focus(list);
+        ui.drain_events();
+
+        ui.handle_input(&LogicalInput::TypeChar('s'));
+        let events = ui.drain_events();
+        // "s" matches Save File best.
+        assert_eq!(spoken(&events), vec!["Save File 1 of 2"]);
+        assert!(events.contains(&OutputEvent::Widget(WidgetEvent::Changed { node: list })));
+        assert_eq!(ui.label(list).unwrap().state_text, "filter s");
+
+        ui.handle_input(&LogicalInput::TypeChar('x'));
+        assert_eq!(spoken(&ui.drain_events()), vec!["no results"]);
+        assert_eq!(ui.label(list).unwrap().value, "empty");
+
+        // Backspace restores results.
+        ui.handle_input(&LogicalInput::DeleteBackward);
+        assert_eq!(spoken(&ui.drain_events()), vec!["Save File 1 of 2"]);
+    }
+
+    #[test]
+    fn filter_listbox_arrows_navigate_filtered_set() {
+        let (mut ui, list) = filter_ui();
+        ui.handle_input(&LogicalInput::TypeChar('e'));
+        ui.drain_events();
+
+        ui.handle_input(&LogicalInput::MoveDown);
+        let spoken_items = spoken(&ui.drain_events());
+        assert_eq!(spoken_items.len(), 1);
+        assert!(spoken_items[0].ends_with("2 of 2"), "{spoken_items:?}");
+
+        // Bottom boundary repeats with prefix.
+        ui.handle_input(&LogicalInput::MoveDown);
+        assert!(spoken(&ui.drain_events())[0].starts_with("bottom, "));
+
+        let selected = ui.widget::<FilterListBox>(list).unwrap().selected_item();
+        assert!(selected.is_some());
+    }
+
+    #[test]
+    fn filter_listbox_enter_falls_through_to_primary() {
+        let (mut ui, list) = filter_ui();
+        let open = ui.button(None, "Open");
+        ui.set_primary(open);
+        ui.handle_input(&LogicalInput::TypeChar('q'));
+        ui.drain_events();
+
+        assert!(ui.handle_input(&LogicalInput::Activate));
+        assert!(ui
+            .drain_events()
+            .contains(&OutputEvent::Widget(WidgetEvent::Activated { node: open })));
+        assert_eq!(
+            ui.widget::<FilterListBox>(list).unwrap().selected_item(),
+            Some("Quit".to_string())
+        );
     }
 
     #[test]

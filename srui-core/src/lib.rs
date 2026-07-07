@@ -6,6 +6,7 @@ pub mod clipboard;
 pub mod editbox;
 pub mod editor;
 pub mod events;
+pub mod filter;
 pub mod focus;
 pub mod input;
 pub mod key_combo;

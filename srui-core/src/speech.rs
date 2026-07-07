@@ -84,19 +84,12 @@ pub fn render_event(event: &AccessibilityEvent) -> Option<String> {
             })
         }
 
-        AccessibilityEvent::TabChange {
-            tab_name,
-            position: (index, total),
-            ..
-        } => Some(format!("{} tab {} of {}", tab_name, index + 1, total)),
+        // The tab name alone; position and role ride the focus
+        // announcement, not the change echo.
+        AccessibilityEvent::TabChange { tab_name, .. } => Some(tab_name.clone()),
 
-        AccessibilityEvent::SliderChange { value, unit, .. } => {
-            if unit.is_empty() {
-                Some(value.to_string())
-            } else {
-                Some(format!("{value} {unit}"))
-            }
-        }
+        // Unit directly appended: "50%".
+        AccessibilityEvent::SliderChange { value, unit, .. } => Some(format!("{value}{unit}")),
 
         AccessibilityEvent::Filter {
             first_result,
@@ -375,8 +368,20 @@ mod tests {
         let ev = AccessibilityEvent::SliderChange {
             node: id,
             value: 50,
-            unit: "percent".into(),
+            unit: "%".into(),
         };
-        assert_eq!(render_event(&ev).as_deref(), Some("50 percent"));
+        assert_eq!(render_event(&ev).as_deref(), Some("50%"));
+    }
+
+    #[test]
+    fn render_tab_change_speaks_name_only() {
+        let mut tree = crate::tree::Tree::new();
+        let id = tree.insert(None, 0, WidgetLabel::new("Views", Role::TabControl));
+        let ev = AccessibilityEvent::TabChange {
+            node: id,
+            tab_name: "Playlist".into(),
+            position: (1, 3),
+        };
+        assert_eq!(render_event(&ev).as_deref(), Some("Playlist"));
     }
 }

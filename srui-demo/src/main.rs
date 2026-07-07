@@ -40,6 +40,30 @@ fn main() -> Result<(), String> {
             .collect(),
         true,
     );
+    let _volume = ui.slider_widget(
+        None,
+        "Volume",
+        srui_core::widget::Slider::new(50, 0, 100).with_unit("%"),
+    );
+    let _views = ui.tab_control(
+        None,
+        "Views",
+        vec!["Library".into(), "Playlist".into(), "Effects".into()],
+        0,
+    );
+    let _commands = ui.filter_listbox(
+        None,
+        "Commands",
+        [
+            "Save File", "Save As", "Open File", "Open Recent", "Close Tab",
+            "Find", "Find Next", "Replace", "Go To Line", "Toggle Word Wrap",
+            "Zoom In", "Zoom Out",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect(),
+    );
+    let _shortcut = ui.shortcut_field(None, "Custom shortcut");
     let quit = ui.button(None, "Quit");
     // Enter anywhere presses Greet; Escape anywhere presses Quit.
     ui.set_primary(greet);
