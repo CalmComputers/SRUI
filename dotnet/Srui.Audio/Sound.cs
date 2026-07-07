@@ -21,8 +21,10 @@ public sealed unsafe class Sound : IDisposable
     private float* _pcm;
     private IntPtr _bufferRef;
 
-    // HRTF binaural node, when enabled and available.
+    // HRTF binaural node, when enabled and available. Leased from the
+    // manager's BinauralPool — sounds at the same position share one.
     private IntPtr _binauralNode;
+    private BinauralKey _binauralKey;
 
     // 3D position as AABB.
     private float _minX, _minY, _minZ, _maxX, _maxY, _maxZ;
@@ -259,6 +261,7 @@ public sealed unsafe class Sound : IDisposable
         _minX = _maxX = x;
         _minY = _maxY = y;
         _minZ = _maxZ = z;
+        RefreshBinauralLease();
         UpdateSpatialization();
     }
 
@@ -268,6 +271,7 @@ public sealed unsafe class Sound : IDisposable
         _minX = minX; _maxX = maxX;
         _minY = minY; _maxY = maxY;
         _minZ = minZ; _maxZ = maxZ;
+        RefreshBinauralLease();
         UpdateSpatialization();
     }
 
@@ -282,7 +286,12 @@ public sealed unsafe class Sound : IDisposable
     public bool Stationary
     {
         get => _stationary;
-        set { _stationary = value; UpdateSpatialization(); }
+        set
+        {
+            _stationary = value;
+            RefreshBinauralLease();
+            UpdateSpatialization();
+        }
     }
 
     // ── Mix parameters ──
@@ -553,28 +562,77 @@ public sealed unsafe class Sound : IDisposable
         NativeMethods.ma_sound_set_pitch(_sound, pitch);
     }
 
-    // ── HRTF node wiring ──
+    // ── HRTF node wiring (pooled) ──
 
     private IntPtr DownstreamNodePtr =>
         _group?.NodePtr ?? Engine.Endpoint;
+
+    /// <summary>All the identity a convolver share depends on: the
+    /// source AABB (same box → same direction from any listener), the
+    /// stationary flag, and the output target. Stationary sounds ignore
+    /// position, so they normalize to one key per bus.</summary>
+    private BinauralKey CurrentBinauralKey() =>
+        _stationary
+            ? new BinauralKey(0, 0, 0, 0, 0, 0, true, DownstreamNodePtr)
+            : new BinauralKey(_minX, _minY, _minZ, _maxX, _maxY, _maxZ, false, DownstreamNodePtr);
 
     private void CreateBinauralNode()
     {
         if (_binauralNode != IntPtr.Zero || !Engine.HrtfAvailable || !_loaded)
             return;
 
-        var node = NativeMethods.cosmos_binaural_node_create(Engine.NodeGraph, 2);
+        var key = CurrentBinauralKey();
+        var node = _manager.BinauralPool.Acquire(key, out var created);
         if (node == IntPtr.Zero)
             return; // continue without HRTF
+
+        if (created)
+            NativeMethods.ma_node_attach_output_bus(node, 0, DownstreamNodePtr, 0);
 
         var soundNode = NativeMethods.ma_sound_get_node_ptr(_sound);
         if (soundNode != IntPtr.Zero)
         {
             NativeMethods.ma_node_detach_output_bus(soundNode, 0);
             NativeMethods.ma_node_attach_output_bus(soundNode, 0, node, 0);
-            NativeMethods.ma_node_attach_output_bus(node, 0, DownstreamNodePtr, 0);
         }
         _binauralNode = node;
+        _binauralKey = key;
+    }
+
+    /// <summary>Position/stationary changed while pooled: move to the
+    /// convolver for the new key. Sole occupants keep their node (the
+    /// pool rekeys in place), so moving sources don't churn Steam Audio
+    /// effects; joins and splits rewire.</summary>
+    private void RefreshBinauralLease()
+    {
+        if (_binauralNode == IntPtr.Zero)
+            return;
+
+        var newKey = CurrentBinauralKey();
+        if (newKey == _binauralKey)
+            return;
+
+        var node = _manager.BinauralPool.Move(_binauralKey, newKey, out var created, out var releaseOld);
+        if (node == IntPtr.Zero)
+            return; // keep the current lease on creation failure
+
+        if (created)
+            NativeMethods.ma_node_attach_output_bus(node, 0, DownstreamNodePtr, 0);
+
+        if (node != _binauralNode)
+        {
+            var soundNode = NativeMethods.ma_sound_get_node_ptr(_sound);
+            if (soundNode != IntPtr.Zero)
+            {
+                NativeMethods.ma_node_detach_output_bus(soundNode, 0);
+                NativeMethods.ma_node_attach_output_bus(soundNode, 0, node, 0);
+            }
+        }
+        if (releaseOld)
+            _manager.BinauralPool.Release(_binauralKey);
+
+        _binauralNode = node;
+        _binauralKey = newKey;
     }
 
     private void DestroyBinauralNode()
@@ -590,7 +648,7 @@ public sealed unsafe class Sound : IDisposable
                 NativeMethods.ma_node_attach_output_bus(soundNode, 0, DownstreamNodePtr, 0);
             }
         }
-        NativeMethods.cosmos_binaural_node_destroy(_binauralNode);
+        _manager.BinauralPool.Release(_binauralKey);
         _binauralNode = IntPtr.Zero;
     }
 

@@ -14,6 +14,7 @@ namespace Srui.Audio;
 public sealed class SoundManager : IDisposable
 {
     internal AudioEngine Engine { get; }
+    internal BinauralPool BinauralPool { get; }
 
     private readonly List<WeakReference<Sound>> _sounds = new();
     private readonly List<WeakReference<SoundGroup>> _groups = new();
@@ -21,9 +22,18 @@ public sealed class SoundManager : IDisposable
     public SoundManager()
     {
         Engine = new AudioEngine();
+        BinauralPool = new BinauralPool(Engine);
     }
 
-    public void Dispose() => Engine.Dispose();
+    /// <summary>Live HRTF convolvers. Sounds sharing a position (and bus)
+    /// share one, so this is usually far below the HRTF sound count.</summary>
+    public int ActiveHrtfConvolvers => BinauralPool.ActiveConvolvers;
+
+    public void Dispose()
+    {
+        BinauralPool.Clear();
+        Engine.Dispose();
+    }
 
     /// <summary>Create a sound routed to the engine endpoint (or through
     /// `group` when given). Load it, position it, play it.</summary>

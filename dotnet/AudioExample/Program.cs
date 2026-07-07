@@ -51,6 +51,34 @@ using (var sound = manager.CreateSound(echoBus))
     Thread.Sleep(2500);
 }
 
+// 4. Convolver sharing: sounds at one position share one HRTF convolver.
+if (manager.IsHrtfAvailable)
+{
+    Console.WriteLine("convolver sharing...");
+    var chord = new Sound[4];
+    for (var i = 0; i < chord.Length; i++)
+    {
+        chord[i] = manager.CreateSound();
+        chord[i].Load(wav);
+        chord[i].Hrtf = true;
+        chord[i].SetPosition(3.0f, 3.0f, 0.0f);
+    }
+    Console.WriteLine($"  4 sounds, same position: {manager.ActiveHrtfConvolvers} convolver(s)");
+    chord[0].SetPosition(-3.0f, 3.0f, 0.0f); // splits off
+    Console.WriteLine($"  one moved away: {manager.ActiveHrtfConvolvers} convolver(s)");
+    chord[0].SetPosition(3.0f, 3.0f, 0.0f); // rejoins
+    Console.WriteLine($"  moved back: {manager.ActiveHrtfConvolvers} convolver(s)");
+    foreach (var s in chord)
+    {
+        s.Play();
+        Thread.Sleep(120);
+    }
+    Thread.Sleep(500);
+    foreach (var s in chord)
+        s.Dispose();
+    Console.WriteLine($"  all disposed: {manager.ActiveHrtfConvolvers} convolver(s)");
+}
+
 Console.WriteLine("done");
 return;
 
