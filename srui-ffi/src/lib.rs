@@ -344,6 +344,38 @@ pub unsafe extern "C" fn srui_ui_remove(ui: *mut Ui, node: u64) {
     }
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn srui_ui_set_hidden(ui: *mut Ui, node: u64, hidden: bool) {
+    if let Some(id) = node_in(node) {
+        (*ui).set_hidden(id, hidden);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn srui_ui_set_disabled(ui: *mut Ui, node: u64, disabled: bool) {
+    if let Some(id) = node_in(node) {
+        (*ui).set_disabled(id, disabled);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn srui_ui_set_node_name(ui: *mut Ui, node: u64, name: *const c_char) {
+    if let Some(id) = node_in(node) {
+        (*ui).set_node_name(id, str_in(name));
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn srui_ui_set_node_description(
+    ui: *mut Ui,
+    node: u64,
+    description: *const c_char,
+) {
+    if let Some(id) = node_in(node) {
+        (*ui).set_node_description(id, str_in(description));
+    }
+}
+
 // ── Node constructors ──
 
 #[no_mangle]

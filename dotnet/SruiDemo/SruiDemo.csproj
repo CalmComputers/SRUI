@@ -12,11 +12,17 @@
     <ProjectReference Include="..\Srui.Net\Srui.Net.csproj" />
   </ItemGroup>
 
-  <!-- Native dependencies from the Rust workspace build. -->
+  <!-- Native dependencies from the Rust workspace build; the cargo
+       profile follows the .NET configuration (Release ↔ release). -->
+  <PropertyGroup>
+    <SruiProfile>debug</SruiProfile>
+    <SruiProfile Condition="'$(Configuration)' == 'Release'">release</SruiProfile>
+    <SruiNativeDir>..\..\target\$(SruiProfile)\</SruiNativeDir>
+  </PropertyGroup>
   <ItemGroup>
-    <None Include="..\..\target\debug\srui_ffi.dll" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\..\target\debug\prism.dll" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\..\target\debug\SDL3.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(SruiNativeDir)srui_ffi.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(SruiNativeDir)prism.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(SruiNativeDir)SDL3.dll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

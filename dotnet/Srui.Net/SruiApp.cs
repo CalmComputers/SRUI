@@ -114,8 +114,17 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     /// <summary>Escape anywhere presses this widget.</summary>
     public void SetCancel(Widget widget) => Ui.SetCancel(widget.Node);
 
-    /// <summary>Queue a free-form announcement.</summary>
+    /// <summary>Queue a free-form announcement (polite: speaks after
+    /// whatever is already being said).</summary>
     public void Announce(string text) => Ui.Announce(text);
+
+    /// <summary>Announce urgently: silences current and queued speech
+    /// first. For time-critical game events, not routine feedback.</summary>
+    public void AnnounceNow(string text)
+    {
+        Voice.Stop();
+        Ui.Announce(text);
+    }
 
     /// <summary>Stop the event loop after the current iteration.</summary>
     public void Quit() => _running = false;

@@ -188,7 +188,11 @@ impl Ui {
         };
         let before = node.label.clone();
         f(typed, &mut node.label);
-        if self.tree.focus() == Some(id) && self.tree.get(id).unwrap().label != before {
+        let changed = self.tree.get(id).unwrap().label != before;
+        if self.recover_unreachable_focus() {
+            return;
+        }
+        if self.tree.focus() == Some(id) && changed {
             self.emit_focused(id);
         }
     }
@@ -405,16 +409,83 @@ impl Ui {
 
     /// Mutate a node's label. If the node is focused and the label
     /// actually changed, the focus is re-announced (coalescing collapses
-    /// bursts).
+    /// bursts). If the mutation made the focused node unreachable
+    /// (hidden, disabled, or inside a newly hidden subtree), focus
+    /// recovers to the nearest focusable node and announces there
+    /// instead.
     pub fn update_label(&mut self, id: NodeId, f: impl FnOnce(&mut WidgetLabel)) {
         let Some(node) = self.tree.get_mut(id) else {
             return;
         };
         let before = node.label.clone();
         f(&mut node.label);
-        if self.tree.focus() == Some(id) && self.tree.get(id).unwrap().label != before {
+        let changed = self.tree.get(id).unwrap().label != before;
+        if self.recover_unreachable_focus() {
+            return;
+        }
+        if self.tree.focus() == Some(id) && changed {
             self.emit_focused(id);
         }
+    }
+
+    /// Show or hide a node (and, for navigation purposes, its subtree).
+    pub fn set_hidden(&mut self, id: NodeId, hidden: bool) {
+        self.update_label(id, |label| label.states.set(States::HIDDEN, hidden));
+    }
+
+    /// Enable or disable a node.
+    pub fn set_disabled(&mut self, id: NodeId, disabled: bool) {
+        self.update_label(id, |label| label.states.set(States::DISABLED, disabled));
+    }
+
+    /// Rename a node.
+    pub fn set_node_name(&mut self, id: NodeId, name: &str) {
+        self.update_label(id, |label| label.name = Some(name.to_string()));
+    }
+
+    /// Change a node's spoken description.
+    pub fn set_node_description(&mut self, id: NodeId, description: &str) {
+        self.update_label(id, |label| label.description = description.to_string());
+    }
+
+    /// When the focused node is no longer reachable (not focusable, or
+    /// under a hidden ancestor), move focus to the nearest focusable
+    /// node and announce it. Returns true if focus moved.
+    fn recover_unreachable_focus(&mut self) -> bool {
+        let Some(focused) = self.tree.focus() else {
+            return false;
+        };
+        if self.focus_reachable(focused) {
+            return false;
+        }
+        let parent = self.tree.parent(focused);
+        if let Some(next) = nav::recover_focus(&self.tree, parent) {
+            if next != focused {
+                self.tree.set_focus(next);
+                self.emit_focused(next);
+                return true;
+            }
+        }
+        false
+    }
+
+    fn focus_reachable(&self, id: NodeId) -> bool {
+        let Some(node) = self.tree.get(id) else {
+            return false;
+        };
+        if !is_focusable(node.label.role, node.label.states) {
+            return false;
+        }
+        let mut current = id;
+        while let Some(parent) = self.tree.parent(current) {
+            if let Some(p) = self.tree.get(parent) {
+                if p.label.states.contains(States::HIDDEN) {
+                    return false;
+                }
+            }
+            current = parent;
+        }
+        true
     }
 
     // ── Focus ──
@@ -1534,6 +1605,67 @@ mod tests {
             ui.widget::<FilterListBox>(list).unwrap().selected_item(),
             Some("Quit".to_string())
         );
+    }
+
+    // ── Dynamic state ──
+
+    #[test]
+    fn hiding_focused_widget_recovers_focus() {
+        let (mut ui, save, _options, wrap) = demo_ui();
+        ui.set_focus(wrap);
+        ui.drain_events();
+
+        ui.set_hidden(wrap, true);
+        assert_eq!(ui.focus(), Some(save));
+        assert_eq!(spoken(&ui.drain_events()), vec!["Save button"]);
+    }
+
+    #[test]
+    fn disabling_focused_widget_recovers_focus() {
+        let (mut ui, save, _options, wrap) = demo_ui();
+        ui.set_focus(wrap);
+        ui.drain_events();
+
+        ui.set_disabled(wrap, true);
+        assert_eq!(ui.focus(), Some(save));
+    }
+
+    #[test]
+    fn hiding_group_containing_focus_recovers() {
+        let (mut ui, save, options, wrap) = demo_ui();
+        ui.set_focus(wrap);
+        ui.drain_events();
+
+        ui.set_hidden(options, true);
+        assert_eq!(ui.focus(), Some(save));
+        // The hidden subtree is no longer tab-reachable.
+        ui.drain_events();
+        ui.handle_input(&LogicalInput::NavigateNext);
+        assert_eq!(ui.focus(), Some(save));
+    }
+
+    #[test]
+    fn unhide_restores_reachability() {
+        let (mut ui, _save, _options, wrap) = demo_ui();
+        ui.set_hidden(wrap, true);
+        ui.set_hidden(wrap, false);
+        ui.set_focus(wrap);
+        assert_eq!(ui.focus(), Some(wrap));
+    }
+
+    #[test]
+    fn rename_reannounces_focused_node() {
+        let (mut ui, save, ..) = demo_ui();
+        ui.set_focus(save);
+        ui.drain_events();
+
+        ui.set_node_name(save, "Save All");
+        assert_eq!(spoken(&ui.drain_events()), vec!["Save All button"]);
+
+        // Unfocused mutation stays silent.
+        ui.set_node_description(save, "writes every file");
+        ui.drain_events();
+        ui.set_focus(save);
     }
 
     // ── Tickers ──

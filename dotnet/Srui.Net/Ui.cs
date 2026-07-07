@@ -62,6 +62,23 @@ public sealed class Ui : IDisposable
     public void PopLayer() => NativeMethods.srui_ui_pop_layer(Handle);
     public void Remove(NodeId node) => NativeMethods.srui_ui_remove(Handle, node.Value);
 
+    /// <summary>Hide/show a node and its subtree. Focus recovers (with
+    /// an announcement) if it was inside.</summary>
+    public void SetHidden(NodeId node, bool hidden) =>
+        NativeMethods.srui_ui_set_hidden(Handle, node.Value, hidden);
+
+    /// <summary>Enable/disable a node. Focus recovers if it was here.</summary>
+    public void SetDisabled(NodeId node, bool disabled) =>
+        NativeMethods.srui_ui_set_disabled(Handle, node.Value, disabled);
+
+    /// <summary>Rename a node; re-announces when focused.</summary>
+    public void SetNodeName(NodeId node, string name) =>
+        NativeMethods.srui_ui_set_node_name(Handle, node.Value, name);
+
+    /// <summary>Change a node's spoken description.</summary>
+    public void SetNodeDescription(NodeId node, string description) =>
+        NativeMethods.srui_ui_set_node_description(Handle, node.Value, description);
+
     // ── Widgets ──
 
     public NodeId TextLabel(NodeId parent, string text) =>

@@ -67,6 +67,38 @@ public abstract class Widget
         Ui.Remove(Node);
     }
 
+    private bool _hidden;
+    private bool _disabled;
+
+    /// <summary>Hide/show this widget and its subtree. Focus recovers
+    /// (with an announcement) if it was inside.</summary>
+    public bool Hidden
+    {
+        get => _hidden;
+        set
+        {
+            _hidden = value;
+            Ui.SetHidden(Node, value);
+        }
+    }
+
+    /// <summary>Enable/disable this widget. Focus recovers if it was here.</summary>
+    public bool Disabled
+    {
+        get => _disabled;
+        set
+        {
+            _disabled = value;
+            Ui.SetDisabled(Node, value);
+        }
+    }
+
+    /// <summary>Rename the widget; re-announces when focused.</summary>
+    public void SetName(string name) => Ui.SetNodeName(Node, name);
+
+    /// <summary>Change the widget's spoken description.</summary>
+    public void SetDescription(string description) => Ui.SetNodeDescription(Node, description);
+
     /// <summary>The widget's state changed (text edited, selection moved,
     /// slider adjusted, tab switched, combo captured).</summary>
     public event Action? Changed;

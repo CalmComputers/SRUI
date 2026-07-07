@@ -45,6 +45,10 @@ internal static partial class NativeMethods
     [DllImport(Lib)] internal static extern void srui_ui_push_layer(IntPtr ui);
     [DllImport(Lib)] internal static extern void srui_ui_pop_layer(IntPtr ui);
     [DllImport(Lib)] internal static extern void srui_ui_remove(IntPtr ui, ulong node);
+    [DllImport(Lib)] internal static extern void srui_ui_set_hidden(IntPtr ui, ulong node, [MarshalAs(UnmanagedType.I1)] bool hidden);
+    [DllImport(Lib)] internal static extern void srui_ui_set_disabled(IntPtr ui, ulong node, [MarshalAs(UnmanagedType.I1)] bool disabled);
+    [DllImport(Lib)] internal static extern void srui_ui_set_node_name(IntPtr ui, ulong node, [MarshalAs(UnmanagedType.LPUTF8Str)] string name);
+    [DllImport(Lib)] internal static extern void srui_ui_set_node_description(IntPtr ui, ulong node, [MarshalAs(UnmanagedType.LPUTF8Str)] string description);
 
     // ── Node constructors ──
     [DllImport(Lib)] internal static extern ulong srui_ui_text_label(IntPtr ui, ulong parent, [MarshalAs(UnmanagedType.LPUTF8Str)] string text);
