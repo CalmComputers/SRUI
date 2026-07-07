@@ -19,11 +19,16 @@ public abstract class Widget
     public SruiApp App { get; }
     public NodeId Node { get; protected init; }
 
+    /// <summary>The containing widget — the Group it was created in, or
+    /// null at the app root. Used for subtree unregistration.</summary>
+    public Widget? Parent { get; }
+
     protected Ui Ui => App.Ui;
 
     protected Widget(IWidgetContainer parent)
     {
         App = parent.App;
+        Parent = parent as Widget;
     }
 
     /// <summary>Register with the app's event router. Derived
@@ -34,10 +39,11 @@ public abstract class Widget
 
     public bool IsFocused => Ui.Focus == Node;
 
-    /// <summary>Remove this widget's node (and subtree) from the tree.</summary>
+    /// <summary>Remove this widget's node (and subtree) from the tree.
+    /// Descendant widgets are unregistered with it.</summary>
     public void Remove()
     {
-        App.Unregister(this);
+        App.UnregisterSubtree(this);
         Ui.Remove(Node);
     }
 

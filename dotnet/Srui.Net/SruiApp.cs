@@ -47,7 +47,25 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     }
 
     internal void Register(Widget widget) => _widgets[widget.Node] = widget;
-    internal void Unregister(Widget widget) => _widgets.Remove(widget.Node);
+
+    /// <summary>Drop a widget and every registered descendant (walked
+    /// via the C#-side parent chain) from the event router.</summary>
+    internal void UnregisterSubtree(Widget root)
+    {
+        var doomed = _widgets.Values.Where(w => IsSelfOrDescendant(w, root)).ToList();
+        foreach (var widget in doomed)
+            _widgets.Remove(widget.Node);
+    }
+
+    private static bool IsSelfOrDescendant(Widget widget, Widget root)
+    {
+        for (var current = widget; current is not null; current = current.Parent)
+        {
+            if (ReferenceEquals(current, root))
+                return true;
+        }
+        return false;
+    }
 
     /// <summary>Enter anywhere presses this widget (unless the focused
     /// widget claims Enter itself).</summary>
@@ -110,19 +128,33 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
                 Voice.Speak(text);
                 break;
             case OutputEvent.Activated(var node):
-                (Find(node) as Button)?.OnActivated();
+                Expect<Button>(node)?.OnActivated();
                 break;
             case OutputEvent.SecondaryActivated(var node):
-                (Find(node) as Button)?.OnSecondaryActivated();
+                Expect<Button>(node)?.OnSecondaryActivated();
                 break;
             case OutputEvent.Toggled(var node, var isChecked):
-                (Find(node) as CheckBox)?.OnToggled(isChecked);
+                Expect<CheckBox>(node)?.OnToggled(isChecked);
                 break;
             case OutputEvent.Changed(var node):
-                Find(node)?.OnChanged();
+                _widgets.GetValueOrDefault(node)?.OnChanged();
                 break;
         }
     }
 
-    private Widget? Find(NodeId node) => _widgets.GetValueOrDefault(node);
+    /// <summary>Null for nodes not registered with the class layer (the
+    /// raw-Ui escape hatch); throws when a registered widget's type
+    /// contradicts the event — that is protocol confusion, not a state
+    /// to limp through.</summary>
+    private T? Expect<T>(NodeId node) where T : Widget
+    {
+        var widget = _widgets.GetValueOrDefault(node);
+        return widget switch
+        {
+            null => null,
+            T typed => typed,
+            _ => throw new InvalidOperationException(
+                $"event for node {node.Value} expected {typeof(T).Name}, found {widget.GetType().Name}"),
+        };
+    }
 }
