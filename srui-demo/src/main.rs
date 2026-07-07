@@ -2,18 +2,40 @@
 //!
 //! Tab / Shift+Tab move focus; Alt+arrows walk the hierarchy; arrows and
 //! typeahead work in the list; Space toggles the checkbox. Greet is the
-//! primary widget: Enter anywhere presses it, and it reads the live list
-//! and checkbox state. Escape (or Enter on Quit, or closing the window)
-//! exits.
+//! primary widget: Enter anywhere presses it (Ctrl+G too, as a host-side
+//! binding), and it reads the live name, list, and checkbox state.
+//! Escape (or Enter on Quit, or closing the window) exits.
 
 use std::time::Instant;
 
 use srui_core::events::{OutputEvent, WidgetEvent};
+use srui_core::input::LogicalInput;
+use srui_core::key_combo::{Key, KeyCombo};
 use srui_core::speech;
+use srui_core::tree::NodeId;
 use srui_core::ui::Ui;
 use srui_core::widget::{CheckBox, EditBox, ListBox};
 use srui_prism::Speech;
 use srui_sdl::{HostEvent, SdlHost};
+
+/// Compose and queue the greeting from live widget state.
+fn greet(ui: &mut Ui, name_field: NodeId, fruits: NodeId, wrap: NodeId) {
+    let fruit = ui
+        .widget::<ListBox>(fruits)
+        .and_then(|l| l.selected_item())
+        .unwrap_or("nothing")
+        .to_string();
+    let wrapped = ui.widget::<CheckBox>(wrap).map(|c| c.checked).unwrap_or(false);
+    let who = ui
+        .widget::<EditBox>(name_field)
+        .map(|e| e.text())
+        .filter(|t| !t.is_empty())
+        .unwrap_or_else(|| "stranger".to_string());
+    ui.announce(format!(
+        "Hello, {who}. The fruit is {fruit}, and word wrap is {}.",
+        if wrapped { "on" } else { "off" }
+    ));
+}
 
 fn main() -> Result<(), String> {
     let mut host = SdlHost::new("SRUI Demo", 400, 300)?;
@@ -24,9 +46,8 @@ fn main() -> Result<(), String> {
     ui.set_clipboard(host.clipboard());
     ui.text_label(None, "SRUI demo");
     let name_field = ui.editbox(None, "Your name", "");
-    let notes = ui.editbox_multiline(None, "Notes", "");
-    let _ = notes;
-    let greet = ui.button(None, "Greet");
+    let _notes = ui.editbox_multiline(None, "Notes", "");
+    let greet_btn = ui.button(None, "Greet");
     let wrap = ui.checkbox(None, "Word Wrap", false);
     let options = ui.group(None, "Options");
     ui.checkbox(Some(options), "Autosave", true);
@@ -66,7 +87,7 @@ fn main() -> Result<(), String> {
     let _shortcut = ui.shortcut_field(None, "Custom shortcut");
     let quit = ui.button(None, "Quit");
     // Enter anywhere presses Greet; Escape anywhere presses Quit.
-    ui.set_primary(greet);
+    ui.set_primary(greet_btn);
     ui.set_cancel(quit);
     ui.ensure_focus();
 
@@ -80,7 +101,13 @@ fn main() -> Result<(), String> {
                 HostEvent::AltTap => {}
                 HostEvent::Input(input) => {
                     ui.set_now(start.elapsed().as_millis() as u64);
-                    ui.handle_input(&input);
+                    if !ui.handle_input(&input) {
+                        // Host-side bindings: unconsumed input is ours to
+                        // match. Ctrl+G greets from anywhere.
+                        if input == LogicalInput::RawKey(KeyCombo::ctrl(Key::Char('g'))) {
+                            greet(&mut ui, name_field, fruits, wrap);
+                        }
+                    }
                 }
             }
         }
@@ -103,23 +130,8 @@ fn main() -> Result<(), String> {
                     OutputEvent::Widget(WidgetEvent::Activated { node }) if node == quit => {
                         running = false;
                     }
-                    OutputEvent::Widget(WidgetEvent::Activated { node }) if node == greet => {
-                        let fruit = ui
-                            .widget::<ListBox>(fruits)
-                            .and_then(|l| l.selected_item())
-                            .unwrap_or("nothing")
-                            .to_string();
-                        let wrapped =
-                            ui.widget::<CheckBox>(wrap).map(|c| c.checked).unwrap_or(false);
-                        let who = ui
-                            .widget::<EditBox>(name_field)
-                            .map(|e| e.text())
-                            .filter(|t| !t.is_empty())
-                            .unwrap_or_else(|| "stranger".to_string());
-                        ui.announce(format!(
-                            "Hello, {who}. The fruit is {fruit}, and word wrap is {}.",
-                            if wrapped { "on" } else { "off" }
-                        ));
+                    OutputEvent::Widget(WidgetEvent::Activated { node }) if node == greet_btn => {
+                        greet(&mut ui, name_field, fruits, wrap);
                     }
                     OutputEvent::Widget(_) => {}
                 }

@@ -1358,6 +1358,49 @@ mod tests {
         assert!(ui.handle_input(&LogicalInput::NavigateNext));
     }
 
+    #[test]
+    fn shortcut_field_resists_framework_interception() {
+        use crate::key_combo::{Key, KeyCombo};
+
+        let mut ui = Ui::new();
+        let group = ui.group(None, "Options");
+        let field = ui.shortcut_field(Some(group), "Shortcut");
+        let other = ui.button(None, "Other");
+        ui.update_label(other, |l| l.shortcut = Some('o'));
+        ui.set_focus(field);
+        ui.drain_events();
+
+        // Alt+Up would be hierarchy navigation; the field captures it.
+        ui.handle_input(&LogicalInput::TreeUp);
+        assert_eq!(ui.focus(), Some(field));
+        assert_eq!(
+            ui.widget::<ShortcutField>(field).unwrap().combo(),
+            Some(KeyCombo::alt(Key::Up))
+        );
+
+        // Alt+O would be a mnemonic jump; the field captures it.
+        ui.handle_input(&LogicalInput::Shortcut('o'));
+        assert_eq!(ui.focus(), Some(field));
+        assert_eq!(
+            ui.widget::<ShortcutField>(field).unwrap().combo(),
+            Some(KeyCombo::alt(Key::Char('o')))
+        );
+
+        // Ctrl+Tab arrives as RawKey and is captured (it is host-bindable).
+        ui.handle_input(&LogicalInput::RawKey(KeyCombo::ctrl(Key::Tab)));
+        assert_eq!(
+            ui.widget::<ShortcutField>(field).unwrap().combo(),
+            Some(KeyCombo::ctrl(Key::Tab))
+        );
+
+        // Escape still dismisses (unconsumed here — no cancel widget).
+        assert!(!ui.handle_input(&LogicalInput::Dismiss));
+        assert_eq!(
+            ui.widget::<ShortcutField>(field).unwrap().combo(),
+            Some(KeyCombo::ctrl(Key::Tab))
+        );
+    }
+
     // ── FilterListBox ──
 
     fn filter_ui() -> (Ui, NodeId) {

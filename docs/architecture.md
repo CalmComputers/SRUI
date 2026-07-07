@@ -95,7 +95,9 @@ Mnemonics (Alt plus a letter) jump directly to the first focusable node claiming
 
 # 9. Commands and Key Bindings
 
-The core provides the mechanism for user-rebindable shortcuts: a bidirectional map between host-defined command identities and key combos, and two-tier conflict detection. Reserved combos (the tab ring, mnemonics, hierarchy navigation) are categorically unbindable, each refusal carrying a spoken reason; soft conflicts (collisions with other bindings or with keys the focused role reserves) produce a structured report the host's bind UI can present. Command identity, categories, palettes, and persistence are host policy. The concrete API is deliberately undesigned at this stage and will be shaped by the first host that needs it.
+Key bindings are host policy. The core stores no command maps and dispatches no commands: input the claim order leaves unconsumed returns from `handle_input` to the host, which matches it against whatever binding scheme it likes — as do command palettes, categories, jump lists, and persistence.
+
+The core contributes three mechanisms to that host machinery. `reserved_reason` names the combos the framework itself consumes — plain Tab and Shift+Tab (the focus ring), Alt+letter (mnemonics), Alt+arrows (hierarchy navigation) — each with a spoken refusal for bind dialogs; everything else, including Ctrl+Tab and Escape, is bindable. `Role::reserves_key` reports which keys a widget role consumes during normal interaction, so a bind dialog can warn about combos the focused widget would swallow. And the shortcut field captures any bindable combo before the framework can interpret it — including Alt+arrows and mnemonics — deliberately releasing only Tab and Escape so the keyboard user can always leave the field.
 
 # 10. FFI and the C# Binding
 

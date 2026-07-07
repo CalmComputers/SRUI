@@ -11,6 +11,7 @@ pub mod focus;
 pub mod input;
 pub mod key_combo;
 pub mod nav;
+pub mod reserved;
 pub mod speech;
 pub mod text_nav;
 pub mod tree;
