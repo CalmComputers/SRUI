@@ -15,4 +15,8 @@
     <ProjectReference Include="..\Srui.Audio\Srui.Audio.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Srui.Net.Tests" />
+  </ItemGroup>
+
 </Project>
