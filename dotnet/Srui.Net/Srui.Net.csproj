@@ -8,4 +8,11 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
+  <!-- For SruiApp.Audio (app-owned, loop-ticked game audio). Loaded
+       lazily: an app that never touches Audio needs neither this
+       assembly nor its native DLLs at runtime. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Srui.Audio\Srui.Audio.csproj" />
+  </ItemGroup>
+
 </Project>

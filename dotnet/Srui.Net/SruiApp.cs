@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Srui.Audio;
 
 namespace Srui;
 
@@ -16,6 +17,16 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
 
     public SdlHost Host { get; }
     public Speech Voice { get; }
+
+    private SoundManager? _audio;
+
+    /// <summary>Game audio, created on first use and owned by the app.
+    /// The event loop advances its automation (pitch tweens,
+    /// spatialization) every iteration — about 5ms at idle — so
+    /// SoundManager.Tick never needs manual driving here. Consumers
+    /// without an SruiApp use Srui.Audio standalone and tick their own
+    /// loop.</summary>
+    public SoundManager Audio => _audio ??= new SoundManager();
 
     /// <summary>Called with input nothing consumed — the place for
     /// host-side key bindings. Return true when handled.</summary>
@@ -53,6 +64,7 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
 
     public void Dispose()
     {
+        _audio?.Dispose();
         Ui.Dispose();
         Voice.Dispose();
         Host.Dispose();
@@ -146,8 +158,10 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
         _running = true;
         while (_running)
         {
-            // Every iteration, not just on input: tickers fire from here.
+            // Every iteration, not just on input: tickers fire from here,
+            // and audio automation advances at the loop cadence.
             Ui.SetNow((ulong)_clock.ElapsedMilliseconds);
+            _audio?.Tick();
             foreach (var hostEvent in Host.Pump(5))
             {
                 switch (hostEvent)

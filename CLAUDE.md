@@ -14,8 +14,8 @@ Rust workspace at the root; .NET projects under dotnet/ (solution: dotnet/Srui.s
 - srui-ffi — the C ABI cdylib (srui_ffi.dll); one flat surface over core, SDL host, and Prism speech.
 - srui-demo — Rust end-to-end demo.
 - srui-audio-native — cosmos.dll: vendored miniaudio + cosmos DSP nodes + Steam Audio glue, C sources in csrc/, phonon binaries in phonon/.
-- dotnet/Srui.Net — hand-written P/Invoke binding plus the class-based widget layer (SruiApp, Widget subclasses, Dialog, SruiDialogs).
-- dotnet/Srui.Audio — game audio over cosmos.dll: Sound, SoundGroup buses with effect chains, HRTF pooling, tweens.
+- dotnet/Srui.Net — hand-written P/Invoke binding plus the class-based widget layer (SruiApp, Widget subclasses, Dialog, SruiDialogs). SruiApp owns an on-demand SoundManager (SruiApp.Audio) and ticks it from the event loop.
+- dotnet/Srui.Audio — game audio over cosmos.dll: Sound, SoundGroup buses with effect chains, HRTF pooling, tweens. Standalone consumers (no SruiApp) drive SoundManager.Tick from their own loop.
 - dotnet/SruiDemo — C# end-to-end demo: a tab-switched widget gallery exercising every widget type, all canned and hand-built dialogs, dynamic state, the event stream (with a reviewable event log on Ctrl+L), and sound-augmented lists over Srui.Audio.
 - dotnet/AudioExample — Srui.Audio walkthrough (no UI stack; needs only cosmos.dll and phonon.dll).
 

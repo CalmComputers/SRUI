@@ -23,7 +23,8 @@ Console.WriteLine($"speech backend: {app.Voice.BackendName}");
 
 // ── Audio ──
 
-using var audio = new SoundManager();
+// App-owned: the event loop drives its automation, no ticker needed.
+var audio = app.Audio;
 // Cosmos convention: angle 0 faces +X (east). Face +Y (north/forward)
 // so item positions along X read as left/right.
 audio.SetListener(0.0f, 0.0f, 0.0f, 90.0f);
@@ -414,10 +415,6 @@ app.AltTap = () =>
 };
 
 // ── Tickers ──
-
-// Audio automation rides the ticker system.
-var audioTicker = app.StartTicker(50);
-audioTicker.Tick += audio.Tick;
 
 // Once a minute, note the uptime.
 var minutes = 0;

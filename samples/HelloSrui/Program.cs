@@ -14,7 +14,10 @@ Console.WriteLine($"speech backend: {app.Voice.BackendName}");
 
 // ── Audio: one manager, one effect bus, one positioned sound ──
 
-using var audio = new SoundManager();
+// The app owns the manager and drives its automation (pitch tweens,
+// spatialization) from the event loop — no ticking to wire. Only
+// UI-less consumers of Srui.Audio call SoundManager.Tick themselves.
+var audio = app.Audio;
 // Cosmos convention: angle 0 faces +X (east); face +Y so positions
 // along X read as left/right.
 audio.SetListener(0.0f, 0.0f, 0.0f, 90.0f);
@@ -26,10 +29,6 @@ using var ping = audio.CreateSound(bus);
 ping.Load(pingWav);
 ping.Hrtf = audio.IsHrtfAvailable;
 ping.SetPosition(0.0f, 2.0f, 0.0f);
-
-// Spatialization updates, pitch tweens, and fades run off this tick.
-var audioTicker = app.StartTicker(50);
-audioTicker.Tick += audio.Tick;
 
 // ── UI ──
 

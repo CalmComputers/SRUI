@@ -2,10 +2,11 @@ namespace Srui.Audio;
 
 /// <summary>
 /// Owns the audio engine, creates sounds and groups, and drives per-frame
-/// updates. Call <see cref="Tick"/> once per game frame (or just move the
-/// listener) to advance pitch tweens and refresh spatialization. Not
-/// thread-safe: one manager, one thread. Steady-state Tick/SetListener
-/// allocate nothing.
+/// updates. Everything is edge-triggered except time-based automation
+/// (pitch tweens): call <see cref="Tick"/> once per game frame to apply
+/// it. Apps built on SruiApp never do this themselves — SruiApp.Audio is
+/// an app-owned manager ticked from the event loop. Not thread-safe: one
+/// manager, one thread. Steady-state Tick/SetListener allocate nothing.
 ///
 /// The listener starts at the origin facing +X (angle 0, "east"); games
 /// that treat +Y as forward should call
