@@ -2,57 +2,52 @@
 
 # 1. What This Is
 
-SRUI is a screen-reader-first UI toolkit: a retained semantic tree in Rust, keyboard input in, structured accessibility events out, no pixels ever. The design is specified in docs/architecture.md — read it before changing behavior, and keep it current when behavior changes; it is the source of truth, not a summary. This file covers only what that document does not: mechanics, conventions, and the current state of the C# surface.
+SRUI is a screen-reader-first UI toolkit in C#: a retained semantic tree, keyboard input in, structured accessibility events out, no pixels ever. The design is specified in docs/architecture.md — read it before changing behavior, and keep it current when behavior changes; it is the source of truth, not a summary. This file covers only what that document does not: mechanics, conventions, and the current state of the public surface.
 
 # 2. Layout
 
-Rust workspace at the root; .NET projects under dotnet/ (solution: dotnet/Srui.slnx).
+.NET projects under dotnet/ (solution: dotnet/Srui.slnx); native sources and builds under native/.
 
-- srui-core — the engine. Pure and headless; all widget behavior lives here.
-- srui-sdl — SDL3 host layer (window, event pump, key translation).
-- srui-prism / srui-prism-sys — speech/braille via vendored Prism (CMake build).
-- srui-ffi — the C ABI cdylib (srui_ffi.dll); one flat surface over core, SDL host, and Prism speech.
-- srui-demo — Rust end-to-end demo.
-- srui-audio-native — cosmos.dll: vendored miniaudio + cosmos DSP nodes + Steam Audio glue + the xiph opus stack (libogg/libopus/libopusfile), C sources in csrc/, phonon binaries in phonon/. Decodes wav, flac, mp3, vorbis, and opus, with UTF-8 filenames throughout.
-- dotnet/Srui.Net — hand-written P/Invoke binding plus the class-based widget layer (SruiApp, Widget subclasses, Dialog, SruiDialogs). SruiApp owns an on-demand SoundManager (SruiApp.Audio) and ticks it from the event loop.
+- dotnet/Srui.Net — the toolkit. The engine lives in Core/ (namespace Srui.Core, internal): tree, behaviors, focus/navigation, the text engine (rope, TextNav, EditorState), speech rendering, event coalescing, plus the SDL3 and prism P/Invoke layers. The public namespace Srui holds Ui (the handle-addressed engine facade), SruiApp, the Widget wrapper classes, Dialog, SruiDialogs, SdlHost, and Speech. SruiApp owns an on-demand SoundManager (SruiApp.Audio) and ticks it from the event loop.
+- dotnet/Srui.Net.Tests — xUnit suite over the engine (InternalsVisibleTo). Headless; no native DLLs needed.
 - dotnet/Srui.Audio — game audio over cosmos.dll: Sound, SoundGroup buses with effect chains, HRTF pooling, tweens. Standalone consumers (no SruiApp) drive SoundManager.Tick from their own loop.
-- dotnet/SruiDemo — C# end-to-end demo: a tab-switched widget gallery exercising every widget type, all canned and hand-built dialogs, dynamic state, the event stream (with a reviewable event log on Ctrl+L), and sound-augmented lists over Srui.Audio.
+- dotnet/SruiDemo — end-to-end demo: a tab-switched widget gallery exercising every widget type, all canned and hand-built dialogs, dynamic state, the event stream (with a reviewable event log on Ctrl+L), and sound-augmented lists over Srui.Audio.
 - dotnet/AudioExample — Srui.Audio walkthrough (no UI stack; needs only cosmos.dll and phonon.dll).
+- native/ — everything native: cosmos/ (vendored miniaudio + cosmos DSP nodes + Steam Audio glue + the xiph opus stack; decodes wav, flac, mp3, vorbis, and opus, UTF-8 filenames throughout), phonon/ (Steam Audio binaries), prism/ (vendored Prism), prebuilt/SDL3.dll, and build-native.ps1 which stages every DLL into native/out/.
+- samples/HelloSrui — consuming srui as compiled binaries (the dist.ps1 drop), deliberately outside the solution.
+- The tag rust-era marks the last commit of the retired Rust implementation the engine was ported from.
 
 # 3. Building and Running
 
-Native first, managed second. `cargo build` produces everything the C# side needs in target/debug: srui_ffi.dll, prism.dll, SDL3.dll, cosmos.dll, phonon.dll. The csproj files copy those DLLs from target/debug (or target/release when built with `-c Release` — the cargo profile must match the .NET configuration) into the .NET output directory.
+Native first, managed second — but the native step is rare: run native/build-native.ps1 when native sources change or on a fresh clone; it stages prism.dll, SDL3.dll, cosmos.dll, and phonon.dll into native/out/, from which the csproj files copy them. The DLLs are optimized C/C++ regardless of the .NET configuration. The script's toolchain paths (cmake, ninja, clang-cl, vcvars, midl) are overridable via env vars documented at its top.
 
-- Rust demo: `cargo run -p srui-demo`
 - C# demo: `dotnet run --project dotnet/SruiDemo`
 - Audio walkthrough: `dotnet run --project dotnet/AudioExample`
+- Binary drop for external consumers: `./dist.ps1` (see samples/HelloSrui)
 
-The demos speak through Prism (the running screen reader, or platform TTS as fallback) and need a real window with keyboard focus, so they are not useful headless.
+The demo speaks through Prism (the running screen reader, or platform TTS as fallback) and needs a real window with keyboard focus, so it is not useful headless.
 
 # 4. Testing
 
-All behavioral tests are Rust-side: `cargo test`. The core runs fully headless; invariants are property-tested and speech output is asserted as strings through test readers (architecture.md, section 11). New core behavior is expected to arrive with its invariants encoded the same way.
-
-There is no C# test project. Srui.Net is a thin wrapper whose behavior lives in the core, so it is verified through the demos; if a C#-side bug class ever needs regression coverage, raise that rather than silently adding a harness.
+`dotnet test dotnet/Srui.Net.Tests` — the engine runs fully headless. Invariants are property-tested with seeded-random generators, and speech output is asserted as strings by driving logical input into a CoreUi and checking the rendered utterances (architecture.md, section 11). New engine behavior is expected to arrive with its invariants encoded the same way. SruiDemo is the end-to-end check for anything the headless suite cannot see (real window, real speech).
 
 # 5. Rules
 
-- Bindings never reimplement behavior. If C# needs something the core can do, extend srui-ffi and wrap it; do not simulate it in C#. The exceptions are deliberate: dialog conventions and canned dialogs are binding-level policy (architecture.md, sections 4.4 and 10), and Srui.Audio is C#-only orchestration over native DSP.
-- The C ABI is hand-designed and the P/Invoke layer hand-written (NativeMethods.cs). Opaque handles, UTF-8 strings freed via srui_string_free (the TakeString helper), booleans marshaled as one byte, no callbacks — the host polls and drains. Keep new entry points consistent with these rules and with the flat (kind, char, key, mods) input encoding.
-- One Ui, one thread. Nothing in the binding may introduce cross-thread access to a context.
+- One Ui, one thread. Nothing may introduce cross-thread access to a Ui or its engine.
 - Steady-state audio paths (Tick, SetListener, spatialization updates) allocate nothing; keep them that way. The same holds for the idle event loop: empty SdlHost.Pump and Ui.Drain batches are a shared read-only list, so an idle app allocates nothing per iteration.
-- srui-demo is the minimal Rust end-to-end check; dotnet/SruiDemo is the broader gallery. A core behavior change that alters user-visible UX should be reflected in both where both exercise it.
+- The engine (Srui.Core) is sans-IO: no platform calls, no clock, no clipboard — hosts inject those. P/Invoke lives only in the designated interop files (Sdl3.cs, PrismNative.cs, and Srui.Audio's bindings); strings cross as UTF-8, native booleans marshal as one byte, and constants/struct layouts are transcribed from the vendored native headers, not from documentation.
 - Widget wrappers are designed to be subclassed from application assemblies: override the On* methods and keep the base call so composition subscribers still fire. Cross-assembly quirk: Widget's On* members are protected internal, but an override outside Srui.Net declares plain protected.
-- Vendored code (srui-prism-sys/prism, srui-audio-native/csrc and phonon) is snapshot plus documented local patches. Any change to vendored sources must be recorded in that crate's PATCHES.md so it survives a snapshot update; prefer additive wrapper files (the cosmos_extra.c pattern) over edits to upstream files.
+- Behavior classes (Srui.Core.WidgetBehavior and its subclasses) are internal. Applications extend by subclassing wrappers or composing; exposing behavior authoring is anticipated but deliberately deferred, so raise it rather than making one-off things public.
+- Vendored code (native/cosmos, native/phonon, native/prism) is snapshot plus documented local patches. Any change to vendored sources must be recorded in native/PATCHES-cosmos.md or native/PATCHES-prism.md so it survives a snapshot update; prefer additive wrapper files (the cosmos_extra.c pattern) over edits to upstream files.
+- A behavior change that alters user-visible UX should be reflected in SruiDemo where the demo exercises it.
 - Docs are Wikipedia-esque prose with numbered headings and no historical narrative; history belongs in commit messages. docs/architecture.md must always describe the present design.
 
-# 6. The C# Surface As Of Now
+# 6. The Public Surface As Of Now
 
-Everything in the core's widget set is usable from C#: all built-in roles (label, group, button, checkbox, edit box single/multi-line with read-only, listbox, filter listbox, slider, tab control, shortcut field, role-less custom widget), layers/dialogs, primary/cancel routing, tickers, focus control, announcements, hidden/disabled/name/description mutation, widget shortcuts (Widget.AddShortcut with a config-form combo string and a jump/activate/both action), and the host clipboard. Game-style input rides the physical key stream (architecture.md, section 6.4): Widget.BindKey attaches press/repeat/release handlers to any widget, focus-scoped, with SruiApp.UnhandledKey and SruiApp.FocusLost as the app-level hooks. Accessibility events cross the boundary pre-rendered to utterances, which is exactly what the self-voicing path needs.
+Everything in the engine's widget set is usable: all built-in roles (label, group, button, checkbox, edit box single/multi-line with read-only, listbox, filter listbox, slider, tab control, shortcut field, role-less custom widget), layers/dialogs, primary/cancel routing, tickers, focus control, announcements, hidden/disabled/name/description mutation, widget shortcuts (Widget.AddShortcut with a config-form combo string and a jump/activate/both action), and the host clipboard. Game-style input rides the physical key stream (architecture.md, section 6.4): Widget.BindKey attaches press/repeat/release handlers to any widget, focus-scoped, with SruiApp.UnhandledKey and SruiApp.FocusLost as the app-level hooks. Typing, list typeahead, and filter queries are astral-plane-safe (surrogate pairs are one character throughout).
 
-The boundary's current limits, all deliberate and documented in architecture.md section 10 unless noted:
+Known deliberate limits:
 
-- Custom widget behavior is Rust-only, permanently. C# extends by subclassing wrappers or composing.
-- Structured event payloads do not cross FFI yet (deferred until a braille/UIA reader exists), and speech verbosity is not host-configurable over FFI.
-- Some programmatic setters exist in the core but are not yet exported: list selection, active tab, shortcut-field combo, filter items. Reads exist for all of them; add the export when a consumer appears.
-- The key-combo display/spoken forms, reserved_reason, and Role::reserves_key are not exposed, so a C# bind dialog cannot yet do conflict detection. Config-string parsing is exposed (Keys.TryParse; AddShortcut and BindKey parse internally).
+- Accessibility events reach the public surface pre-rendered to utterances (OutputEvent.Speech). The structured payloads exist in the engine; exposing them awaits the first braille/UIA reader. Speech verbosity is likewise not yet host-configurable.
+- Some programmatic setters exist in the engine but are not surfaced on Ui: list selection, active tab, shortcut-field combo, filter items, filter clearing. Reads exist for all of them; surface the setter when a consumer appears.
+- The key-combo display/spoken forms, reserved-combo reasons, and Role.ReservesKey are engine-internal, so an app-side bind dialog cannot yet do conflict detection. Config-string parsing is public (Keys.TryParse; AddShortcut and BindKey parse internally).
