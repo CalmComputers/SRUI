@@ -13,12 +13,10 @@
     <ProjectReference Include="..\Srui.Audio\Srui.Audio.csproj" />
   </ItemGroup>
 
-  <!-- Native dependencies from the Rust workspace build; the cargo
-       profile follows the .NET configuration (Release ↔ release). -->
+  <!-- Native dependencies staged by native/build-native.ps1. They are
+       optimized C/C++ regardless of the .NET configuration. -->
   <PropertyGroup>
-    <SruiProfile>debug</SruiProfile>
-    <SruiProfile Condition="'$(Configuration)' == 'Release'">release</SruiProfile>
-    <SruiNativeDir>..\..\target\$(SruiProfile)\</SruiNativeDir>
+    <SruiNativeDir>..\..\native\out\</SruiNativeDir>
   </PropertyGroup>
   <ItemGroup>
     <None Include="$(SruiNativeDir)prism.dll" CopyToOutputDirectory="PreserveNewest" />

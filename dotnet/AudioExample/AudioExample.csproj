@@ -11,10 +11,9 @@
     <ProjectReference Include="..\Srui.Audio\Srui.Audio.csproj" />
   </ItemGroup>
 
+  <!-- Native dependencies staged by native/build-native.ps1. -->
   <PropertyGroup>
-    <SruiProfile>debug</SruiProfile>
-    <SruiProfile Condition="'$(Configuration)' == 'Release'">release</SruiProfile>
-    <SruiNativeDir>..\..\target\$(SruiProfile)\</SruiNativeDir>
+    <SruiNativeDir>..\..\native\out\</SruiNativeDir>
   </PropertyGroup>
   <ItemGroup>
     <None Include="$(SruiNativeDir)cosmos.dll" CopyToOutputDirectory="PreserveNewest" />

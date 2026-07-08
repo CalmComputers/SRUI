@@ -6,3 +6,6 @@ samples/**/bin/
 samples/**/obj/
 # Personal, not for the repo: music player plus its audio assets.
 /samples/MusicPlayer/
+# Native build outputs (produced by native/build-native.ps1).
+/native/out/
+/native/build/
