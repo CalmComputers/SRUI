@@ -33,6 +33,10 @@ internal readonly record struct Key(uint Code)
     /// the input map does (typing, shortcuts).</summary>
     public static Key Char(char c) => new(CharBase | c);
 
+    /// <summary>A character key from a full Unicode codepoint (astral
+    /// characters ride the flat encoding unchanged).</summary>
+    public static Key CharCode(uint codepoint) => new(CharBase | codepoint);
+
     /// <summary>F1..F12.</summary>
     public static Key F(byte n) => new(FBase | n);
 
@@ -189,7 +193,7 @@ internal readonly record struct KeyCombo(Key Key, bool Ctrl, bool Alt, bool Shif
             InputKind.TreeDown => WithAlt(Key.Down),
             InputKind.TreeLeft => WithAlt(Key.Left),
             InputKind.TreeRight => WithAlt(Key.Right),
-            InputKind.Shortcut => WithAlt(Key.Char(ToAsciiLower(ch))),
+            InputKind.Shortcut => WithAlt(Key.CharCode(ToAsciiLowerCode(input.Ch))),
 
             InputKind.Activate => Plain(Key.Enter),
             InputKind.SecondaryActivate => WithShift(Key.Enter),
@@ -217,7 +221,7 @@ internal readonly record struct KeyCombo(Key Key, bool Ctrl, bool Alt, bool Shif
             InputKind.SelectAll => WithCtrl(Key.Char('a')),
 
             InputKind.TypeChar when ch == ' ' => Plain(Key.Space),
-            InputKind.TypeChar => Plain(Key.Char(ToAsciiLower(ch))),
+            InputKind.TypeChar => Plain(Key.CharCode(ToAsciiLowerCode(input.Ch))),
             InputKind.DeleteBackward => Plain(Key.Backspace),
             InputKind.DeleteForward => Plain(Key.Delete),
             InputKind.DeleteWordBackward => WithCtrl(Key.Backspace),
@@ -235,7 +239,7 @@ internal readonly record struct KeyCombo(Key Key, bool Ctrl, bool Alt, bool Shif
         };
     }
 
-    private static char ToAsciiLower(char c) => c is >= 'A' and <= 'Z' ? (char)(c + 32) : c;
+    private static uint ToAsciiLowerCode(uint c) => c is >= 'A' and <= 'Z' ? c + 32 : c;
 
     /// <summary>Whether this combo matches the given logical input.</summary>
     public bool MatchesInput(in InputEvent input) => FromInput(input) == this;

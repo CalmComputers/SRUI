@@ -57,14 +57,17 @@ internal sealed class EditorState
     // ── Editing operations ──
 
     /// <summary>Insert a character at the cursor. Returns speech feedback.</summary>
-    public string InsertChar(char ch)
+    public string InsertChar(char ch) => InsertRuneText(ch.ToString());
+
+    /// <summary>Insert one character given as its UTF-16 form (one or two
+    /// units — astral characters are two).</summary>
+    public string InsertRuneText(string s)
     {
         if (ReadOnly)
             return "";
         var hadSelection = DeleteSelectionSilent();
-        var s = ch.ToString();
         Rope.Insert(Cursor, s);
-        Cursor += 1;
+        Cursor += s.Length;
         Selection = null;
         PreferredColumn = null;
         var charSpeech = SpeechRenderer.SpeakChar(s);

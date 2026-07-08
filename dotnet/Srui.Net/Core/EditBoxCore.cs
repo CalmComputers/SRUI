@@ -333,20 +333,23 @@ internal static class EditBoxCore
                 // read-only editor swallows typing silently.
                 return Result.JustConsumed();
             }
-            var ch = (char)input.Ch;
+            if (!Rune.IsValid((int)input.Ch))
+                return Result.JustConsumed();
+            var text = char.ConvertFromUtf32((int)input.Ch);
             var hadSel = editor.HasSelection;
-            editor.InsertChar(ch);
+            editor.InsertRuneText(text);
 
             var result = new Result { Consumed = true, Changed = true };
             if (hadSel)
                 result.Events.Add(new AccessibilityEvent.Selection(node, "", SelectionKind.Cleared));
 
-            var lastWord = IsWordSeparator(ch) && FirstSeparatorInRun(editor.Rope, editor.Cursor)
+            var lastWord = text.Length == 1 && IsWordSeparator(text[0])
+                && FirstSeparatorInRun(editor.Rope, editor.Cursor)
                 ? CompletedWord(editor.Rope, editor.Cursor)
                 : null;
 
             result.Events.Add(new AccessibilityEvent.Typing(
-                node, ch.ToString(), lastWord, TypingKind.Insert));
+                node, text, lastWord, TypingKind.Insert));
             return result;
         }
 

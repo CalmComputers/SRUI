@@ -1,6 +1,7 @@
 namespace Srui;
 
-/// <summary>Logical input kinds, mirroring the srui_ffi encoding.</summary>
+/// <summary>Logical input kinds — the flat encoding of the semantic
+/// input vocabulary (see docs/architecture.md, section 6).</summary>
 public enum InputKind : uint
 {
     NavigateNext = 0,
@@ -85,9 +86,14 @@ public static class Keys
     /// key/mods encoding. False when the string does not parse.</summary>
     public static bool TryParse(string combo, out uint key, out Mods mods)
     {
-        var ok = NativeMethods.srui_combo_parse(combo, out key, out var rawMods);
-        mods = (Mods)rawMods;
-        return ok;
+        if (!Srui.Core.KeyCombo.TryParseConfig(combo, out var parsed))
+        {
+            key = 0;
+            mods = Mods.None;
+            return false;
+        }
+        (key, mods) = parsed.ToFlat();
+        return true;
     }
 }
 

@@ -21,7 +21,6 @@
     <SruiNativeDir>..\..\target\$(SruiProfile)\</SruiNativeDir>
   </PropertyGroup>
   <ItemGroup>
-    <None Include="$(SruiNativeDir)srui_ffi.dll" CopyToOutputDirectory="PreserveNewest" />
     <None Include="$(SruiNativeDir)prism.dll" CopyToOutputDirectory="PreserveNewest" />
     <None Include="$(SruiNativeDir)SDL3.dll" CopyToOutputDirectory="PreserveNewest" />
     <None Include="$(SruiNativeDir)cosmos.dll" CopyToOutputDirectory="PreserveNewest" />

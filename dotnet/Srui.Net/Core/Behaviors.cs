@@ -413,19 +413,20 @@ internal sealed class FilterListBoxBehavior : WidgetBehavior
                     SelectAndAnnounce(filtered, filtered.Count - 1, ctx);
                 return true;
             case InputKind.TypeChar:
-                _filter += ToAsciiLower((char)input.Ch);
+                if (System.Text.Rune.IsValid((int)input.Ch))
+                    _filter += ListBoxBehavior.AsciiLowerString(char.ConvertFromUtf32((int)input.Ch));
                 FilterChanged(ctx);
                 return true;
             case InputKind.DeleteBackward when _filter.Length > 0:
-                _filter = _filter[..^1];
+                // Remove one character — two units when it is astral.
+                var cut = _filter.Length >= 2 && char.IsLowSurrogate(_filter[^1]) ? 2 : 1;
+                _filter = _filter[..^cut];
                 FilterChanged(ctx);
                 return true;
             default:
                 return false;
         }
     }
-
-    private static char ToAsciiLower(char c) => c is >= 'A' and <= 'Z' ? (char)(c + 32) : c;
 }
 
 /// <summary>ListBox — a single-selection list. Arrows move the selection
@@ -521,28 +522,28 @@ internal sealed class ListBoxBehavior : WidgetBehavior
         ctx.EmitWidget(new CoreEvent.Changed(ctx.Node));
     }
 
-    private void HandleTypeAhead(char ch, in WidgetCtx ctx)
+    private void HandleTypeAhead(string runeText, in WidgetCtx ctx)
     {
-        var chLower = ToAsciiLower(ch);
+        var runeLower = AsciiLowerString(runeText);
 
         var shouldReset = _lastKeystrokeMs is not ulong last
             || ctx.NowMs - Math.Min(ctx.NowMs, last) > TypeAheadTimeoutMs;
         // Cycling: the same letter typed repeatedly.
-        var cycling = _typeAheadBuffer.Length > 0 && AllChars(_typeAheadBuffer, chLower);
+        var cycling = _typeAheadBuffer.Length > 0 && IsRepeatsOf(_typeAheadBuffer, runeLower);
 
         if (shouldReset || cycling)
             _typeAheadBuffer = "";
-        _typeAheadBuffer += chLower;
+        _typeAheadBuffer += runeLower;
         _lastKeystrokeMs = ctx.NowMs;
 
-        if (cycling || _typeAheadBuffer.Length == 1)
+        if (cycling || _typeAheadBuffer == runeLower)
         {
             // Single char: cycle from the current position forward.
             var count = _items.Count;
             for (var offset = 1; offset <= count; offset++)
             {
                 var idx = (_selected + offset) % count;
-                if (_items[idx].Length > 0 && ToAsciiLower(_items[idx][0]) == chLower)
+                if (StartsWithAsciiLower(_items[idx], runeLower))
                 {
                     SelectAndAnnounce(idx, ctx);
                     break;
@@ -569,10 +570,20 @@ internal sealed class ListBoxBehavior : WidgetBehavior
         }
     }
 
-    private static bool AllChars(string s, char c)
+    internal static string AsciiLowerString(string s)
     {
-        foreach (var ch in s)
-            if (ch != c)
+        var chars = s.ToCharArray();
+        for (var i = 0; i < chars.Length; i++)
+            chars[i] = ToAsciiLower(chars[i]);
+        return new string(chars);
+    }
+
+    private static bool IsRepeatsOf(string s, string unit)
+    {
+        if (unit.Length == 0 || s.Length % unit.Length != 0)
+            return false;
+        for (var i = 0; i < s.Length; i += unit.Length)
+            if (string.CompareOrdinal(s, i, unit, 0, unit.Length) != 0)
                 return false;
         return true;
     }
@@ -614,7 +625,8 @@ internal sealed class ListBoxBehavior : WidgetBehavior
                     SelectAndAnnounce(_items.Count - 1, ctx);
                 return true;
             case InputKind.TypeChar:
-                HandleTypeAhead((char)input.Ch, ctx);
+                if (System.Text.Rune.IsValid((int)input.Ch))
+                    HandleTypeAhead(char.ConvertFromUtf32((int)input.Ch), ctx);
                 return true;
             default:
                 return false;
