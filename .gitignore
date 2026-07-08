@@ -4,3 +4,5 @@ dotnet/**/bin/
 dotnet/**/obj/
 samples/**/bin/
 samples/**/obj/
+# Personal, not for the repo: music player plus its audio assets.
+/samples/MusicPlayer/
