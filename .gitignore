@@ -1,3 +1,6 @@
 /target
+/dist/
 dotnet/**/bin/
 dotnet/**/obj/
+samples/**/bin/
+samples/**/obj/

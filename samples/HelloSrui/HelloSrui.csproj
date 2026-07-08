@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>HelloSrui</RootNamespace>
+    <!-- The srui binary drop (produced by dist.ps1 at the repository
+         root). Repoint this at wherever your app keeps the DLLs; nothing
+         in this project references srui source. -->
+    <SruiDist>..\..\dist</SruiDist>
+  </PropertyGroup>
+
+  <!-- Managed assemblies, referenced as plain DLLs. -->
+  <ItemGroup>
+    <Reference Include="Srui.Net">
+      <HintPath>$(SruiDist)\Srui.Net.dll</HintPath>
+    </Reference>
+    <Reference Include="Srui.Audio">
+      <HintPath>$(SruiDist)\Srui.Audio.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Native DLLs travel beside the exe. srui_ffi/prism/SDL3 serve the
+       UI stack; cosmos/phonon serve Srui.Audio — a UI-only app can drop
+       the last two, an audio-only app the first three. -->
+  <ItemGroup>
+    <None Include="$(SruiDist)\srui_ffi.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(SruiDist)\prism.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(SruiDist)\SDL3.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(SruiDist)\cosmos.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(SruiDist)\phonon.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
