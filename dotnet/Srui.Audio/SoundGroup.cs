@@ -183,6 +183,14 @@ public sealed class SoundGroup : IDisposable
 
     public bool HasReverb => _reverb != IntPtr.Zero;
 
+    /// <summary>Convolution reverb on this bus. <paramref name="diffuse"/>
+    /// mono-sums the wet send by that amount before convolution — right
+    /// for positioned game sources (the tail stops panning with the
+    /// source) but it discards the send's side content: at 1 the sides
+    /// never reach the room at all. Use 0 for music and other wide
+    /// stereo material (channel-wise convolution, full side preserved).
+    /// <paramref name="decay"/> reshapes the IR and costs a partition
+    /// rebuild; the other parameters are live.</summary>
     public void EnableReverb(
         float wet, float dry, float predelayMs, float irGain, float width,
         float decay, float lowcutHz, float highcutHz, float diffuse)
