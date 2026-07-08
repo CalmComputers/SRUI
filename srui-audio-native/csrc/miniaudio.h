@@ -13266,6 +13266,22 @@ MA_API ma_result ma_fopen(FILE** ppFile, const char* pFilePath, const char* pOpe
     }
 
 #if (defined(_MSC_VER) && _MSC_VER >= 1400) && !defined(MA_XBOX_NXDK)
+    /* SRUI: treat paths as UTF-8 (PATCHES.md). fopen_s() reads them in
+     * the ANSI codepage, so the UTF-8 paths the managed side passes fail
+     * on any non-ASCII name. Convert and open wide; fall back to the
+     * stock ANSI behavior only if conversion fails. */
+    {
+        wchar_t wpath[4096];
+        wchar_t wmode[16];
+        if (MultiByteToWideChar(CP_UTF8, 0, pFilePath, -1, wpath, 4096) != 0 &&
+            MultiByteToWideChar(CP_UTF8, 0, pOpenMode, -1, wmode, 16) != 0) {
+            err = _wfopen_s(ppFile, wpath, wmode);
+            if (err != 0) {
+                return ma_result_from_errno(err);
+            }
+            return MA_SUCCESS;
+        }
+    }
     err = fopen_s(ppFile, pFilePath, pOpenMode);
     if (err != 0) {
         return ma_result_from_errno(err);
@@ -61065,7 +61081,18 @@ static ma_result ma_default_vfs_open__win32(ma_vfs* pVFS, const char* pFilePath,
 
     ma_default_vfs__get_open_settings_win32(openMode, &dwDesiredAccess, &dwShareMode, &dwCreationDisposition);
 
-    hFile = CreateFileA(pFilePath, dwDesiredAccess, dwShareMode, NULL, dwCreationDisposition, FILE_ATTRIBUTE_NORMAL, NULL);
+    /* SRUI: treat paths as UTF-8 (PATCHES.md). CreateFileA() reads the
+     * ANSI codepage, so the UTF-8 paths the managed side passes fail on
+     * any non-ASCII name. Convert and open wide; fall back to the stock
+     * ANSI behavior only if conversion fails. */
+    {
+        wchar_t wpath[4096];
+        if (MultiByteToWideChar(CP_UTF8, 0, pFilePath, -1, wpath, 4096) != 0) {
+            hFile = CreateFileW(wpath, dwDesiredAccess, dwShareMode, NULL, dwCreationDisposition, FILE_ATTRIBUTE_NORMAL, NULL);
+        } else {
+            hFile = CreateFileA(pFilePath, dwDesiredAccess, dwShareMode, NULL, dwCreationDisposition, FILE_ATTRIBUTE_NORMAL, NULL);
+        }
+    }
     if (hFile == INVALID_HANDLE_VALUE) {
         return ma_result_from_GetLastError(GetLastError());
     }

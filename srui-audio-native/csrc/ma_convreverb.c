@@ -14,6 +14,7 @@
  */
 
 #include "ma_convreverb.h"
+#include "miniaudio_libopus.h" /* SRUI: opus decoding backend (PATCHES.md) */
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -595,6 +596,12 @@ MA_API ma_result ma_convreverb_node_load_ir_file(ma_convreverb_node *pNode, cons
     if (pNode == NULL || path == NULL) return MA_INVALID_ARGS;
 
     ma_decoder_config dcfg = ma_decoder_config_init(ma_format_f32, 2, pNode->sampleRate);
+    /* SRUI: IRs load through the same decoder set as everything else,
+     * opus included. */
+    static ma_decoding_backend_vtable* customBackends[1];
+    customBackends[0] = ma_decoding_backend_libopus;
+    dcfg.ppCustomBackendVTables = customBackends;
+    dcfg.customBackendCount = 1;
     ma_decoder dec;
     ma_result r = ma_decoder_init_file(path, &dcfg, &dec);
     if (r != MA_SUCCESS) return r;

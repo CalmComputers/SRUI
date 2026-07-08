@@ -3,6 +3,7 @@
 
 #include <stdint.h> /* phonon.h (via miniaudio_phonon.h) needs uint8_t */
 #include "miniaudio.h"
+#include "miniaudio_libopus.h" /* opus decoding backend (PATCHES.md) */
 #include "miniaudio_phonon.h"
 #include <stdlib.h>
 
@@ -17,6 +18,7 @@ MA_API float* cosmos_decode_file(
     ma_uint64* outFrames)
 {
     ma_decoder_config config = ma_decoder_config_init(ma_format_f32, 0, targetSampleRate);
+    static ma_decoding_backend_vtable* customBackends[1]; /* opus */
     ma_decoder decoder;
     ma_format fmt;
     ma_uint32 channels = 0;
@@ -25,6 +27,10 @@ MA_API float* cosmos_decode_file(
     ma_uint64 cap;
     float* samples;
     ma_uint64 total = 0; /* frames */
+
+    customBackends[0] = ma_decoding_backend_libopus;
+    config.ppCustomBackendVTables = customBackends;
+    config.customBackendCount = 1;
 
     if (ma_decoder_init_file(path, &config, &decoder) != MA_SUCCESS) {
         return NULL;

@@ -12,6 +12,9 @@
 #undef STB_VORBIS_HEADER_ONLY
 #include "stb_vorbis.c"
 
+// SRUI: opus decoding backend over the vendored xiph stack (PATCHES.md).
+#include "miniaudio_libopus.h"
+
 #include <stdlib.h>
 
 // Helper functions for Rust bindings - allocate opaque structs
@@ -44,6 +47,12 @@ MA_API ma_result ma_engine_init_with_caching(ma_engine* pEngine) {
     }
 
     ma_resource_manager_config rmConfig = ma_resource_manager_config_init();
+    // SRUI: register the opus decoding backend (stock decoders handle
+    // wav/flac/mp3, stb_vorbis handles ogg vorbis).
+    static ma_decoding_backend_vtable* customBackends[1];
+    customBackends[0] = ma_decoding_backend_libopus;
+    rmConfig.ppCustomDecodingBackendVTables = customBackends;
+    rmConfig.customDecodingBackendCount = 1;
     result = ma_resource_manager_init(&rmConfig, g_resource_manager);
     if (result != MA_SUCCESS) {
         free(g_resource_manager);

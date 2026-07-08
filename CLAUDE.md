@@ -13,7 +13,7 @@ Rust workspace at the root; .NET projects under dotnet/ (solution: dotnet/Srui.s
 - srui-prism / srui-prism-sys — speech/braille via vendored Prism (CMake build).
 - srui-ffi — the C ABI cdylib (srui_ffi.dll); one flat surface over core, SDL host, and Prism speech.
 - srui-demo — Rust end-to-end demo.
-- srui-audio-native — cosmos.dll: vendored miniaudio + cosmos DSP nodes + Steam Audio glue, C sources in csrc/, phonon binaries in phonon/.
+- srui-audio-native — cosmos.dll: vendored miniaudio + cosmos DSP nodes + Steam Audio glue + the xiph opus stack (libogg/libopus/libopusfile), C sources in csrc/, phonon binaries in phonon/. Decodes wav, flac, mp3, vorbis, and opus, with UTF-8 filenames throughout.
 - dotnet/Srui.Net — hand-written P/Invoke binding plus the class-based widget layer (SruiApp, Widget subclasses, Dialog, SruiDialogs). SruiApp owns an on-demand SoundManager (SruiApp.Audio) and ticks it from the event loop.
 - dotnet/Srui.Audio — game audio over cosmos.dll: Sound, SoundGroup buses with effect chains, HRTF pooling, tweens. Standalone consumers (no SruiApp) drive SoundManager.Tick from their own loop.
 - dotnet/SruiDemo — C# end-to-end demo: a tab-switched widget gallery exercising every widget type, all canned and hand-built dialogs, dynamic state, the event stream (with a reviewable event log on Ctrl+L), and sound-augmented lists over Srui.Audio.
@@ -40,7 +40,7 @@ There is no C# test project. Srui.Net is a thin wrapper whose behavior lives in 
 - Bindings never reimplement behavior. If C# needs something the core can do, extend srui-ffi and wrap it; do not simulate it in C#. The exceptions are deliberate: dialog conventions and canned dialogs are binding-level policy (architecture.md, sections 4.4 and 10), and Srui.Audio is C#-only orchestration over native DSP.
 - The C ABI is hand-designed and the P/Invoke layer hand-written (NativeMethods.cs). Opaque handles, UTF-8 strings freed via srui_string_free (the TakeString helper), booleans marshaled as one byte, no callbacks — the host polls and drains. Keep new entry points consistent with these rules and with the flat (kind, char, key, mods) input encoding.
 - One Ui, one thread. Nothing in the binding may introduce cross-thread access to a context.
-- Steady-state audio paths (Tick, SetListener, spatialization updates) allocate nothing; keep them that way.
+- Steady-state audio paths (Tick, SetListener, spatialization updates) allocate nothing; keep them that way. The same holds for the idle event loop: empty SdlHost.Pump and Ui.Drain batches are a shared read-only list, so an idle app allocates nothing per iteration.
 - srui-demo is the minimal Rust end-to-end check; dotnet/SruiDemo is the broader gallery. A core behavior change that alters user-visible UX should be reflected in both where both exercise it.
 - Widget wrappers are designed to be subclassed from application assemblies: override the On* methods and keep the base call so composition subscribers still fire. Cross-assembly quirk: Widget's On* members are protected internal, but an override outside Srui.Net declares plain protected.
 - Vendored code (srui-prism-sys/prism, srui-audio-native/csrc and phonon) is snapshot plus documented local patches. Any change to vendored sources must be recorded in that crate's PATCHES.md so it survives a snapshot update; prefer additive wrapper files (the cosmos_extra.c pattern) over edits to upstream files.

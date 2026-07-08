@@ -33,7 +33,7 @@ Application vocabulary stays out of the core: no application command names, no c
 | `srui-prism` / `srui-prism-sys` | Rust over C | Speech and braille output through Prism (vendored; builds via CMake), which routes to the running screen reader or platform TTS. The reference speech reader's output channel. |
 | `srui-ffi` | Rust (cdylib) | C ABI over the core, the SDL host, and Prism speech — one native surface for bindings: opaque handles, flat input/event structs, event drain. |
 | `Srui.Net` | C# | Idiomatic .NET wrapper over the C ABI: classes, records, hand-written P/Invoke. `dotnet/SruiDemo` mirrors the Rust demo. |
-| `Srui.Audio` / `srui-audio-native` | C# over C | Game audio for C# consumers: 3D positioning (Horizon-style pan/volume or Steam Audio HRTF), sound groups with a native effect chain (convolution reverb, EQ, filter, distortion, vocoder, disperser, delay), pitch tweens, offline time-stretch. All DSP stays native (cosmos.dll: miniaudio + vendored cosmos nodes); C# orchestrates with zero steady-state allocation. Everything is edge-triggered except time-based automation, which `SoundManager.Tick` applies: `SruiApp` owns an on-demand manager (`SruiApp.Audio`) and ticks it from the event loop at the loop cadence (about 5 ms at idle); loop-less consumers tick manually. Rust games use cosmos-audio directly instead. |
+| `Srui.Audio` / `srui-audio-native` | C# over C | Game audio for C# consumers: 3D positioning (Horizon-style pan/volume or Steam Audio HRTF), sound groups with a native effect chain (convolution reverb, EQ, filter, distortion, vocoder, disperser, delay), pitch tweens, offline time-stretch. All DSP stays native (cosmos.dll: miniaudio + vendored cosmos nodes, decoding wav, flac, mp3, vorbis, and opus); C# orchestrates with zero steady-state allocation. Everything is edge-triggered except time-based automation, which `SoundManager.Tick` applies: `SruiApp` owns an on-demand manager (`SruiApp.Audio`) and ticks it from the event loop at the loop cadence (about 5 ms at idle); loop-less consumers tick manually. Rust games use cosmos-audio directly instead. |
 | Readers | host-side | Consumers of the output event stream: self-voicing speech, braille, UIA provider, logging/test readers. |
 
 Rust programs consume `srui-core` directly; there is no FFI on the Rust path. A reactive layer over the retained API is anticipated but deferred. `srui-demo` wires the whole stack together end to end: SDL events in, Prism speech out.
@@ -121,6 +121,8 @@ The C ABI follows a small set of rules. All objects are opaque handles: contexts
 Accessibility events currently cross the boundary pre-rendered: each carries its utterance (composed by `speech::render_event`) plus the event variant and node, which is what a speech reader needs. Full structured payload marshaling for braille/UIA readers over FFI is deliberately deferred until such a reader exists.
 
 The core is not thread-safe and does not need to be: one UI context belongs to one thread, and each binding enforces single-threaded access to a context. Multiple contexts on different threads are fine.
+
+The polling loop is allocation-free at idle on both sides of the boundary. An empty drain or pump allocates nothing in Rust (an empty boxed slice has no backing storage), and the C# wrappers return a shared empty batch rather than a fresh list, so an idle application's memory stays flat instead of accruing garbage at the loop cadence. Batches returned by `SdlHost.Pump` and `Ui.Drain` are therefore read-only by contract.
 
 # 11. Testing
 

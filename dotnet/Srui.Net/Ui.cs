@@ -207,12 +207,22 @@ public sealed class Ui : IDisposable
 
     // ── Output ──
 
-    /// <summary>Drain the coalesced output queue.</summary>
+    // Shared result for empty drains: the host loop drains every
+    // iteration and is almost always empty, so returning a fresh list
+    // per call would put a steady drip of garbage under an idle app. The
+    // concrete List return type (rather than IReadOnlyList) keeps
+    // foreach on the struct enumerator, which is also allocation-free.
+    private static readonly List<OutputEvent> EmptyBatch = new();
+
+    /// <summary>Drain the coalesced output queue. Treat the result as
+    /// read-only: empty batches are shared.</summary>
     public unsafe List<OutputEvent> Drain()
     {
         NativeMethods.srui_ui_drain(Handle, out var events, out var len);
         try
         {
+            if (len == 0)
+                return EmptyBatch;
             var result = new List<OutputEvent>((int)len);
             for (nuint i = 0; i < len; i++)
             {

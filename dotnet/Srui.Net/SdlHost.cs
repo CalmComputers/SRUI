@@ -25,12 +25,22 @@ public sealed class SdlHost : IDisposable
     public void ProvideClipboard(Ui ui) =>
         NativeMethods.srui_ui_use_host_clipboard(ui.Handle, _handle);
 
-    /// <summary>Block up to the timeout for events, then drain the batch.</summary>
+    // Shared result for empty batches: the pump runs a few hundred times
+    // a second and is almost always empty, so returning a fresh list per
+    // call would put a steady drip of garbage under an idle app. The
+    // concrete List return type (rather than IReadOnlyList) keeps
+    // foreach on the struct enumerator, which is also allocation-free.
+    private static readonly List<HostEvent> EmptyBatch = new();
+
+    /// <summary>Block up to the timeout for events, then drain the batch.
+    /// Treat the result as read-only: empty batches are shared.</summary>
     public unsafe List<HostEvent> Pump(uint timeoutMs)
     {
         NativeMethods.srui_host_pump(_handle, timeoutMs, out var events, out var len);
         try
         {
+            if (len == 0)
+                return EmptyBatch;
             var result = new List<HostEvent>((int)len);
             for (nuint i = 0; i < len; i++)
             {
