@@ -22,11 +22,10 @@
     </Reference>
   </ItemGroup>
 
-  <!-- Native DLLs travel beside the exe. srui_ffi/prism/SDL3 serve the
-       UI stack; cosmos/phonon serve Srui.Audio — a UI-only app can drop
-       the last two, an audio-only app the first three. -->
+  <!-- Native DLLs travel beside the exe. prism/SDL3 serve the UI stack;
+       cosmos/phonon serve Srui.Audio — a UI-only app can drop the last
+       two, an audio-only app the first two. -->
   <ItemGroup>
-    <None Include="$(SruiDist)\srui_ffi.dll" CopyToOutputDirectory="PreserveNewest" />
     <None Include="$(SruiDist)\prism.dll" CopyToOutputDirectory="PreserveNewest" />
     <None Include="$(SruiDist)\SDL3.dll" CopyToOutputDirectory="PreserveNewest" />
     <None Include="$(SruiDist)\cosmos.dll" CopyToOutputDirectory="PreserveNewest" />

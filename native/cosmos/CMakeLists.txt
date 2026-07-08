@@ -7,7 +7,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(cosmos C)
 
-# Vendored xiph stack (versions and pruning in ../PATCHES.md). Scalar
+# Vendored xiph stack (versions and pruning in ../PATCHES-cosmos.md). Scalar
 # builds, no SIMD dispatch: decode is cheap and portability beats the
 # last few percent. Warnings are silenced for vendored code only.
 

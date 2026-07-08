@@ -1,6 +1,6 @@
 # Vendored Sources and Local Patches
 
-`csrc/` is vendored from the cosmos rust project (miniaudio, its impl
+`cosmos/` is vendored from the cosmos rust project (miniaudio, its impl
 helpers, the cosmos DSP nodes, and the Steam Audio glue); `phonon/`
 carries the Steam Audio 4 binaries. Local changes to re-apply when
 updating the snapshot:

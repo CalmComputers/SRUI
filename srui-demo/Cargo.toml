@@ -1,9 +1,0 @@
-[package]
-name = "srui-demo"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-srui-core = { path = "../srui-core" }
-srui-sdl = { path = "../srui-sdl" }
-srui-prism = { path = "../srui-prism" }

@@ -22,7 +22,6 @@
 $ErrorActionPreference = 'Stop'
 
 $native = $PSScriptRoot
-$root = Split-Path -Parent $native
 
 function Default($value, $fallback) { if ($value) { $value } else { $fallback } }
 
@@ -44,10 +43,10 @@ if (-not $midl) {
     if (-not $midl) { throw 'midl.exe not found; install a Windows 10/11 SDK or set PRISM_MIDL' }
 }
 
-# Sources (updated when the repo layout changes).
-$cosmosSrc = Join-Path $root 'srui-audio-native\csrc'
-$phononDir = Join-Path $root 'srui-audio-native\phonon'
-$prismSrc = Join-Path $root 'srui-prism-sys\prism'
+# Sources — siblings of this script.
+$cosmosSrc = Join-Path $native 'cosmos'
+$phononDir = Join-Path $native 'phonon'
+$prismSrc = Join-Path $native 'prism'
 
 $out = Join-Path $native 'out'
 $buildRoot = Join-Path $native 'build'
