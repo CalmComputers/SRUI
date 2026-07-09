@@ -4,8 +4,9 @@
 // A widget gallery arranged as tab-switched panels: the Views tabs show
 // one panel at a time (Editor, Lists, Grid, Dialogs, Dynamic, Game),
 // exercising every widget type, a custom-authored table widget, all
-// canned and custom dialogs, dynamic state, and game-style
-// press/release input on the Game panel.
+// canned and custom dialogs (including a bind dialog that rebinds the
+// die-roll combo), dynamic state, and game-style press/release input on
+// the Game panel.
 // Greet is the primary widget: Enter anywhere presses it (Ctrl+G too, as
 // a host-side binding). Widget shortcuts: Alt+V jumps to the view
 // switcher, Ctrl+Q presses Quit, Ctrl+J starts the job (Dynamic panel
@@ -158,12 +159,16 @@ roster.RowActivated += row =>
 
 // ── Dialogs panel: every canned dialog plus custom layered ones ──
 
+// The die-roll host binding, rebindable through the Bind dialog.
+var dieCombo = KeyCombo.WithCtrl(Key.Space);
+
 var msgButton = new Button(dialogsPanel, "Message");
 var confirmButton = new Button(dialogsPanel, "Confirm");
 var chooseButton = new Button(dialogsPanel, "Choose");
 var statusButton = new Button(dialogsPanel, "Status");
 var formButton = new Button(dialogsPanel, "Form");
 var nestedButton = new Button(dialogsPanel, "Nested");
+var bindButton = new Button(dialogsPanel, "Bind die roll");
 
 msgButton.Activated += () =>
 {
@@ -198,6 +203,7 @@ statusButton.Activated += () => app.ShowStatus(
         + "selection all work. Escape or Close returns to the demo.");
 formButton.Activated += OpenFormDialog;
 nestedButton.Activated += OpenNestedDialog;
+bindButton.Activated += OpenBindDialog;
 
 // ── Dynamic panel: state mutation, tickers, creation and removal ──
 
@@ -406,9 +412,12 @@ views.AddShortcut("alt+v");
 quit.AddShortcut("ctrl+q", ShortcutAction.Activate);
 startJob.AddShortcut("ctrl+j", ShortcutAction.JumpAndActivate);
 
-// Host-side bindings: Ctrl+G greets, Ctrl+L opens the log, and
-// Ctrl+Space rolls a die. Unlike widget shortcuts these are not
-// layer-scoped — unconsumed input reaches them from any dialog too.
+// Host-side bindings: Ctrl+G greets, Ctrl+L opens the log, and a
+// user-rebindable combo rolls a die (Ctrl+Space until the Bind dialog
+// changes it). Unlike widget shortcuts these are not layer-scoped —
+// unconsumed input reaches them from any dialog too. The die roll is
+// matched through the input's physical provenance, so any combo the
+// bind dialog can capture is also matchable here.
 app.UnhandledInput = input =>
 {
     if (input.IsRawKey(Keys.Char('g'), Mods.Ctrl))
@@ -422,7 +431,7 @@ app.UnhandledInput = input =>
         ShowEventLog();
         return true;
     }
-    if (input.IsRawKey(Keys.Space, Mods.Ctrl))
+    if (KeyCombo.FromInput(input) == dieCombo)
     {
         var roll = Random.Shared.Next(1, 7);
         Log($"die roll: {roll}");
@@ -458,6 +467,20 @@ void Greet()
         $"Hello, {who}. The fruit is {fruit}, and word wrap is {(wrap.Checked ? "on" : "off")}.");
 }
 
+// First-free-letter Alt mnemonic for a hand-built dialog button, the
+// same convention the canned dialogs apply.
+void AddMnemonicButton(Button button, HashSet<char> taken)
+{
+    foreach (var raw in button.Name ?? "")
+    {
+        var letter = char.ToLowerInvariant(raw);
+        if (letter is < 'a' or > 'z' || !taken.Add(letter))
+            continue;
+        button.AddShortcut($"alt+{letter}", ShortcutAction.Activate);
+        return;
+    }
+}
+
 // The event log as a reviewable status dialog, most recent first.
 void ShowEventLog()
 {
@@ -490,6 +513,82 @@ void OpenFormDialog()
         app.Announce("Cancelled.");
     };
     app.SetPrimary(create);
+    app.SetCancel(cancel);
+    dialog.AnnounceOpened();
+}
+
+// A bind dialog assembled from the toolkit's three mechanisms: the
+// shortcut field captures the combo exactly as pressed,
+// KeyCombo.ReservedReason names hard conflicts (framework combos —
+// refused on save, with the spoken reason), and Widget.ReservesKey
+// names soft ones (widgets that would swallow the combo while focused —
+// warned on capture, not refused, since a host binding still fires
+// everywhere else). Enter is capturable, so it saves only once focus
+// has left the field; Tab out, then Enter or Alt+S.
+void OpenBindDialog()
+{
+    Log("bind: opened");
+    var dialog = app.OpenDialog();
+    _ = new Label(
+        dialog, $"Die roll is {dieCombo.DisplayName()}. Press the new combination.");
+    var field = new ShortcutField(dialog, "New binding");
+    var save = new Button(dialog, "Save");
+    var cancel = new Button(dialog, "Cancel");
+    var taken = new HashSet<char>();
+
+    // Conflicts are reported as combos are captured, after the echo.
+    (string Owner, Widget Probe)[] probes =
+    [
+        ("edit boxes", notes),
+        ("lists", fruits),
+        ("sliders", volume),
+        ("the view switcher", views),
+    ];
+    field.Changed += () =>
+    {
+        if (field.Combo is not KeyCombo combo)
+            return;
+        if (combo.ReservedReason is string reason)
+        {
+            app.Announce($"{reason}.");
+            return;
+        }
+        foreach (var (owner, probe) in probes)
+        {
+            if (probe.ReservesKey(combo))
+            {
+                app.Announce($"Note: {owner} will take this combo while focused.");
+                break;
+            }
+        }
+    };
+
+    save.Activated += () =>
+    {
+        if (field.Combo is not KeyCombo combo)
+        {
+            app.Announce("Press a combination first, or cancel.");
+            return;
+        }
+        if (combo.ReservedReason is string reason)
+        {
+            // Hard-reserved: refuse and stay in the dialog.
+            app.Announce($"{reason}.");
+            return;
+        }
+        dieCombo = combo;
+        dialog.Close();
+        Log($"bind: die roll = {combo.ToConfigString()}");
+        app.Announce($"Die roll is now {combo.DisplayName()}.");
+    };
+    cancel.Activated += () =>
+    {
+        dialog.Close();
+        Log("bind: cancelled");
+    };
+    AddMnemonicButton(save, taken);
+    AddMnemonicButton(cancel, taken);
+    app.SetPrimary(save);
     app.SetCancel(cancel);
     dialog.AnnounceOpened();
 }
