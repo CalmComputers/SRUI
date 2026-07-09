@@ -116,7 +116,7 @@ public static class SruiDialogs
         close.Activated += dialog.Close;
         app.SetCancel(close);
         body.Focus();
-        app.Ui.ReannounceWithContext();
+        app.ReannounceWithContext();
         return dialog;
     }
 }

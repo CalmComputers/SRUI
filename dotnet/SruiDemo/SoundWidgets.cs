@@ -61,8 +61,6 @@ public class SoundListBox : ListBox
         base.SetItems(items);
     }
 
-    // Cross-assembly note: Widget.OnChanged is protected internal, but
-    // an override from outside Srui.Net declares plain protected.
     protected override void OnChanged()
     {
         base.OnChanged();

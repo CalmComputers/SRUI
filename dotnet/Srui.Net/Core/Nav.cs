@@ -63,7 +63,7 @@ internal static class Nav
                 foreach (var child in tree.Children(current))
                 {
                     var node = tree.Get(child);
-                    if (node is not null && (node.Label.States & States.Hidden) == 0)
+                    if (node is not null && (node.Label.States & WidgetStates.Hidden) == 0)
                         return child;
                 }
                 return NodeId.None;
@@ -138,9 +138,9 @@ internal static class Nav
         var node = tree.Get(id);
         if (node is null)
             return;
-        if ((node.Label.States & States.Hidden) != 0)
+        if ((node.Label.States & WidgetStates.Hidden) != 0)
             return;
-        if (WidgetLabel.IsFocusable(node.Label.Role, node.Label.States))
+        if (node.Label.IsFocusableNow)
             output.Add(id);
         foreach (var child in node.Children)
             CollectFocusableRecursive(tree, child, output);
@@ -156,7 +156,7 @@ internal static class Nav
         foreach (var sibling in raw)
         {
             var node = tree.Get(sibling);
-            if (node is not null && (node.Label.States & States.Hidden) == 0)
+            if (node is not null && (node.Label.States & WidgetStates.Hidden) == 0)
                 result.Add(sibling);
         }
         return result;

@@ -19,12 +19,10 @@ public sealed class Dialog : IWidgetContainer
 
     public bool IsOpen { get; private set; }
 
-    NodeId IWidgetContainer.ContainerNode => NodeId.None; // layer roots
-
     internal Dialog(SruiApp app)
     {
         App = app;
-        App.Ui.PushLayer();
+        App.Engine.PushLayer();
         IsOpen = true;
     }
 
@@ -33,8 +31,8 @@ public sealed class Dialog : IWidgetContainer
     /// files? Yes button".</summary>
     public void AnnounceOpened()
     {
-        App.Ui.EnsureFocus();
-        App.Ui.ReannounceWithContext();
+        App.EnsureFocus();
+        App.ReannounceWithContext();
     }
 
     /// <summary>Pop the layer; the previous focus is restored and

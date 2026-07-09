@@ -1,12 +1,13 @@
 using System.Text;
 
-namespace Srui.Core;
+namespace Srui;
 
 /// <summary>Speech rendering — the reference rendering of accessibility
 /// events. Pure functions from structured events to utterance strings.
-/// The self-voicing reader uses these; braille and UIA readers ignore
-/// them and read the structured payloads directly.</summary>
-internal static class SpeechRenderer
+/// The self-voicing <see cref="SpeechReader"/> uses these; braille and
+/// platform readers ignore them and read the structured payloads
+/// directly; tests assert against them.</summary>
+public static class SpeechRenderer
 {
     /// <summary>Maximum characters to announce verbatim for selections;
     /// beyond this we say "N characters selected".</summary>
@@ -18,9 +19,9 @@ internal static class SpeechRenderer
     {
         switch (ev)
         {
-            case AccessibilityEvent.Focused(_, var label, var contextLabels):
+            case AccessibilityEvent.Focused(_, var info, var contextLabels):
             {
-                var announcement = AnnounceFocus(label);
+                var announcement = AnnounceFocus(info);
                 return contextLabels.Count == 0
                     ? announcement
                     : $"{string.Join(" ", contextLabels)} {announcement}";
@@ -101,90 +102,57 @@ internal static class SpeechRenderer
         }
     }
 
-    /// <summary>The SpeechSource tag for the public event surface.</summary>
-    public static SpeechSource SourceOf(AccessibilityEvent ev) => ev switch
-    {
-        AccessibilityEvent.Focused => SpeechSource.Focused,
-        AccessibilityEvent.Typing => SpeechSource.Typing,
-        AccessibilityEvent.TextNav => SpeechSource.TextNav,
-        AccessibilityEvent.Selection => SpeechSource.Selection,
-        AccessibilityEvent.ItemNav => SpeechSource.ItemNav,
-        AccessibilityEvent.TabChange => SpeechSource.TabChange,
-        AccessibilityEvent.SliderChange => SpeechSource.SliderChange,
-        AccessibilityEvent.Filter => SpeechSource.Filter,
-        AccessibilityEvent.Clipboard => SpeechSource.Clipboard,
-        _ => SpeechSource.Announce,
-    };
-
-    /// <summary>The node an accessibility event concerns, or None for
-    /// free-form announcements.</summary>
-    public static NodeId NodeOf(AccessibilityEvent ev) => ev switch
-    {
-        AccessibilityEvent.Focused e => e.Node,
-        AccessibilityEvent.Typing e => e.Node,
-        AccessibilityEvent.TextNav e => e.Node,
-        AccessibilityEvent.Selection e => e.Node,
-        AccessibilityEvent.ItemNav e => e.Node,
-        AccessibilityEvent.TabChange e => e.Node,
-        AccessibilityEvent.SliderChange e => e.Node,
-        AccessibilityEvent.Filter e => e.Node,
-        AccessibilityEvent.Clipboard e => e.Node,
-        _ => NodeId.None,
-    };
-
     /// <summary>Construct a focus announcement from the golden six, in
     /// NVDA ordering: Name Role Value States Description Shortcut. No
     /// commas between fields; shortcuts spoken as "alt s" not "Alt+S".</summary>
-    public static string AnnounceFocus(WidgetLabel label)
+    public static string AnnounceFocus(WidgetInfo info)
     {
         var result = new StringBuilder(64);
 
         // Name (optional — nameless widgets announce as "role value ...").
-        if (!string.IsNullOrEmpty(label.Name))
-            result.Append(label.Name);
+        if (!string.IsNullOrEmpty(info.Name))
+            result.Append(info.Name);
 
-        // Role (empty for Custom — announces without a role word).
-        var roleText = label.Role.ToSpeech();
-        if (roleText.Length != 0)
+        // Role (empty for role-less widgets — announces without a role word).
+        if (info.Role.Length != 0)
         {
             if (result.Length != 0)
                 result.Append(' ');
-            result.Append(roleText);
+            result.Append(info.Role);
         }
 
         // Value.
-        if (label.Value.Length != 0)
+        if (info.Value.Length != 0)
         {
             result.Append(' ');
-            result.Append(label.Value);
+            result.Append(info.Value);
         }
 
-        // States (excluding Focused — focus is implicit), dynamic state
-        // text first (e.g. "filter ed", "no filter").
-        if (label.StateText.Length != 0)
+        // States, dynamic state text first (e.g. "filter ed", "no filter").
+        if (info.StateText.Length != 0)
         {
             result.Append(' ');
-            result.Append(label.StateText);
+            result.Append(info.StateText);
         }
-        if ((label.States & States.Disabled) != 0)
+        if ((info.States & WidgetStates.Disabled) != 0)
             result.Append(" unavailable");
-        if ((label.States & States.Required) != 0)
+        if ((info.States & WidgetStates.Required) != 0)
             result.Append(" required");
-        if ((label.States & States.Warning) != 0)
+        if ((info.States & WidgetStates.Warning) != 0)
             result.Append(" warning");
 
         // Description.
-        if (label.Description.Length != 0)
+        if (info.Description.Length != 0)
         {
             result.Append(' ');
-            result.Append(label.Description);
+            result.Append(info.Description);
         }
 
         // Shortcut — the first one attached, in spoken form ("alt w").
-        if (label.Shortcuts.Count != 0)
+        if (info.Shortcuts.Count != 0)
         {
             result.Append(' ');
-            result.Append(label.Shortcuts[0].Combo.DisplayName());
+            result.Append(info.Shortcuts[0].DisplayName());
         }
 
         return result.ToString();

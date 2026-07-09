@@ -1,14 +1,15 @@
 namespace Srui.Core;
 
-/// <summary>The core engine — ties the tree, widget behavior dispatch,
-/// focus, and the output event queue together. The host drives it: push
-/// logical input in with HandleInput, mutate the tree through the
-/// insertion/removal methods, and drain coalesced output events when
+/// <summary>The core engine — ties the tree, focus, navigation, and the
+/// output event queue together. Widget behavior lives in the public
+/// Widget classes: dispatch hands the focused node's input to its owning
+/// widget, and widgets write their label state and emissions back through
+/// the methods here. The host drives it: push logical input in with
+/// HandleInput, mutate the tree, and drain coalesced output events when
 /// convenient (typically after each input event).</summary>
 internal sealed class CoreUi
 {
     private readonly Tree _tree = new();
-    private readonly Dictionary<NodeId, WidgetBehavior> _behaviors = new();
     private readonly FocusMemory _focusMemory = new();
     private List<CoreEvent> _events = new();
     /// <summary>Host-supplied monotonic clock in milliseconds. Drives
@@ -28,6 +29,11 @@ internal sealed class CoreUi
 
     /// <summary>Install a platform clipboard (defaults to a no-op).</summary>
     public void SetClipboard(IClipboard clipboard) => _clipboard = clipboard;
+
+    public IClipboard Clipboard => _clipboard;
+
+    /// <summary>The host clock, as of the last SetNow.</summary>
+    public ulong Now => _nowMs;
 
     /// <summary>Advance the host clock (monotonic milliseconds). Call
     /// every loop iteration, not just on input: typeahead timeouts and
@@ -67,207 +73,15 @@ internal sealed class CoreUi
 
     // ── Tree construction ──
 
-    /// <summary>Insert a behavior-less node (groups, labels) at the end of
-    /// the parent's children (or the active layer's roots).</summary>
-    public NodeId Insert(NodeId parent, WidgetLabel label) =>
-        _tree.Insert(parent, int.MaxValue, label);
+    /// <summary>Insert a node at the end of the parent's children (or the
+    /// active layer's roots). The owner is the widget object that handles
+    /// the node's input and receives its events.</summary>
+    public NodeId Insert(NodeId parent, WidgetLabel label, Widget? owner = null) =>
+        _tree.Insert(parent, int.MaxValue, label, owner);
 
-    /// <summary>Insert a behavior-less node at a specific child position.</summary>
-    public NodeId InsertAt(NodeId parent, int index, WidgetLabel label) =>
-        _tree.Insert(parent, index, label);
-
-    /// <summary>Insert a node with widget behavior at the end of the
-    /// parent's children.</summary>
-    public NodeId InsertWidget(NodeId parent, WidgetLabel label, WidgetBehavior behavior)
-    {
-        var id = _tree.Insert(parent, int.MaxValue, label);
-        _behaviors[id] = behavior;
-        return id;
-    }
-
-    /// <summary>Insert a node with widget behavior at a specific child
-    /// position.</summary>
-    public NodeId InsertWidgetAt(NodeId parent, int index, WidgetLabel label, WidgetBehavior behavior)
-    {
-        var id = _tree.Insert(parent, index, label);
-        _behaviors[id] = behavior;
-        return id;
-    }
-
-    public NodeId Button(NodeId parent, string name) =>
-        InsertWidget(parent, new WidgetLabel(name, Role.Button), new ButtonBehavior());
-
-    public NodeId Checkbox(NodeId parent, string name, bool isChecked)
-    {
-        var label = new WidgetLabel(name, Role.CheckBox)
-        {
-            Value = CheckBoxBehavior.ValueText(isChecked),
-        };
-        return InsertWidget(parent, label, new CheckBoxBehavior(isChecked));
-    }
-
-    /// <summary>A single-selection listbox. Numbered adds "N of M" to
-    /// announcements and the focus state text.</summary>
-    public NodeId Listbox(NodeId parent, string name, List<string> items, bool numbered)
-    {
-        var behavior = new ListBoxBehavior(items, numbered);
-        var label = new WidgetLabel(name, Role.ListBox);
-        behavior.SyncLabel(label);
-        return InsertWidget(parent, label, behavior);
-    }
-
-    /// <summary>Replace a listbox's items (selection clamped).
-    /// Re-announces if the listbox is focused and its label changed.</summary>
-    public void SetListItems(NodeId id, List<string> items) =>
-        WithWidget<ListBoxBehavior>(id, (list, label) => list.SetItems(items, label));
-
-    /// <summary>Move a listbox's selection programmatically (clamped). A
-    /// change while focused speaks like a user-driven one — the item
-    /// alone, not a full re-announcement.</summary>
-    public void SetListSelected(NodeId id, int index)
-    {
-        if (_behaviors.GetValueOrDefault(id) is not ListBoxBehavior list)
-            return;
-        var node = _tree.Get(id);
-        if (node is null)
-            return;
-        var prev = list.Selected;
-        list.SetSelected(index, node.Label);
-        if (list.Selected != prev && _tree.Focus == id
-            && list.ChangeEvent(id, null) is AccessibilityEvent ev)
-            _events.Add(new CoreEvent.Acc(ev));
-    }
-
-    /// <summary>Mutate a node's widget state and label together;
-    /// re-announces if the node is focused and the label changed. All the
-    /// typed setters route through this.</summary>
-    private void WithWidget<T>(NodeId id, Action<T, WidgetLabel> mutate) where T : WidgetBehavior
-    {
-        if (_behaviors.GetValueOrDefault(id) is not T typed)
-            return;
-        var node = _tree.Get(id);
-        if (node is null)
-            return;
-        var before = node.Label.Clone();
-        mutate(typed, node.Label);
-        var changed = !node.Label.ContentEquals(before);
-        if (RecoverUnreachableFocus())
-            return;
-        if (_tree.Focus == id && changed)
-            EmitFocused(id);
-    }
-
-    public NodeId Slider(NodeId parent, string name, int value, int min, int max) =>
-        SliderWidget(parent, name, new SliderBehavior(value, min, max));
-
-    /// <summary>Insert a pre-configured slider (steps, unit).</summary>
-    public NodeId SliderWidget(NodeId parent, string name, SliderBehavior slider)
-    {
-        var label = new WidgetLabel(name, Role.Slider);
-        slider.SyncLabel(label);
-        return InsertWidget(parent, label, slider);
-    }
-
-    /// <summary>Move a slider programmatically (clamped). A change while
-    /// focused speaks like a user-driven one — the new value alone — so
-    /// ticking progress bars stay terse.</summary>
-    public void SetSliderValue(NodeId id, int value)
-    {
-        if (_behaviors.GetValueOrDefault(id) is not SliderBehavior slider)
-            return;
-        var node = _tree.Get(id);
-        if (node is null)
-            return;
-        var prev = slider.Value;
-        slider.SetValue(value, node.Label);
-        if (slider.Value != prev && _tree.Focus == id)
-            _events.Add(new CoreEvent.Acc(slider.ChangeEvent(id)));
-    }
-
-    public NodeId TabControl(NodeId parent, string name, List<string> tabs, int active)
-    {
-        var behavior = new TabControlBehavior(tabs, active);
-        var label = new WidgetLabel(name, Role.TabControl);
-        behavior.SyncLabel(label);
-        return InsertWidget(parent, label, behavior);
-    }
-
-    /// <summary>Switch a tab control programmatically (clamped). A change
-    /// while focused speaks like a user-driven one — the tab name alone.</summary>
-    public void SetActiveTab(NodeId id, int index)
-    {
-        if (_behaviors.GetValueOrDefault(id) is not TabControlBehavior tabs)
-            return;
-        var node = _tree.Get(id);
-        if (node is null)
-            return;
-        var prev = tabs.Active;
-        tabs.SetActive(index, node.Label);
-        if (tabs.Active != prev && _tree.Focus == id
-            && tabs.ChangeEvent(id) is AccessibilityEvent ev)
-            _events.Add(new CoreEvent.Acc(ev));
-    }
-
-    public NodeId ShortcutField(NodeId parent, string name)
-    {
-        var behavior = new ShortcutFieldBehavior();
-        var label = new WidgetLabel(name, Role.ShortcutField);
-        behavior.SyncLabel(label);
-        return InsertWidget(parent, label, behavior);
-    }
-
-    /// <summary>Set or clear a shortcut field's combo programmatically.</summary>
-    public void SetShortcutCombo(NodeId id, KeyCombo? combo) =>
-        WithWidget<ShortcutFieldBehavior>(id, (field, label) => field.SetCombo(combo, label));
-
-    public NodeId FilterListbox(NodeId parent, string name, List<string> items)
-    {
-        var behavior = new FilterListBoxBehavior(items);
-        var label = new WidgetLabel(name, Role.ListBox);
-        behavior.SyncLabel(label);
-        return InsertWidget(parent, label, behavior);
-    }
-
-    /// <summary>Replace a filter list's items (filter kept, selection
-    /// reset). Re-announces if focused and the label changed.</summary>
-    public void SetFilterItems(NodeId id, List<string> items) =>
-        WithWidget<FilterListBoxBehavior>(id, (filter, label) => filter.SetItems(items, label));
-
-    /// <summary>Clear a filter list's query and selection.</summary>
-    public void ClearFilter(NodeId id) =>
-        WithWidget<FilterListBoxBehavior>(id, (filter, label) => filter.ClearFilter(label));
-
-    /// <summary>An edit box. A null name announces as "role value" only.</summary>
-    public NodeId Editbox(NodeId parent, string? name, string text, bool multiline)
-    {
-        var behavior = new EditBoxBehavior(text, multiline);
-        var role = Role.Edit(false, multiline);
-        var label = name is not null ? new WidgetLabel(name, role) : WidgetLabel.Nameless(role);
-        behavior.SyncLabel(label);
-        return InsertWidget(parent, label, behavior);
-    }
-
-    /// <summary>Replace an editbox's content (cursor clamped, selection
-    /// cleared). Re-announces if focused and the label changed.</summary>
-    public void SetEditboxText(NodeId id, string text) =>
-        WithWidget<EditBoxBehavior>(id, (edit, label) => edit.SetText(text, label));
-
-    /// <summary>Toggle an editbox's read-only state.</summary>
-    public void SetEditboxReadOnly(NodeId id, bool readOnly) =>
-        WithWidget<EditBoxBehavior>(id, (edit, label) => edit.SetReadOnly(readOnly, label));
-
-    public NodeId Group(NodeId parent, string name) =>
-        Insert(parent, new WidgetLabel(name, Role.Group));
-
-    /// <summary>A custom widget — focusable, no spoken role, no built-in
-    /// behavior. Every key falls through the core to the host's bindings;
-    /// the announcement is the name (plus value, states, description, and
-    /// shortcut when set).</summary>
-    public NodeId Custom(NodeId parent, string name) =>
-        Insert(parent, new WidgetLabel(name, Role.Custom));
-
-    public NodeId TextLabel(NodeId parent, string text) =>
-        Insert(parent, new WidgetLabel(text, Role.Label));
+    /// <summary>Insert a node at a specific child position.</summary>
+    public NodeId InsertAt(NodeId parent, int index, WidgetLabel label, Widget? owner = null) =>
+        _tree.Insert(parent, index, label, owner);
 
     /// <summary>Remove a node and its subtree. If focus was inside the
     /// removed subtree, it recovers to the nearest surviving focusable
@@ -278,7 +92,6 @@ internal sealed class CoreUi
         var focus = _tree.Focus;
         var focusInside = !focus.IsNone && (focus == id || IsAncestor(id, focus));
 
-        RemoveBehaviorSubtree(id);
         _tree.Remove(id);
         _focusMemory.Gc(_tree);
 
@@ -291,13 +104,6 @@ internal sealed class CoreUi
                 EmitFocused(next);
             }
         }
-    }
-
-    private void RemoveBehaviorSubtree(NodeId id)
-    {
-        _behaviors.Remove(id);
-        foreach (var child in _tree.Children(id))
-            RemoveBehaviorSubtree(child);
     }
 
     private bool IsAncestor(NodeId ancestor, NodeId node)
@@ -316,9 +122,18 @@ internal sealed class CoreUi
 
     public WidgetLabel? Label(NodeId id) => _tree.Get(id)?.Label;
 
-    /// <summary>Typed access to a node's widget behavior.</summary>
-    public T? Widget<T>(NodeId id) where T : WidgetBehavior =>
-        _behaviors.GetValueOrDefault(id) as T;
+    public Widget? OwnerOf(NodeId id) => _tree.Get(id)?.Owner;
+
+    // ── Emission (widgets write their output here) ──
+
+    public void Emit(CoreEvent ev) => _events.Add(ev);
+
+    public void EmitAccessibility(AccessibilityEvent ev) => _events.Add(new CoreEvent.Acc(ev));
+
+    /// <summary>Queue a free-form announcement ("Nothing to delete",
+    /// status messages) for the readers.</summary>
+    public void Announce(string text) =>
+        EmitAccessibility(new AccessibilityEvent.Announce(text));
 
     // ── Label mutation ──
 
@@ -327,7 +142,9 @@ internal sealed class CoreUi
     /// collapses bursts). If the mutation made the focused node
     /// unreachable (hidden, disabled, or inside a newly hidden subtree),
     /// focus recovers to the nearest focusable node and announces there
-    /// instead.</summary>
+    /// instead. Widgets syncing state during their own input handling
+    /// write the label directly instead — their emission is the
+    /// announcement.</summary>
     public void UpdateLabel(NodeId id, Action<WidgetLabel> mutate)
     {
         var node = _tree.Get(id);
@@ -346,19 +163,13 @@ internal sealed class CoreUi
     /// subtree).</summary>
     public void SetHidden(NodeId id, bool hidden) =>
         UpdateLabel(id, label => label.States = hidden
-            ? label.States | States.Hidden
-            : label.States & ~States.Hidden);
+            ? label.States | WidgetStates.Hidden
+            : label.States & ~WidgetStates.Hidden);
 
-    public void SetDisabled(NodeId id, bool disabled) =>
-        UpdateLabel(id, label => label.States = disabled
-            ? label.States | States.Disabled
-            : label.States & ~States.Disabled);
-
-    public void SetNodeName(NodeId id, string name) =>
-        UpdateLabel(id, label => label.Name = name);
-
-    public void SetNodeDescription(NodeId id, string description) =>
-        UpdateLabel(id, label => label.Description = description);
+    public void SetState(NodeId id, WidgetStates state, bool on) =>
+        UpdateLabel(id, label => label.States = on
+            ? label.States | state
+            : label.States & ~state);
 
     /// <summary>Attach a shortcut to a widget: pressing the combo jumps to
     /// it, activates it, or both. A widget may carry any number of
@@ -392,17 +203,17 @@ internal sealed class CoreUi
     }
 
     /// <summary>Whether the user can currently reach this node: focusable
-    /// in itself (visible, enabled, focusable role) and not inside a
+    /// in itself (visible, enabled, focusable kind) and not inside a
     /// hidden subtree. Gates focus recovery and primary/cancel activation.</summary>
     private bool Reachable(NodeId id)
     {
         var node = _tree.Get(id);
-        if (node is null || !WidgetLabel.IsFocusable(node.Label.Role, node.Label.States))
+        if (node is null || !node.Label.IsFocusableNow)
             return false;
         for (var parent = _tree.Parent(id); !parent.IsNone; parent = _tree.Parent(parent))
         {
             var p = _tree.Get(parent);
-            if (p is not null && (p.Label.States & States.Hidden) != 0)
+            if (p is not null && (p.Label.States & WidgetStates.Hidden) != 0)
                 return false;
         }
         return true;
@@ -451,9 +262,9 @@ internal sealed class CoreUi
     private void EmitFocused(NodeId id)
     {
         var node = _tree.Get(id);
-        if (node is not null)
+        if (node?.Owner is Widget owner)
             _events.Add(new CoreEvent.Acc(new AccessibilityEvent.Focused(
-                id, node.Label.Clone(), EmptyContext)));
+                owner, node.Label.ToInfo(), EmptyContext)));
     }
 
     private static readonly List<string> EmptyContext = new();
@@ -468,10 +279,10 @@ internal sealed class CoreUi
         if (id.IsNone)
             return;
         var node = _tree.Get(id);
-        if (node is null)
+        if (node?.Owner is not Widget owner)
             return;
         _events.Add(new CoreEvent.Acc(new AccessibilityEvent.Focused(
-            id, node.Label.Clone(), ContextLabelsFor(id))));
+            owner, node.Label.ToInfo(), ContextLabelsFor(id))));
     }
 
     private List<string> ContextLabelsFor(NodeId id)
@@ -484,7 +295,7 @@ internal sealed class CoreUi
             if (sibling == id)
                 break;
             var node = _tree.Get(sibling);
-            if (node is not null && node.Label.Role.Kind == RoleKind.Label
+            if (node is not null && node.Label.IsContextLabel
                 && !string.IsNullOrEmpty(node.Label.Name))
                 result.Add(node.Label.Name);
         }
@@ -505,11 +316,9 @@ internal sealed class CoreUi
     public void PushLayer() => _tree.PushLayer();
 
     /// <summary>Pop the top layer. The previous layer's focus is restored
-    /// and announced. Behaviors of the popped nodes are dropped.</summary>
+    /// and announced.</summary>
     public void PopLayer()
     {
-        foreach (var root in _tree.Roots)
-            RemoveBehaviorSubtree(root);
         var restored = _tree.PopLayer();
         _focusMemory.Gc(_tree);
         if (!restored.IsNone)
@@ -519,9 +328,9 @@ internal sealed class CoreUi
     // ── Input dispatch ──
 
     /// <summary>Dispatch one logical input. Claim order: the focused
-    /// node's behavior first, then framework navigation, then widget
-    /// shortcuts. True if consumed; the host routes unconsumed input to
-    /// its own bindings.</summary>
+    /// node's widget first, then framework navigation and layer defaults,
+    /// then widget shortcuts. True if consumed; the host routes unconsumed
+    /// input to its own bindings.</summary>
     public bool HandleInput(in InputEvent input)
     {
         // Establish focus if the tree has focusable content but no focus.
@@ -533,17 +342,12 @@ internal sealed class CoreUi
                 return true;
         }
 
-        // 1. Focused widget gets first claim.
+        // 1. The focused widget gets first claim.
         var focused = _tree.Focus;
-        if (!focused.IsNone && _behaviors.GetValueOrDefault(focused) is WidgetBehavior behavior)
+        if (!focused.IsNone && _tree.Get(focused)?.Owner is Widget owner)
         {
-            var node = _tree.Get(focused);
-            if (node is not null)
-            {
-                var ctx = new WidgetCtx(focused, node.Label, _events, _nowMs, _clipboard);
-                if (behavior.HandleInput(input, ctx))
-                    return true;
-            }
+            if (owner.HandleEngineInput(input))
+                return true;
         }
 
         // 2. Framework navigation and layer defaults.
@@ -637,9 +441,7 @@ internal sealed class CoreUi
         if (!remembered.IsNone && _tree.Parent(remembered) == container)
         {
             var node = _tree.Get(remembered);
-            if (node is not null
-                && WidgetLabel.IsFocusable(node.Label.Role, node.Label.States)
-                && (node.Label.States & States.Hidden) == 0)
+            if (node is not null && node.Label.IsFocusableNow)
             {
                 SetFocusInternal(remembered);
                 return;
@@ -651,11 +453,6 @@ internal sealed class CoreUi
     }
 
     // ── Output ──
-
-    /// <summary>Queue a free-form announcement ("Nothing to delete",
-    /// status messages) for the readers.</summary>
-    public void Announce(string text) =>
-        _events.Add(new CoreEvent.Acc(new AccessibilityEvent.Announce(text)));
 
     private static readonly List<CoreEvent> EmptyBatch = new();
 

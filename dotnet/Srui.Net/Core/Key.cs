@@ -1,10 +1,10 @@
-namespace Srui.Core;
+namespace Srui;
 
 /// <summary>A physical key, independent of modifier state. Wraps the flat
-/// encoding shared with the public <see cref="Keys"/> constants: named keys
-/// are small integers, characters are 0x1000_0000 | codepoint, F-keys are
+/// encoding shared with the <see cref="Keys"/> constants: named keys are
+/// small integers, characters are 0x1000_0000 | codepoint, F-keys are
 /// 0x2000_0000 | n.</summary>
-internal readonly record struct Key(uint Code)
+public readonly record struct Key(uint Code)
 {
     private const uint CharBase = 0x1000_0000;
     private const uint FBase = 0x2000_0000;
@@ -158,8 +158,10 @@ internal readonly record struct Key(uint Code)
     }
 }
 
-/// <summary>A key combined with modifier state.</summary>
-internal readonly record struct KeyCombo(Key Key, bool Ctrl, bool Alt, bool Shift)
+/// <summary>A key combined with modifier state. Carries both string forms
+/// (spoken and config) and the framework's reservation verdict, so a bind
+/// dialog needs nothing else.</summary>
+public readonly record struct KeyCombo(Key Key, bool Ctrl, bool Alt, bool Shift)
 {
     public static KeyCombo Plain(Key key) => new(key, false, false, false);
     public static KeyCombo WithCtrl(Key key) => new(key, true, false, false);
@@ -301,5 +303,32 @@ internal readonly record struct KeyCombo(Key Key, bool Ctrl, bool Alt, bool Shif
             return false;
         combo = new KeyCombo(key.Value, ctrl, alt, shift);
         return true;
+    }
+
+    /// <summary>If the combo is categorically unbindable — the framework
+    /// itself consumes it — the spoken reason why; otherwise null. Key
+    /// bindings are host policy, and this is the engine's whole
+    /// contribution to hard conflicts: everything else, including combos
+    /// like Ctrl+Tab or Escape that merely might collide with a cancel
+    /// widget, is at most a soft conflict for the host to warn about (see
+    /// <see cref="Widget.ReservesKey"/> for the per-widget side).</summary>
+    public string? ReservedReason
+    {
+        get
+        {
+            // Plain Tab / Shift+Tab: the focus ring must always work.
+            if (Key == Key.Tab && !Ctrl && !Alt)
+                return "Tab is reserved for moving between widgets";
+            // Alt+letter: widget mnemonics. Alt+arrows: hierarchy navigation.
+            if (Alt && !Ctrl && !Shift)
+            {
+                if (Key.IsChar(out var c) && char.IsAsciiLetter(c))
+                    return "Alt plus a letter is reserved for widget shortcuts";
+                if (Key == Key.Up || Key == Key.Down
+                    || Key == Key.Left || Key == Key.Right)
+                    return "Alt plus arrows is reserved for tree navigation";
+            }
+            return null;
+        }
     }
 }

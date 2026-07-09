@@ -5,7 +5,7 @@ namespace Srui.Core;
 /// <summary>EditBox input handling — single/multi-line text editing with
 /// full cursor navigation, selection, clipboard, and accessible event
 /// emission. <see cref="Handle"/> is a pure function over
-/// <see cref="EditorState"/>; <see cref="EditBoxBehavior"/> wraps it.</summary>
+/// <see cref="EditorState"/>; the public EditBox widget wraps it.</summary>
 internal static class EditBoxCore
 {
     /// <summary>Result of <see cref="Handle"/>: events to dispatch, plus
@@ -57,6 +57,13 @@ internal static class EditBoxCore
         }
         return "blank";
     }
+
+    /// <summary>The event a plain char-granularity cursor landing emits —
+    /// shared between user-driven moves and the programmatic
+    /// CursorPosition setter.</summary>
+    public static AccessibilityEvent.TextNav CharNavEvent(Widget widget, EditorState editor) =>
+        new(widget, RawGraphemeAtCursor(editor), CursorSpeakChar(editor, false),
+            NavGranularity.Char, null);
 
     /// <summary>Raw grapheme at the cursor (no speech expansion) for the
     /// structural TextNav payload.</summary>
@@ -218,7 +225,7 @@ internal static class EditBoxCore
     /// <summary>Handle input for a focused edit box. Reads and writes the
     /// editor state directly; sets Changed on the result when text is
     /// modified.</summary>
-    public static Result Handle(NodeId node, in InputEvent input, EditorState editor, IClipboard clipboard)
+    public static Result Handle(Widget widget, in InputEvent input, EditorState editor, IClipboard clipboard)
     {
         var prevCursor = editor.Cursor;
         var prevSelection = editor.Selection;
@@ -243,7 +250,7 @@ internal static class EditBoxCore
                     && editor.Cursor >= editor.Length
                     && prevCursor < editor.Length;
                 result.Events.Add(new AccessibilityEvent.TextNav(
-                    node,
+                    widget,
                     RawGraphemeAtCursor(editor),
                     NavContext(editor, navKind),
                     ToGranularity(navKind),
@@ -252,7 +259,7 @@ internal static class EditBoxCore
             else
             {
                 result.Events.Add(new AccessibilityEvent.TextNav(
-                    node,
+                    widget,
                     RawGraphemeAtCursor(editor),
                     NavContext(editor, navKind),
                     ToGranularity(navKind),
@@ -288,7 +295,7 @@ internal static class EditBoxCore
                     // A selection step that didn't change content — speak
                     // the cursor char like a regular Char nav.
                     result.Events.Add(new AccessibilityEvent.TextNav(
-                        node,
+                        widget,
                         RawGraphemeAtCursor(editor),
                         CursorSpeakChar(editor, false),
                         NavGranularity.Char,
@@ -299,7 +306,7 @@ internal static class EditBoxCore
                     ? $"{deltaLen} characters"
                     : editor.SliceToString(selStart, selEnd);
                 result.Events.Add(new AccessibilityEvent.Selection(
-                    node, delta,
+                    widget, delta,
                     isUnselecting ? SelectionKind.Unselected : SelectionKind.Selected));
                 return result;
             }
@@ -320,7 +327,7 @@ internal static class EditBoxCore
                 ? $"{length} characters"
                 : editor.Text();
             var result = Result.JustConsumed();
-            result.Events.Add(new AccessibilityEvent.Selection(node, delta, SelectionKind.All));
+            result.Events.Add(new AccessibilityEvent.Selection(widget, delta, SelectionKind.All));
             return result;
         }
 
@@ -341,7 +348,7 @@ internal static class EditBoxCore
 
             var result = new Result { Consumed = true, Changed = true };
             if (hadSel)
-                result.Events.Add(new AccessibilityEvent.Selection(node, "", SelectionKind.Cleared));
+                result.Events.Add(new AccessibilityEvent.Selection(widget, "", SelectionKind.Cleared));
 
             var lastWord = text.Length == 1 && IsWordSeparator(text[0])
                 && FirstSeparatorInRun(editor.Rope, editor.Cursor)
@@ -349,7 +356,7 @@ internal static class EditBoxCore
                 : null;
 
             result.Events.Add(new AccessibilityEvent.Typing(
-                node, text, lastWord, TypingKind.Insert));
+                widget, text, lastWord, TypingKind.Insert));
             return result;
         }
 
@@ -365,13 +372,13 @@ internal static class EditBoxCore
 
             var result = new Result { Consumed = true, Changed = true };
             if (hadSel)
-                result.Events.Add(new AccessibilityEvent.Selection(node, "", SelectionKind.Cleared));
+                result.Events.Add(new AccessibilityEvent.Selection(widget, "", SelectionKind.Cleared));
 
             var lastWord = FirstSeparatorInRun(editor.Rope, editor.Cursor)
                 ? CompletedWord(editor.Rope, editor.Cursor)
                 : null;
 
-            result.Events.Add(new AccessibilityEvent.Typing(node, "\n", lastWord, TypingKind.Insert));
+            result.Events.Add(new AccessibilityEvent.Typing(widget, "\n", lastWord, TypingKind.Insert));
             return result;
         }
 
@@ -384,7 +391,7 @@ internal static class EditBoxCore
             {
                 editor.DeleteSelectionSilent();
                 var cleared = new Result { Consumed = true, Changed = true };
-                cleared.Events.Add(new AccessibilityEvent.Selection(node, "", SelectionKind.Cleared));
+                cleared.Events.Add(new AccessibilityEvent.Selection(widget, "", SelectionKind.Cleared));
                 return cleared;
             }
             var canDelete = backward ? editor.Cursor > 0 : editor.Cursor < editor.Length;
@@ -406,9 +413,9 @@ internal static class EditBoxCore
             // spoken form ("dot", "cap A"); it rides in the grapheme field
             // and the renderer's SpeakChar passes multi-char strings through.
             if (word)
-                result.Events.Add(new AccessibilityEvent.Typing(node, "", deletedText, TypingKind.DeleteWord));
+                result.Events.Add(new AccessibilityEvent.Typing(widget, "", deletedText, TypingKind.DeleteWord));
             else
-                result.Events.Add(new AccessibilityEvent.Typing(node, deletedText, null, TypingKind.Delete));
+                result.Events.Add(new AccessibilityEvent.Typing(widget, deletedText, null, TypingKind.Delete));
             return result;
         }
 
@@ -423,7 +430,7 @@ internal static class EditBoxCore
                 if (clip.Length != 0)
                     clipboard.Write(clip);
                 var result = Result.JustConsumed();
-                result.Events.Add(new AccessibilityEvent.Clipboard(node, ClipboardOp.Copy));
+                result.Events.Add(new AccessibilityEvent.Clipboard(widget, ClipboardOp.Copy));
                 return result;
             }
             case InputKind.Cut:
@@ -434,7 +441,7 @@ internal static class EditBoxCore
                 if (clip.Length != 0)
                     clipboard.Write(clip);
                 var result = new Result { Consumed = true, Changed = true };
-                result.Events.Add(new AccessibilityEvent.Clipboard(node, ClipboardOp.Cut));
+                result.Events.Add(new AccessibilityEvent.Clipboard(widget, ClipboardOp.Cut));
                 return result;
             }
             case InputKind.Paste:
@@ -446,7 +453,7 @@ internal static class EditBoxCore
                     return Result.JustConsumed();
                 editor.Paste(text);
                 var result = new Result { Consumed = true, Changed = true };
-                result.Events.Add(new AccessibilityEvent.Clipboard(node, ClipboardOp.Paste));
+                result.Events.Add(new AccessibilityEvent.Clipboard(widget, ClipboardOp.Paste));
                 return result;
             }
             default:
@@ -472,53 +479,5 @@ internal static class EditBoxCore
             return "blank";
         var line = TextNav.CurrentLineText(editor.Rope, editor.Cursor);
         return line.Length == 0 ? "blank" : line;
-    }
-}
-
-/// <summary>EditBox — a single- or multi-line text editor with full
-/// cursor navigation, selection, clipboard, and typing echo. Enter
-/// inserts a newline in multiline editors and falls through to the
-/// layer's primary widget in single-line ones.</summary>
-internal sealed class EditBoxBehavior : WidgetBehavior
-{
-    private readonly EditorState _editor;
-
-    public EditBoxBehavior(string text, bool multiline) =>
-        _editor = new EditorState(text, multiline);
-
-    public EditorState Editor => _editor;
-
-    public string Text => _editor.Text();
-
-    /// <summary>Replace the content (cursor clamped, selection cleared).</summary>
-    public void SetText(string text, WidgetLabel label)
-    {
-        _editor.SetText(text);
-        SyncLabel(label);
-    }
-
-    public void SetReadOnly(bool readOnly, WidgetLabel label)
-    {
-        _editor.ReadOnly = readOnly;
-        if (label.Role.Kind == RoleKind.EditBox)
-            label.Role = Role.Edit(readOnly, label.Role.Multiline);
-        SyncLabel(label);
-    }
-
-    /// <summary>Label value mirrors the selection or the current line at
-    /// the cursor.</summary>
-    public void SyncLabel(WidgetLabel label) => label.Value = EditBoxCore.LabelValue(_editor);
-
-    public override bool HandleInput(in InputEvent input, in WidgetCtx ctx)
-    {
-        var result = EditBoxCore.Handle(ctx.Node, input, _editor, ctx.Clipboard);
-        if (!result.Consumed)
-            return false;
-        foreach (var ev in result.Events)
-            ctx.EmitAccessibility(ev);
-        if (result.Changed)
-            ctx.EmitWidget(new CoreEvent.Changed(ctx.Node));
-        SyncLabel(ctx.Label);
-        return true;
     }
 }

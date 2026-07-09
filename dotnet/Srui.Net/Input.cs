@@ -86,7 +86,7 @@ public static class Keys
     /// key/mods encoding. False when the string does not parse.</summary>
     public static bool TryParse(string combo, out uint key, out Mods mods)
     {
-        if (!Srui.Core.KeyCombo.TryParseConfig(combo, out var parsed))
+        if (!KeyCombo.TryParseConfig(combo, out var parsed))
         {
             key = 0;
             mods = Mods.None;
@@ -113,7 +113,8 @@ public enum KeyPhase
 /// Keys).</summary>
 public readonly record struct KeyInput(uint Key, Mods Mods, KeyPhase Phase);
 
-/// <summary>A logical input event as it crosses the FFI boundary.</summary>
+/// <summary>A logical input event: a kind plus its payload (a typed
+/// codepoint in Ch, or a flat key/mods pair for RawKey).</summary>
 public readonly record struct InputEvent(InputKind Kind, uint Ch, uint Key, Mods Mods)
 {
     public static InputEvent Simple(InputKind kind) => new(kind, 0, 0, Mods.None);

@@ -75,3 +75,33 @@ public sealed class Speech : IDisposable
         PrismNative.prism_backend_is_speaking(_backend, out var speaking) == PrismNative.Ok
         && speaking;
 }
+
+/// <summary>The reference self-voicing reader: renders accessibility
+/// events to utterances with <see cref="SpeechRenderer"/> and forwards
+/// them to a Prism voice. Installed out of the box by a windowed
+/// <see cref="SruiApp"/>; interruption policy (silencing on a keypress)
+/// lives here, not in the engine.</summary>
+public sealed class SpeechReader : IReader, IDisposable
+{
+    public Speech Voice { get; }
+
+    /// <summary>A reader over the best available Prism backend.</summary>
+    public SpeechReader() : this(new Speech())
+    {
+    }
+
+    /// <summary>A reader over an existing voice; the reader takes
+    /// ownership and disposes it.</summary>
+    public SpeechReader(Speech voice) => Voice = voice;
+
+    public void OnEvent(AccessibilityEvent e)
+    {
+        // An event that renders to silence is skipped.
+        if (SpeechRenderer.RenderEvent(e) is string text)
+            Voice.Speak(text);
+    }
+
+    public void OnInterrupt() => Voice.Stop();
+
+    public void Dispose() => Voice.Dispose();
+}

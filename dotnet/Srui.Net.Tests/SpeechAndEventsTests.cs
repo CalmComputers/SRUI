@@ -6,83 +6,85 @@ namespace Srui.Net.Tests;
 
 public class SpeechRendererTests
 {
+    private static WidgetInfo Info(
+        string? name, string role, string value = "", string stateText = "",
+        WidgetStates states = WidgetStates.None, string description = "",
+        params KeyCombo[] shortcuts) =>
+        new(name, role, value, stateText, states, description, shortcuts);
+
+    private static readonly SruiApp App = SruiApp.Headless();
+
     [Fact]
     public void AnnounceButtonWithShortcut()
     {
-        var label = new WidgetLabel("Save", Role.Button);
-        label.Shortcuts.Add(new WidgetShortcut(KeyCombo.WithAlt(Key.Char('s')), ShortcutAction.Jump));
-        Assert.Equal("Save button alt s", SpeechRenderer.AnnounceFocus(label));
+        var info = Info("Save", "button", shortcuts: KeyCombo.WithAlt(Key.Char('s')));
+        Assert.Equal("Save button alt s", SpeechRenderer.AnnounceFocus(info));
 
         // Only the first shortcut is announced.
-        label.Shortcuts.Add(new WidgetShortcut(KeyCombo.WithCtrl(Key.Char('s')), ShortcutAction.Activate));
-        Assert.Equal("Save button alt s", SpeechRenderer.AnnounceFocus(label));
+        var two = Info(
+            "Save", "button",
+            shortcuts: [KeyCombo.WithAlt(Key.Char('s')), KeyCombo.WithCtrl(Key.Char('s'))]);
+        Assert.Equal("Save button alt s", SpeechRenderer.AnnounceFocus(two));
     }
 
     [Fact]
     public void AnnounceCheckboxStates()
     {
-        var label = new WidgetLabel("Word Wrap", Role.CheckBox) { Value = "not checked" };
-        Assert.Equal("Word Wrap check box not checked", SpeechRenderer.AnnounceFocus(label));
-
-        label.Value = "checked";
-        Assert.Equal("Word Wrap check box checked", SpeechRenderer.AnnounceFocus(label));
+        Assert.Equal(
+            "Word Wrap check box not checked",
+            SpeechRenderer.AnnounceFocus(Info("Word Wrap", "check box", "not checked")));
+        Assert.Equal(
+            "Word Wrap check box checked",
+            SpeechRenderer.AnnounceFocus(Info("Word Wrap", "check box", "checked")));
     }
 
     [Fact]
     public void AnnounceEditboxBlank()
     {
-        var label = new WidgetLabel("Notes", Role.Edit()) { Value = "blank" };
-        Assert.Equal("Notes edit blank", SpeechRenderer.AnnounceFocus(label));
+        Assert.Equal(
+            "Notes edit blank",
+            SpeechRenderer.AnnounceFocus(Info("Notes", "edit", "blank")));
     }
 
     [Fact]
     public void AnnounceListboxWithPosition()
     {
-        var label = new WidgetLabel("Files", Role.ListBox)
-        {
-            Value = "readme.txt",
-            StateText = "1 of 3",
-        };
-        Assert.Equal("Files list readme.txt 1 of 3", SpeechRenderer.AnnounceFocus(label));
+        Assert.Equal(
+            "Files list readme.txt 1 of 3",
+            SpeechRenderer.AnnounceFocus(Info("Files", "list", "readme.txt", "1 of 3")));
     }
 
     [Fact]
-    public void AnnounceCustomWidgetSkipsRole()
+    public void AnnounceRolelessWidgetSkipsRole()
     {
-        var label = new WidgetLabel("Arena", Role.Custom);
-        Assert.Equal("Arena", SpeechRenderer.AnnounceFocus(label));
-
-        label.Description = "arrow keys move";
-        Assert.Equal("Arena arrow keys move", SpeechRenderer.AnnounceFocus(label));
+        Assert.Equal("Arena", SpeechRenderer.AnnounceFocus(Info("Arena", "")));
+        Assert.Equal(
+            "Arena arrow keys move",
+            SpeechRenderer.AnnounceFocus(Info("Arena", "", description: "arrow keys move")));
     }
 
     [Fact]
     public void AnnounceNamelessWidget()
     {
-        var label = WidgetLabel.Nameless(Role.Edit());
-        label.Value = "blank";
-        Assert.Equal("edit blank", SpeechRenderer.AnnounceFocus(label));
+        Assert.Equal("edit blank", SpeechRenderer.AnnounceFocus(Info(null, "edit", "blank")));
     }
 
     [Fact]
     public void AnnounceDisabledRequired()
     {
-        var label = new WidgetLabel("Name", Role.Edit())
-        {
-            States = States.Disabled | States.Required,
-        };
-        Assert.Equal("Name edit unavailable required", SpeechRenderer.AnnounceFocus(label));
+        Assert.Equal(
+            "Name edit unavailable required",
+            SpeechRenderer.AnnounceFocus(
+                Info("Name", "edit", states: WidgetStates.Disabled | WidgetStates.Required)));
     }
 
     [Fact]
     public void AnnounceWithDescription()
     {
-        var label = new WidgetLabel("Volume", Role.Slider)
-        {
-            Value = "50",
-            Description = "master output",
-        };
-        Assert.Equal("Volume slider 50 master output", SpeechRenderer.AnnounceFocus(label));
+        Assert.Equal(
+            "Volume slider 50 master output",
+            SpeechRenderer.AnnounceFocus(
+                Info("Volume", "slider", "50", description: "master output")));
     }
 
     [Fact]
@@ -99,17 +101,17 @@ public class SpeechRendererTests
     [Fact]
     public void RenderFocusedEvent()
     {
-        var ev = new AccessibilityEvent.Focused(
-            new NodeId(1), new WidgetLabel("Save", Role.Button), new List<string>());
+        var save = new Button(App, "Save");
+        var ev = new AccessibilityEvent.Focused(save, Info("Save", "button"), []);
         Assert.Equal("Save button", SpeechRenderer.RenderEvent(ev));
     }
 
     [Fact]
     public void RenderFocusedWithContext()
     {
+        var ok = new Button(App, "OK");
         var ev = new AccessibilityEvent.Focused(
-            new NodeId(1), new WidgetLabel("OK", Role.Button),
-            new List<string> { "Confirm delete?" });
+            ok, Info("OK", "button"), ["Confirm delete?"]);
         Assert.Equal("Confirm delete? OK button", SpeechRenderer.RenderEvent(ev));
     }
 
@@ -123,37 +125,47 @@ public class SpeechRendererTests
     [Fact]
     public void RenderClipboard()
     {
-        var ev = new AccessibilityEvent.Clipboard(new NodeId(1), ClipboardOp.Copy);
+        var notes = new EditBox(App, "Notes");
+        var ev = new AccessibilityEvent.Clipboard(notes, ClipboardOp.Copy);
         Assert.Equal("Copy", SpeechRenderer.RenderEvent(ev));
     }
 
     [Fact]
     public void RenderSliderWithUnit()
     {
-        var ev = new AccessibilityEvent.SliderChange(new NodeId(1), 50, "%");
+        var vol = new Slider(App, "Volume", 50, 0, 100, unit: "%");
+        var ev = new AccessibilityEvent.SliderChange(vol, 50, "%");
         Assert.Equal("50%", SpeechRenderer.RenderEvent(ev));
     }
 
     [Fact]
     public void RenderTabChangeSpeaksNameOnly()
     {
-        var ev = new AccessibilityEvent.TabChange(new NodeId(1), "Playlist", (1, 3));
+        var tabs = new TabControl(App, "Views", ["Files", "Playlist", "FX"]);
+        var ev = new AccessibilityEvent.TabChange(tabs, "Playlist", (1, 3));
         Assert.Equal("Playlist", SpeechRenderer.RenderEvent(ev));
     }
 }
 
 public class CoalesceTests
 {
-    private static CoreEvent FocusedEvent(ulong id, string name) =>
-        new CoreEvent.Acc(new AccessibilityEvent.Focused(
-            new NodeId(id), new WidgetLabel(name, Role.Button), new List<string>()));
+    private static readonly SruiApp App = SruiApp.Headless();
+
+    private static CoreEvent FocusedEvent(string name)
+    {
+        var widget = new Button(App, name);
+        return new CoreEvent.Acc(new AccessibilityEvent.Focused(
+            widget,
+            new WidgetInfo(name, "button", "", "", WidgetStates.None, "", []),
+            []));
+    }
 
     [Fact]
     public void CoalesceKeepsLastFocused()
     {
-        var a = FocusedEvent(1, "A");
-        var b = FocusedEvent(2, "B");
-        var output = Coalesce.Apply(new List<CoreEvent> { a, b });
+        var a = FocusedEvent("A");
+        var b = FocusedEvent("B");
+        var output = Coalesce.Apply([a, b]);
         Assert.Equal(new[] { b }, output);
     }
 
@@ -162,28 +174,28 @@ public class CoalesceTests
     {
         var one = new CoreEvent.Acc(new AccessibilityEvent.Announce("one"));
         var two = new CoreEvent.Acc(new AccessibilityEvent.Announce("two"));
-        var output = Coalesce.Apply(new List<CoreEvent> { one, two });
+        var output = Coalesce.Apply([one, two]);
         Assert.Equal(new CoreEvent[] { one, two }, output);
     }
 
     [Fact]
-    public void CoalescePreservesWidgetEvents()
+    public void CoalescePreservesActivationsAndCallbacks()
     {
-        var a = FocusedEvent(1, "A");
-        var b = FocusedEvent(2, "B");
+        var a = FocusedEvent("A");
+        var b = FocusedEvent("B");
         var w = new CoreEvent.Activated(new NodeId(3));
-        var output = Coalesce.Apply(new List<CoreEvent> { a, w, b });
+        var output = Coalesce.Apply([a, w, b]);
         Assert.Equal(new CoreEvent[] { w, b }, output);
     }
 
     [Fact]
     public void CoalesceIsPerKindNotGlobal()
     {
-        var f = FocusedEvent(1, "A");
-        var item = new CoreEvent.Acc(new AccessibilityEvent.ItemNav(
-            new NodeId(2), "first", (0, 3), null));
+        var f = FocusedEvent("A");
+        var list = new ListBox(App, "L", ["first"]);
+        var item = new CoreEvent.Acc(new AccessibilityEvent.ItemNav(list, "first", (0, 3), null));
         // Focused and ItemNav are different kinds — both survive.
-        var output = Coalesce.Apply(new List<CoreEvent> { f, item });
+        var output = Coalesce.Apply([f, item]);
         Assert.Equal(new CoreEvent[] { f, item }, output);
     }
 }

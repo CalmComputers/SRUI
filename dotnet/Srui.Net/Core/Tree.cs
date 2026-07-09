@@ -8,12 +8,18 @@ internal sealed class Node
     public NodeId Parent;
     public readonly List<NodeId> Children = new();
     public WidgetLabel Label;
+    /// <summary>The widget object this node embodies: it handles the
+    /// node's input and receives its events. Null only for nodes built
+    /// below the class layer (engine tests). Dies with the node, so a
+    /// queued event for a removed widget resolves to nothing.</summary>
+    public readonly Widget? Owner;
 
-    public Node(NodeId id, NodeId parent, WidgetLabel label)
+    public Node(NodeId id, NodeId parent, WidgetLabel label, Widget? owner)
     {
         Id = id;
         Parent = parent;
         Label = label;
+        Owner = owner;
     }
 }
 
@@ -38,10 +44,10 @@ internal sealed class Tree
     /// <summary>Insert a new node as a child of <paramref name="parent"/>
     /// at <paramref name="index"/> (clamped). NodeId.None inserts as a
     /// root of the active layer; int.MaxValue appends.</summary>
-    public NodeId Insert(NodeId parent, int index, WidgetLabel label)
+    public NodeId Insert(NodeId parent, int index, WidgetLabel label, Widget? owner = null)
     {
         var id = new NodeId(_nextId++);
-        _nodes[id] = new Node(id, parent, label);
+        _nodes[id] = new Node(id, parent, label, owner);
 
         if (!parent.IsNone)
         {

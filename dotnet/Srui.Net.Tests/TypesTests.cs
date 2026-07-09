@@ -1,62 +1,28 @@
 using Srui;
-using Srui.Core;
 using Xunit;
 
 namespace Srui.Net.Tests;
 
-public class TypesTests
+/// <summary>Reservation tables — the soft-conflict side of bind-dialog
+/// warnings, one virtual per widget kind.</summary>
+public class ReservationTests
 {
-    [Fact]
-    public void RoleDisplay()
-    {
-        Assert.Equal("button", Role.Button.ToSpeech());
-        Assert.Equal("check box", Role.CheckBox.ToSpeech());
-        Assert.Equal("edit", Role.Edit().ToSpeech());
-        Assert.Equal("edit read only", Role.Edit(readOnly: true).ToSpeech());
-        Assert.Equal("edit multi line", Role.Edit(multiline: true).ToSpeech());
-        Assert.Equal("edit read only multi line", Role.Edit(true, true).ToSpeech());
-        Assert.Equal("list", Role.ListBox.ToSpeech());
-        Assert.Equal("group", Role.Group.ToSpeech());
-        Assert.Equal("tab control", Role.TabControl.ToSpeech());
-    }
-
-    [Fact]
-    public void FocusableRules()
-    {
-        Assert.True(WidgetLabel.IsFocusable(Role.Button, States.None));
-        Assert.True(WidgetLabel.IsFocusable(Role.CheckBox, States.None));
-        Assert.True(WidgetLabel.IsFocusable(Role.Edit(), States.None));
-        Assert.True(WidgetLabel.IsFocusable(Role.ListBox, States.None));
-        Assert.True(WidgetLabel.IsFocusable(Role.TabControl, States.None));
-        Assert.False(WidgetLabel.IsFocusable(Role.Group, States.None));
-        Assert.False(WidgetLabel.IsFocusable(Role.Label, States.None));
-        Assert.False(WidgetLabel.IsFocusable(Role.Button, States.Disabled));
-        Assert.False(WidgetLabel.IsFocusable(Role.Button, States.Hidden));
-        Assert.False(WidgetLabel.IsFocusable(Role.CheckBox, States.Hidden));
-    }
-
-    [Fact]
-    public void StatesBitflags()
-    {
-        var s = States.Focused | States.Disabled;
-        Assert.True((s & States.Focused) != 0);
-        Assert.True((s & States.Disabled) != 0);
-        Assert.False((s & States.Required) != 0);
-    }
+    private static readonly SruiApp App = SruiApp.Headless();
 
     [Fact]
     public void ButtonReservesEnterAndSpace()
     {
-        Assert.True(Role.Button.ReservesKey(KeyCombo.Plain(Key.Enter)));
-        Assert.True(Role.Button.ReservesKey(KeyCombo.Plain(Key.Space)));
-        Assert.False(Role.Button.ReservesKey(KeyCombo.WithCtrl(Key.Char('s'))));
-        Assert.False(Role.Button.ReservesKey(KeyCombo.Plain(Key.Up)));
+        var button = new Button(App, "Save");
+        Assert.True(button.ReservesKey(KeyCombo.Plain(Key.Enter)));
+        Assert.True(button.ReservesKey(KeyCombo.Plain(Key.Space)));
+        Assert.False(button.ReservesKey(KeyCombo.WithCtrl(Key.Char('s'))));
+        Assert.False(button.ReservesKey(KeyCombo.Plain(Key.Up)));
     }
 
     [Fact]
     public void EditboxReservesTypingAndNavigation()
     {
-        var edit = Role.Edit();
+        var edit = new EditBox(App, "Notes");
         // Typing
         Assert.True(edit.ReservesKey(KeyCombo.Plain(Key.Char('a'))));
         Assert.True(edit.ReservesKey(KeyCombo.Plain(Key.Space)));
@@ -81,44 +47,70 @@ public class TypesTests
     [Fact]
     public void ListboxReservesNavigationAndTypeahead()
     {
-        Assert.True(Role.ListBox.ReservesKey(KeyCombo.Plain(Key.Up)));
-        Assert.True(Role.ListBox.ReservesKey(KeyCombo.Plain(Key.Down)));
-        Assert.True(Role.ListBox.ReservesKey(KeyCombo.Plain(Key.Home)));
-        Assert.True(Role.ListBox.ReservesKey(KeyCombo.Plain(Key.Enter)));
-        Assert.True(Role.ListBox.ReservesKey(KeyCombo.Plain(Key.Char('a'))));
-        Assert.True(Role.ListBox.ReservesKey(KeyCombo.Plain(Key.Backspace)));
-        Assert.False(Role.ListBox.ReservesKey(KeyCombo.WithCtrl(Key.Char('s'))));
+        var list = new ListBox(App, "Files", ["a"]);
+        Assert.True(list.ReservesKey(KeyCombo.Plain(Key.Up)));
+        Assert.True(list.ReservesKey(KeyCombo.Plain(Key.Down)));
+        Assert.True(list.ReservesKey(KeyCombo.Plain(Key.Home)));
+        Assert.True(list.ReservesKey(KeyCombo.Plain(Key.Enter)));
+        Assert.True(list.ReservesKey(KeyCombo.Plain(Key.Char('a'))));
+        Assert.True(list.ReservesKey(KeyCombo.Plain(Key.Backspace)));
+        Assert.False(list.ReservesKey(KeyCombo.WithCtrl(Key.Char('s'))));
     }
 
     [Fact]
     public void TabControlReservesArrowsAndEdges()
     {
-        Assert.True(Role.TabControl.ReservesKey(KeyCombo.Plain(Key.Left)));
-        Assert.True(Role.TabControl.ReservesKey(KeyCombo.Plain(Key.Right)));
-        Assert.True(Role.TabControl.ReservesKey(KeyCombo.Plain(Key.Home)));
-        Assert.True(Role.TabControl.ReservesKey(KeyCombo.Plain(Key.Up)));
-        Assert.True(Role.TabControl.ReservesKey(KeyCombo.Plain(Key.Down)));
-        Assert.False(Role.TabControl.ReservesKey(KeyCombo.WithCtrl(Key.Char('s'))));
+        var tabs = new TabControl(App, "Views", ["A", "B"]);
+        Assert.True(tabs.ReservesKey(KeyCombo.Plain(Key.Left)));
+        Assert.True(tabs.ReservesKey(KeyCombo.Plain(Key.Right)));
+        Assert.True(tabs.ReservesKey(KeyCombo.Plain(Key.Home)));
+        Assert.True(tabs.ReservesKey(KeyCombo.Plain(Key.Up)));
+        Assert.True(tabs.ReservesKey(KeyCombo.Plain(Key.Down)));
+        Assert.False(tabs.ReservesKey(KeyCombo.WithCtrl(Key.Char('s'))));
     }
 
     [Fact]
-    public void GroupAndLabelReserveNothing()
+    public void ShortcutFieldReservesEverything()
+    {
+        var field = new ShortcutField(App, "Shortcut");
+        Assert.True(field.ReservesKey(KeyCombo.WithCtrl(Key.Char('s'))));
+        Assert.True(field.ReservesKey(KeyCombo.Plain(Key.F(5))));
+    }
+
+    [Fact]
+    public void SliderReservesArrowsEdgesAndPaging()
+    {
+        var slider = new Slider(App, "Volume", 0, 0, 100);
+        Assert.True(slider.ReservesKey(KeyCombo.Plain(Key.Left)));
+        Assert.True(slider.ReservesKey(KeyCombo.WithShift(Key.Right)));
+        Assert.True(slider.ReservesKey(KeyCombo.Plain(Key.PageUp)));
+        Assert.True(slider.ReservesKey(KeyCombo.Plain(Key.Home)));
+        Assert.False(slider.ReservesKey(KeyCombo.WithCtrl(Key.Char('s'))));
+    }
+
+    [Fact]
+    public void PassiveWidgetsReserveNothing()
     {
         var ctrlS = KeyCombo.WithCtrl(Key.Char('s'));
-        Assert.False(Role.Group.ReservesKey(ctrlS));
-        Assert.False(Role.Label.ReservesKey(ctrlS));
-        Assert.False(Role.Group.ReservesKey(KeyCombo.Plain(Key.Enter)));
-        Assert.False(Role.Label.ReservesKey(KeyCombo.Plain(Key.Enter)));
+        var group = new Group(App, "Options");
+        var label = new Label(App, "Prompt");
+        var custom = new CustomWidget(App, "Arena");
+        Assert.False(group.ReservesKey(ctrlS));
+        Assert.False(label.ReservesKey(ctrlS));
+        Assert.False(custom.ReservesKey(ctrlS));
+        Assert.False(group.ReservesKey(KeyCombo.Plain(Key.Enter)));
+        Assert.False(custom.ReservesKey(KeyCombo.Plain(Key.Enter)));
     }
+}
 
+public class WidgetStatesTests
+{
     [Fact]
-    public void MatchesKindIgnoresEditboxFlags()
+    public void StatesBitflags()
     {
-        var edit1 = Role.Edit();
-        var edit2 = Role.Edit(true, true);
-        Assert.True(edit1.MatchesKind(edit2));
-        Assert.True(edit2.MatchesKind(edit1));
-        Assert.False(Role.Button.MatchesKind(Role.CheckBox));
-        Assert.True(Role.Button.MatchesKind(Role.Button));
+        var s = WidgetStates.Hidden | WidgetStates.Disabled;
+        Assert.True((s & WidgetStates.Hidden) != 0);
+        Assert.True((s & WidgetStates.Disabled) != 0);
+        Assert.False((s & WidgetStates.Required) != 0);
     }
 }

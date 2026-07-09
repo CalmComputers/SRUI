@@ -1,186 +1,125 @@
 namespace Srui;
 
-/// <summary>Static text. Precedes the widget it describes in the tree.</summary>
+/// <summary>Static text. Precedes the widget it describes in the tree;
+/// its name becomes a context label for following siblings in context
+/// re-announcements (dialog openings).</summary>
 public class Label : Widget
 {
-    public Label(IWidgetContainer parent, string text) : base(parent)
+    public Label(IWidgetContainer parent, string text)
+        : base(parent, text, "label", focusable: false, isContextLabel: true)
     {
-        Node = App.Ui.TextLabel(parent.ContainerNode, text);
-        Register();
     }
 }
 
 /// <summary>A container; children are created with it as their parent.
-/// Alt+Down enters it, Alt+Up leaves.</summary>
-public class Group : Widget, IWidgetContainer
+/// Alt+Down enters it, Alt+Up leaves. Not in the tab ring.</summary>
+public class Group : Widget
 {
-    public Group(IWidgetContainer parent, string name) : base(parent)
+    public Group(IWidgetContainer parent, string name)
+        : base(parent, name, "group", focusable: false)
     {
-        Node = App.Ui.Group(parent.ContainerNode, name);
-        Register();
     }
-
-    NodeId IWidgetContainer.ContainerNode => Node;
 }
 
 /// <summary>A focusable widget with no spoken role and no built-in
-/// behavior: it announces as its bare name, every key falls through the
-/// core, and interaction is whatever the app binds on it (BindKey for
-/// press/release, shortcuts, host bindings). The building block for game
-/// surfaces and bespoke controls; may contain children, like a
-/// Group.</summary>
-public class CustomWidget : Widget, IWidgetContainer
+/// behavior: it announces as its bare name, every key falls through to
+/// the host, and interaction is whatever the app binds on it (BindKey
+/// for press/release, shortcuts, host bindings) — or whatever a subclass
+/// implements in OnInput. The building block for game surfaces and
+/// bespoke controls; may contain children, like a Group.</summary>
+public class CustomWidget : Widget
 {
-    public CustomWidget(IWidgetContainer parent, string name) : base(parent)
+    public CustomWidget(IWidgetContainer parent, string name) : base(parent, name)
     {
-        Node = App.Ui.Custom(parent.ContainerNode, name);
-        Register();
     }
-
-    NodeId IWidgetContainer.ContainerNode => Node;
 }
 
 /// <summary>Enter or Space presses it (or Enter anywhere, as the layer's
 /// primary; Escape anywhere, as the cancel).</summary>
 public class Button : Widget
 {
-    public Button(IWidgetContainer parent, string name) : base(parent)
+    public Button(IWidgetContainer parent, string name) : base(parent, name, "button")
     {
-        Node = App.Ui.Button(parent.ContainerNode, name);
-        Register();
     }
 
-    public event Action? Activated;
+    /// <summary>Shift+Enter on the focused button.</summary>
     public event Action? SecondaryActivated;
 
-    protected internal virtual void OnActivated() => Activated?.Invoke();
-    protected internal virtual void OnSecondaryActivated() => SecondaryActivated?.Invoke();
-}
+    protected virtual void OnSecondaryActivated() => SecondaryActivated?.Invoke();
 
-/// <summary>Space toggles; Enter falls through to the layer's primary.</summary>
-public class CheckBox : Widget
-{
-    public CheckBox(IWidgetContainer parent, string name, bool isChecked = false) : base(parent)
+    public override bool ReservesKey(KeyCombo combo) =>
+        !combo.Ctrl && !combo.Alt && !combo.Shift
+        && (combo.Key == Key.Enter || combo.Key == Key.Space);
+
+    protected override bool OnInput(in InputEvent input)
     {
-        Node = App.Ui.Checkbox(parent.ContainerNode, name, isChecked);
-        Register();
-    }
-
-    public bool Checked => Ui.CheckboxChecked(Node);
-
-    public event Action<bool>? Toggled;
-
-    protected internal virtual void OnToggled(bool isChecked) => Toggled?.Invoke(isChecked);
-}
-
-/// <summary>Single- or multi-line text editor with full cursor
-/// navigation, selection, and clipboard.</summary>
-public class EditBox : Widget
-{
-    public EditBox(IWidgetContainer parent, string name, string text = "", bool multiline = false)
-        : base(parent)
-    {
-        Node = App.Ui.Editbox(parent.ContainerNode, name, text, multiline);
-        Register();
-    }
-
-    public string Text
-    {
-        get => Ui.EditboxText(Node);
-        set => Ui.SetEditboxText(Node, value);
-    }
-
-    private bool _readOnly;
-
-    public bool ReadOnly
-    {
-        get => _readOnly;
-        set
+        switch (input.Kind)
         {
-            _readOnly = value;
-            Ui.SetEditboxReadOnly(Node, value);
+            case InputKind.Activate:
+            case InputKind.TypeChar when (char)input.Ch == ' ':
+                EmitActivated();
+                return true;
+            case InputKind.SecondaryActivate:
+                Post(OnSecondaryActivated);
+                return true;
+            default:
+                return false;
         }
     }
 }
 
-/// <summary>Single-selection list with arrow navigation and typeahead.
-/// Enter falls through to the layer's primary, which reads the
-/// selection.</summary>
-public class ListBox : Widget
+/// <summary>Space toggles; Enter falls through to the layer's primary
+/// (Windows dialog convention).</summary>
+public class CheckBox : Widget
 {
-    public ListBox(
-        IWidgetContainer parent, string name, IReadOnlyList<string> items, bool numbered = false)
-        : base(parent)
+    private bool _checked;
+
+    public CheckBox(IWidgetContainer parent, string name, bool isChecked = false)
+        : base(parent, name, "check box")
     {
-        Node = App.Ui.Listbox(parent.ContainerNode, name, items, numbered);
-        Register();
+        _checked = isChecked;
+        SetValue(ValueText(isChecked));
     }
 
-    /// <summary>-1 when empty.</summary>
-    public int SelectedIndex => (int)Ui.ListboxSelected(Node);
+    private static string ValueText(bool isChecked) => isChecked ? "checked" : "not checked";
 
-    public string? SelectedItem => Ui.ListboxSelectedItem(Node);
-
-    public virtual void SetItems(IReadOnlyList<string> items) => Ui.SetListItems(Node, items);
-}
-
-/// <summary>Type-to-filter list: printable characters build a fuzzy
-/// query, Backspace erases, arrows navigate the results.</summary>
-public class FilterListBox : Widget
-{
-    public FilterListBox(IWidgetContainer parent, string name, IReadOnlyList<string> items)
-        : base(parent)
+    /// <summary>The checked state. A programmatic change while focused
+    /// speaks the new value exactly as a user-driven toggle would; it does
+    /// not raise Toggled (the program already knows).</summary>
+    public bool Checked
     {
-        Node = App.Ui.FilterListbox(parent.ContainerNode, name, items);
-        Register();
+        get => _checked;
+        set
+        {
+            if (value == _checked)
+                return;
+            _checked = value;
+            SetValue(ValueText(value));
+            if (IsFocused)
+                Announce(ValueText(value));
+        }
     }
 
-    public string? SelectedItem => Ui.FilterSelectedItem(Node);
-}
+    /// <summary>The user toggled the box; the argument is the new state.</summary>
+    public event Action<bool>? Toggled;
 
-/// <summary>Arrows adjust by the small step, Shift+arrows and
-/// PageUp/PageDown by the large step, Home/End jump to the edges.</summary>
-public class Slider : Widget
-{
-    public Slider(
-        IWidgetContainer parent, string name, int value, int min, int max,
-        int smallStep = 1, int largeStep = 10, string unit = "")
-        : base(parent)
+    protected virtual void OnToggled(bool isChecked) => Toggled?.Invoke(isChecked);
+
+    public override bool ReservesKey(KeyCombo combo) =>
+        !combo.Ctrl && !combo.Alt && !combo.Shift
+        && (combo.Key == Key.Enter || combo.Key == Key.Space);
+
+    protected override bool OnInput(in InputEvent input)
     {
-        Node = App.Ui.Slider(parent.ContainerNode, name, value, min, max, smallStep, largeStep, unit);
-        Register();
+        if (input.Kind == InputKind.TypeChar && (char)input.Ch == ' ')
+        {
+            _checked = !_checked;
+            var isChecked = _checked;
+            SetValue(ValueText(isChecked));
+            Post(() => OnToggled(isChecked));
+            Announce(ValueText(isChecked));
+            return true;
+        }
+        return false;
     }
-
-    public int Value
-    {
-        get => Ui.SliderValue(Node);
-        set => Ui.SetSliderValue(Node, value);
-    }
-}
-
-/// <summary>Left/Right cycle through tabs with wraparound.</summary>
-public class TabControl : Widget
-{
-    public TabControl(IWidgetContainer parent, string name, IReadOnlyList<string> tabs, int active = 0)
-        : base(parent)
-    {
-        Node = App.Ui.TabControl(parent.ContainerNode, name, tabs, active);
-        Register();
-    }
-
-    public int ActiveIndex => (int)Ui.TabActive(Node);
-}
-
-/// <summary>Captures whatever combo the user presses; Delete clears.
-/// Tab and Escape still leave the field.</summary>
-public class ShortcutField : Widget
-{
-    public ShortcutField(IWidgetContainer parent, string name) : base(parent)
-    {
-        Node = App.Ui.ShortcutField(parent.ContainerNode, name);
-        Register();
-    }
-
-    /// <summary>The captured combo in config form ("ctrl+shift+s"), or null.</summary>
-    public string? Combo => Ui.ShortcutCombo(Node);
 }

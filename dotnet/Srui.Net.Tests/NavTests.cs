@@ -6,17 +6,18 @@ namespace Srui.Net.Tests;
 
 public class NavTests
 {
-    private static WidgetLabel MakeLabel(string name, Role role) => new(name, role);
+    private static WidgetLabel MakeLabel(string name, string roleText = "button", bool focusable = true) =>
+        new(name, roleText) { Focusable = focusable };
 
     private static (Tree Tree, NodeId[] Ids) BuildDemoTree()
     {
         // Save (button), Options (group) -> [WordWrap (checkbox), Files (listbox)], Notes (editbox)
         var tree = new Tree();
-        var save = tree.Insert(NodeId.None, 0, MakeLabel("Save", Role.Button));
-        var options = tree.Insert(NodeId.None, 1, MakeLabel("Options", Role.Group));
-        var wrap = tree.Insert(options, 0, MakeLabel("Word Wrap", Role.CheckBox));
-        var files = tree.Insert(options, 1, MakeLabel("Recent Files", Role.ListBox));
-        var notes = tree.Insert(NodeId.None, 2, MakeLabel("Notes", Role.Edit()));
+        var save = tree.Insert(NodeId.None, 0, MakeLabel("Save"));
+        var options = tree.Insert(NodeId.None, 1, MakeLabel("Options", "group", focusable: false));
+        var wrap = tree.Insert(options, 0, MakeLabel("Word Wrap", "check box"));
+        var files = tree.Insert(options, 1, MakeLabel("Recent Files", "list"));
+        var notes = tree.Insert(NodeId.None, 2, MakeLabel("Notes", "edit"));
         return (tree, new[] { save, options, wrap, files, notes });
     }
 
@@ -90,12 +91,12 @@ public class NavTests
     public void HiddenSubtreeSkippedByTab()
     {
         var tree = new Tree();
-        var a = tree.Insert(NodeId.None, 0, MakeLabel("A", Role.Button));
-        var g = tree.Insert(NodeId.None, 1, MakeLabel("G", Role.Group));
-        var b = tree.Insert(g, 0, MakeLabel("B", Role.Button));
-        var c = tree.Insert(NodeId.None, 2, MakeLabel("C", Role.Button));
+        var a = tree.Insert(NodeId.None, 0, MakeLabel("A"));
+        var g = tree.Insert(NodeId.None, 1, MakeLabel("G", "group", focusable: false));
+        var b = tree.Insert(g, 0, MakeLabel("B"));
+        var c = tree.Insert(NodeId.None, 2, MakeLabel("C"));
 
-        tree.Get(g)!.Label.States |= States.Hidden;
+        tree.Get(g)!.Label.States |= WidgetStates.Hidden;
 
         Assert.Equal(a, Nav.TabNext(tree, NodeId.None));
         Assert.Equal(c, Nav.TabNext(tree, a));
@@ -108,11 +109,11 @@ public class NavTests
     public void HiddenNodeSkippedByTab()
     {
         var tree = new Tree();
-        var a = tree.Insert(NodeId.None, 0, MakeLabel("A", Role.Button));
-        var b = tree.Insert(NodeId.None, 1, MakeLabel("B", Role.Button));
-        var c = tree.Insert(NodeId.None, 2, MakeLabel("C", Role.Button));
+        var a = tree.Insert(NodeId.None, 0, MakeLabel("A"));
+        var b = tree.Insert(NodeId.None, 1, MakeLabel("B"));
+        var c = tree.Insert(NodeId.None, 2, MakeLabel("C"));
 
-        tree.Get(b)!.Label.States |= States.Hidden;
+        tree.Get(b)!.Label.States |= WidgetStates.Hidden;
 
         Assert.Equal(c, Nav.TabNext(tree, a));
         Assert.Equal(a, Nav.TabNext(tree, c));
@@ -122,11 +123,11 @@ public class NavTests
     public void TreeNavDownSkipsHiddenChild()
     {
         var tree = new Tree();
-        var g = tree.Insert(NodeId.None, 0, MakeLabel("G", Role.Group));
-        var hidden = tree.Insert(g, 0, MakeLabel("H", Role.Button));
-        var visible = tree.Insert(g, 1, MakeLabel("V", Role.Button));
+        var g = tree.Insert(NodeId.None, 0, MakeLabel("G", "group", focusable: false));
+        var hidden = tree.Insert(g, 0, MakeLabel("H"));
+        var visible = tree.Insert(g, 1, MakeLabel("V"));
 
-        tree.Get(hidden)!.Label.States |= States.Hidden;
+        tree.Get(hidden)!.Label.States |= WidgetStates.Hidden;
 
         Assert.Equal(visible, Nav.TreeNav(tree, g, TreeDirection.Down));
     }
@@ -135,11 +136,11 @@ public class NavTests
     public void SiblingNavSkipsHidden()
     {
         var tree = new Tree();
-        var a = tree.Insert(NodeId.None, 0, MakeLabel("A", Role.Button));
-        var b = tree.Insert(NodeId.None, 1, MakeLabel("B", Role.Button));
-        var c = tree.Insert(NodeId.None, 2, MakeLabel("C", Role.Button));
+        var a = tree.Insert(NodeId.None, 0, MakeLabel("A"));
+        var b = tree.Insert(NodeId.None, 1, MakeLabel("B"));
+        var c = tree.Insert(NodeId.None, 2, MakeLabel("C"));
 
-        tree.Get(b)!.Label.States |= States.Hidden;
+        tree.Get(b)!.Label.States |= WidgetStates.Hidden;
 
         Assert.Equal(c, Nav.TreeNav(tree, a, TreeDirection.Right));
         Assert.Equal(a, Nav.TreeNav(tree, c, TreeDirection.Left));
@@ -161,19 +162,20 @@ public class NavTests
 
     // ── Property tests (ported from proptest, seeded random) ──
 
-    private static Role RandomRole(Random rng) => rng.Next(7) switch
+    private static (string RoleText, bool Focusable) RandomRole(Random rng) => rng.Next(7) switch
     {
-        0 => Role.Button,
-        1 => Role.CheckBox,
-        2 => Role.Edit(rng.Next(2) == 0, rng.Next(2) == 0),
-        3 => Role.ListBox,
-        4 => Role.Group,
-        5 => Role.Label,
-        _ => Role.TabControl,
+        0 => ("button", true),
+        1 => ("check box", true),
+        2 => ("edit", true),
+        3 => ("list", true),
+        4 => ("group", false),
+        5 => ("label", false),
+        _ => ("tab control", true),
     };
 
-    private static States RandomStates(Random rng) =>
-        (States)(uint)rng.Next(64) & (States.Focused | States.Disabled | States.Required | States.Warning | States.Hidden);
+    private static WidgetStates RandomStates(Random rng) =>
+        (WidgetStates)(uint)rng.Next(64)
+        & (WidgetStates.Disabled | WidgetStates.Required | WidgetStates.Warning | WidgetStates.Hidden);
 
     private static Tree BuildRandomTree(Random rng)
     {
@@ -181,12 +183,17 @@ public class NavTests
         var rootCount = rng.Next(1, 10);
         for (var i = 0; i < rootCount; i++)
         {
-            var label = new WidgetLabel($"node_{i}", RandomRole(rng)) { States = RandomStates(rng) };
+            var (roleText, focusable) = RandomRole(rng);
+            var label = new WidgetLabel($"node_{i}", roleText)
+            {
+                Focusable = focusable,
+                States = RandomStates(rng),
+            };
             var id = tree.Insert(NodeId.None, i, label);
             var children = rng.Next(4);
             for (var c = 0; c < children; c++)
             {
-                var childRole = c % 2 == 0 ? Role.Button : Role.CheckBox;
+                var childRole = c % 2 == 0 ? "button" : "check box";
                 tree.Insert(id, c, new WidgetLabel($"child_{i}_{c}", childRole));
             }
         }
@@ -215,7 +222,7 @@ public class NavTests
                     Assert.NotEqual(NodeId.None, next);
                     var node = tree.Get(next);
                     Assert.NotNull(node);
-                    Assert.True(WidgetLabel.IsFocusable(node!.Label.Role, node.Label.States));
+                    Assert.True(node!.Label.IsFocusableNow);
                 }
                 current = next;
             }
@@ -259,23 +266,23 @@ public class ReservedTests
     [Fact]
     public void TabAndShiftTabReserved()
     {
-        Assert.NotNull(Reserved.ReservedReason(KeyCombo.Plain(Key.Tab)));
-        Assert.NotNull(Reserved.ReservedReason(KeyCombo.WithShift(Key.Tab)));
+        Assert.NotNull(KeyCombo.Plain(Key.Tab).ReservedReason);
+        Assert.NotNull(KeyCombo.WithShift(Key.Tab).ReservedReason);
     }
 
     [Fact]
     public void CtrlTabIsBindable()
     {
-        Assert.Null(Reserved.ReservedReason(KeyCombo.WithCtrl(Key.Tab)));
-        Assert.Null(Reserved.ReservedReason(KeyCombo.CtrlShift(Key.Tab)));
+        Assert.Null(KeyCombo.WithCtrl(Key.Tab).ReservedReason);
+        Assert.Null(KeyCombo.CtrlShift(Key.Tab).ReservedReason);
     }
 
     [Fact]
     public void AltLetterReservedButAltShiftLetterFree()
     {
-        Assert.NotNull(Reserved.ReservedReason(KeyCombo.WithAlt(Key.Char('s'))));
-        Assert.Null(Reserved.ReservedReason(KeyCombo.AltShift(Key.Char('s'))));
-        Assert.Null(Reserved.ReservedReason(KeyCombo.WithAlt(Key.Char('5'))));
+        Assert.NotNull(KeyCombo.WithAlt(Key.Char('s')).ReservedReason);
+        Assert.Null(KeyCombo.AltShift(Key.Char('s')).ReservedReason);
+        Assert.Null(KeyCombo.WithAlt(Key.Char('5')).ReservedReason);
     }
 
     [Fact]
@@ -283,17 +290,17 @@ public class ReservedTests
     {
         foreach (var key in new[] { Key.Up, Key.Down, Key.Left, Key.Right })
         {
-            Assert.NotNull(Reserved.ReservedReason(KeyCombo.WithAlt(key)));
-            Assert.Null(Reserved.ReservedReason(KeyCombo.Plain(key)));
-            Assert.Null(Reserved.ReservedReason(KeyCombo.WithCtrl(key)));
+            Assert.NotNull(KeyCombo.WithAlt(key).ReservedReason);
+            Assert.Null(KeyCombo.Plain(key).ReservedReason);
+            Assert.Null(KeyCombo.WithCtrl(key).ReservedReason);
         }
     }
 
     [Fact]
     public void OrdinaryCommandsAreBindable()
     {
-        Assert.Null(Reserved.ReservedReason(KeyCombo.WithCtrl(Key.Char('s'))));
-        Assert.Null(Reserved.ReservedReason(KeyCombo.Plain(Key.F(5))));
-        Assert.Null(Reserved.ReservedReason(KeyCombo.Plain(Key.Escape)));
+        Assert.Null(KeyCombo.WithCtrl(Key.Char('s')).ReservedReason);
+        Assert.Null(KeyCombo.Plain(Key.F(5)).ReservedReason);
+        Assert.Null(KeyCombo.Plain(Key.Escape).ReservedReason);
     }
 }

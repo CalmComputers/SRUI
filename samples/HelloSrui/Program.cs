@@ -10,7 +10,7 @@ using Srui;
 using Srui.Audio;
 
 using var app = new SruiApp("Hello SRUI");
-Console.WriteLine($"speech backend: {app.Voice.BackendName}");
+Console.WriteLine($"speech backend: {app.Voice?.BackendName}");
 
 // ── Audio: one manager, one effect bus, one positioned sound ──
 

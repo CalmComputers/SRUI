@@ -2,9 +2,10 @@
 // Srui.Audio sound out.
 //
 // A widget gallery arranged as tab-switched panels: the Views tabs show
-// one panel at a time (Editor, Lists, Dialogs, Dynamic, Game),
-// exercising every widget type, all canned and custom dialogs, dynamic
-// state, and game-style press/release input on the Game panel.
+// one panel at a time (Editor, Lists, Grid, Dialogs, Dynamic, Game),
+// exercising every widget type, a custom-authored table widget, all
+// canned and custom dialogs, dynamic state, and game-style
+// press/release input on the Game panel.
 // Greet is the primary widget: Enter anywhere presses it (Ctrl+G too, as
 // a host-side binding). Widget shortcuts: Alt+V jumps to the view
 // switcher, Ctrl+Q presses Quit, Ctrl+J starts the job (Dynamic panel
@@ -19,7 +20,7 @@ using Srui.Audio;
 using SruiDemo;
 
 using var app = new SruiApp("SRUI Demo (C#)");
-Console.WriteLine($"speech backend: {app.Voice.BackendName}");
+Console.WriteLine($"speech backend: {app.Voice?.BackendName}");
 
 // ── Audio ──
 
@@ -47,15 +48,16 @@ void Log(string entry)
 // ── Root: title, view switcher, panels, global buttons ──
 
 new Label(app, "SRUI demo, C sharp edition");
-string[] panelNames = ["Editor", "Lists", "Dialogs", "Dynamic", "Game"];
+string[] panelNames = ["Editor", "Lists", "Grid", "Dialogs", "Dynamic", "Game"];
 var views = new TabControl(app, "Views", panelNames);
 
 var editorPanel = new Group(app, "Editor");
 var listsPanel = new Group(app, "Lists");
+var gridPanel = new Group(app, "Grid");
 var dialogsPanel = new Group(app, "Dialogs");
 var dynamicPanel = new Group(app, "Dynamic");
 var gamePanel = new Group(app, "Game");
-Group[] panels = [editorPanel, listsPanel, dialogsPanel, dynamicPanel, gamePanel];
+Group[] panels = [editorPanel, listsPanel, gridPanel, dialogsPanel, dynamicPanel, gamePanel];
 
 var greet = new Button(app, "Greet");
 var showLog = new Button(app, "Event log");
@@ -93,7 +95,7 @@ notes.Changed += () => Log("notes changed");
 wrap.Toggled += on => Log($"word wrap: {(on ? "on" : "off")}");
 autosave.Toggled += on => Log($"autosave: {(on ? "on" : "off")}");
 telemetry.Toggled += on => Log($"telemetry: {(on ? "on" : "off")}");
-shortcut.Changed += () => Log($"shortcut: {shortcut.Combo ?? "cleared"}");
+shortcut.Changed += () => Log($"shortcut: {shortcut.Combo?.ToConfigString() ?? "cleared"}");
 
 // ── Lists panel: sound-augmented lists, live items, the SFX bus ──
 
@@ -131,6 +133,27 @@ volume.Changed += () =>
 {
     sfxBus.Volume = volume.Value / 100.0f;
     Log($"volume: {volume.Value}%");
+};
+
+// ── Grid panel: a custom table widget authored outside the toolkit ──
+
+// TableWidget lives in this assembly (TableWidget.cs): subclassed from
+// the public Widget base, it gets tab-ring membership, focus recovery,
+// announcements, and reservation warnings like any built-in.
+var roster = new TableWidget(
+    gridPanel, "Crew roster",
+    ["Name", "Role", "Watch"],
+    [
+        ["Imani", "navigator", "first"],
+        ["Sefa", "engineer", "second"],
+        ["Rook", "cook", "second"],
+        ["Tally", "lookout", "third"],
+    ]);
+roster.Changed += () => Log($"roster: {roster.Cell}");
+roster.RowActivated += row =>
+{
+    Log($"roster: row {row + 1} activated");
+    app.Announce($"Row {row + 1} chosen.");
 };
 
 // ── Dialogs panel: every canned dialog plus custom layered ones ──
@@ -202,8 +225,8 @@ rename.Activated += () =>
 {
     renamed = !renamed;
     var newName = renamed ? "Scratchpad" : "Scratch";
-    scratch.SetName(newName);
-    scratch.SetDescription(renamed ? "Renamed by the Rename button." : "");
+    scratch.Name = newName;
+    scratch.Description = renamed ? "Renamed by the Rename button." : "";
     Log($"scratch renamed: {newName}");
     app.Announce($"Renamed to {newName}.");
 };
@@ -267,7 +290,7 @@ spawn.Activated += () =>
 // nine-step lane (a ping marks each step's position), hold Q to draw a
 // bow and release to loose.
 var arena = new CustomWidget(gamePanel, "Arena");
-arena.SetDescription("Hold Left or Right to walk. Hold Q to draw, release to loose.");
+arena.Description = "Hold Left or Right to walk. Hold Q to draw, release to loose.";
 var drum = new Button(gamePanel, "Drum");
 
 var arenaX = 0; // lane position, -4..4, audible as ping azimuth

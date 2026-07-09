@@ -1,22 +1,31 @@
 using System.Diagnostics;
 using Srui.Audio;
+using Srui.Core;
 
 namespace Srui;
 
 /// <summary>
-/// The application shell: owns the window, the speech output, and the
-/// Ui, runs the event loop, and routes output events to widget
-/// instances. Widgets are created with the app (or a Group) as their
-/// container; call <see cref="Run"/> when the tree is built.
+/// The application shell: owns the engine, the readers, and (unless
+/// headless) the window and speech output, and runs the event loop.
+/// Widgets are created with the app (or another widget) as their
+/// container; call <see cref="Run"/> when the tree is built. A headless
+/// app (<see cref="Headless"/>) has no window and no voice — the host (a
+/// test, or a platform embedding) pushes inputs through
+/// <see cref="HandleInput"/> and drives <see cref="DispatchEvents"/> and
+/// <see cref="SetNow"/> itself.
 /// </summary>
 public sealed class SruiApp : IWidgetContainer, IDisposable
 {
-    /// <summary>The underlying context — the escape hatch for anything
-    /// the class layer doesn't cover.</summary>
-    public Ui Ui { get; }
+    internal CoreUi Engine { get; } = new();
 
-    public SdlHost Host { get; }
-    public Speech Voice { get; }
+    /// <summary>The SDL window and event pump; null when headless.</summary>
+    public SdlHost? Host { get; }
+
+    private readonly SpeechReader? _speechReader;
+
+    /// <summary>The Prism speech output behind the default speech reader;
+    /// null when headless.</summary>
+    public Speech? Voice => _speechReader?.Voice;
 
     private SoundManager? _audio;
 
@@ -45,42 +54,60 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     /// <summary>A clean Alt tap (commonly a menu or palette).</summary>
     public Action? AltTap { get; set; }
 
-    private readonly Dictionary<NodeId, Widget> _widgets = new();
+    private readonly List<IReader> _readers = new();
     private readonly Dictionary<ulong, Ticker> _tickers = new();
     private readonly Stack<Dialog> _dialogs = new();
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private bool _running;
 
     SruiApp IWidgetContainer.App => this;
-    NodeId IWidgetContainer.ContainerNode => NodeId.None;
 
+    /// <summary>A windowed app: SDL window, system clipboard, and a
+    /// speech reader over Prism (the running screen reader, or platform
+    /// TTS) installed out of the box.</summary>
     public SruiApp(string title, uint width = 400, uint height = 300)
     {
         Host = new SdlHost(title, width, height);
-        Voice = new Speech();
-        Ui = new Ui();
-        Host.ProvideClipboard(Ui);
+        Host.ProvideClipboard(this);
+        _speechReader = new SpeechReader();
+        _readers.Add(_speechReader);
     }
+
+    private SruiApp()
+    {
+    }
+
+    /// <summary>An app with no window, no clipboard, and no voice: the
+    /// engine and widget layer only. For tests and custom hosts — attach
+    /// readers, push inputs, drive the clock and the drain yourself.</summary>
+    public static SruiApp Headless() => new();
+
+    /// <summary>Install a platform clipboard (headless hosts; a windowed
+    /// app already carries the system clipboard).</summary>
+    public void SetClipboard(IClipboard clipboard) => Engine.SetClipboard(clipboard);
 
     public void Dispose()
     {
         _audio?.Dispose();
-        Ui.Dispose();
-        Voice.Dispose();
-        Host.Dispose();
+        _speechReader?.Dispose();
+        Host?.Dispose();
     }
 
-    internal void Register(Widget widget) => _widgets[widget.Node] = widget;
+    // ── Readers ──
 
-    /// <summary>Drop a widget and every registered descendant (walked
-    /// via the C#-side container chain) from the event router.</summary>
-    internal void UnregisterSubtree(Widget root)
+    /// <summary>Attach a reader: it receives every accessibility event
+    /// the drain delivers, alongside the default speech reader.</summary>
+    public void AddReader(IReader reader) => _readers.Add(reader);
+
+    /// <summary>Detach a reader. True when it was attached.</summary>
+    public bool RemoveReader(IReader reader) => _readers.Remove(reader);
+
+    /// <summary>Tell every reader the user acted: speech silences,
+    /// readers without a notion of interruption ignore it.</summary>
+    public void Interrupt()
     {
-        var doomed = _widgets.Values
-            .Where(w => ReferenceEquals(w, root) || (root is IWidgetContainer c && w.IsInside(c)))
-            .ToList();
-        foreach (var widget in doomed)
-            _widgets.Remove(widget.Node);
+        foreach (var reader in _readers)
+            reader.OnInterrupt();
     }
 
     // ── Dialogs ──
@@ -97,15 +124,12 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
 
     internal void CloseDialog(Dialog dialog)
     {
-        // Unregister the dialog's widgets, pop its layer. Dialogs close
-        // strictly LIFO; closing a buried dialog closes those above it.
+        // Dialogs close strictly LIFO; closing a buried dialog closes
+        // those above it.
         while (_dialogs.Count > 0)
         {
             var top = _dialogs.Pop();
-            var doomed = _widgets.Values.Where(w => w.IsInside(top)).ToList();
-            foreach (var widget in doomed)
-                _widgets.Remove(widget.Node);
-            Ui.PopLayer();
+            Engine.PopLayer();
             if (ReferenceEquals(top, dialog))
                 break;
             top.Close();
@@ -115,10 +139,11 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     // ── Tickers ──
 
     /// <summary>Start a periodic ticker; subscribe to its Tick event.
-    /// Resolution is the event-loop cadence (~5ms).</summary>
+    /// Resolution is the SetNow cadence — in a windowed app, the event
+    /// loop (~5ms).</summary>
     public Ticker StartTicker(uint intervalMs)
     {
-        var ticker = new Ticker(this, Ui.AddTicker(intervalMs));
+        var ticker = new Ticker(this, Engine.AddTicker(intervalMs));
         _tickers[ticker.Id] = ticker;
         return ticker;
     }
@@ -126,43 +151,130 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     internal void StopTicker(Ticker ticker)
     {
         _tickers.Remove(ticker.Id);
-        Ui.RemoveTicker(ticker.Id);
+        Engine.RemoveTicker(ticker.Id);
     }
+
+    // ── Layer defaults, announcements ──
 
     /// <summary>Enter anywhere presses this widget (unless the focused
     /// widget claims Enter itself).</summary>
-    public void SetPrimary(Widget widget) => Ui.SetPrimary(widget.Node);
+    public void SetPrimary(Widget widget) => Engine.SetPrimary(widget.Node);
 
     /// <summary>Escape anywhere presses this widget.</summary>
-    public void SetCancel(Widget widget) => Ui.SetCancel(widget.Node);
+    public void SetCancel(Widget widget) => Engine.SetCancel(widget.Node);
 
     /// <summary>Queue a free-form announcement (polite: speaks after
     /// whatever is already being said).</summary>
-    public void Announce(string text) => Ui.Announce(text);
+    public void Announce(string text) => Engine.Announce(text);
 
-    /// <summary>Announce urgently: silences current and queued speech
-    /// first. For time-critical game events, not routine feedback.</summary>
+    /// <summary>Announce urgently: interrupts the readers first. For
+    /// time-critical game events, not routine feedback.</summary>
     public void AnnounceNow(string text)
     {
-        Voice.Stop();
-        Ui.Announce(text);
+        Interrupt();
+        Engine.Announce(text);
     }
+
+    /// <summary>Re-announce the focused widget with its context labels
+    /// (preceding Label siblings) — the dialog-open announcement.</summary>
+    public void ReannounceWithContext() => Engine.ReannounceWithContext();
+
+    /// <summary>Focus the first focusable widget if nothing is focused.</summary>
+    public bool EnsureFocus() => Engine.EnsureFocus();
+
+    // ── Driving the engine (Run does this; headless hosts do it themselves) ──
+
+    /// <summary>Advance the engine clock (monotonic milliseconds):
+    /// typeahead timeouts are observed and tickers fire from here.
+    /// <see cref="Run"/> feeds it from its own stopwatch every iteration;
+    /// call it yourself only when driving a headless app.</summary>
+    public void SetNow(ulong milliseconds) => Engine.SetNow(milliseconds);
+
+    /// <summary>Dispatch one logical input through the claim order:
+    /// focused widget, framework navigation and layer defaults, widget
+    /// shortcuts, then dialog dismissal and the UnhandledInput hook.
+    /// False when nothing consumed it. Queued output is not delivered
+    /// until <see cref="DispatchEvents"/> runs.</summary>
+    public bool HandleInput(in InputEvent input)
+    {
+        if (Engine.HandleInput(input))
+            return true;
+        // Escape closes an open dialog with no explicit cancel widget.
+        if (input.Kind == InputKind.Dismiss && _dialogs.Count > 0)
+        {
+            _dialogs.Peek().Dismiss();
+            return true;
+        }
+        return UnhandledInput?.Invoke(input) == true;
+    }
+
+    /// <summary>Dispatch one physical key transition: the focused
+    /// widget's BindKey handlers first, then the UnhandledKey hook.
+    /// False when nothing claimed it.</summary>
+    public bool HandleKey(in KeyInput key)
+    {
+        if (Engine.OwnerOf(Engine.Focus)?.TryHandleKey(key) == true)
+            return true;
+        return UnhandledKey?.Invoke(key) == true;
+    }
+
+    /// <summary>Drain the engine until quiescent, delivering
+    /// accessibility events to the readers and widget/tick notifications
+    /// to their objects. Handlers may queue more output (announcements,
+    /// dialogs); it is delivered in the same call.</summary>
+    public void DispatchEvents()
+    {
+        while (true)
+        {
+            var batch = Engine.DrainEvents();
+            if (batch.Count == 0)
+                break;
+            foreach (var ev in batch)
+                Dispatch(ev);
+        }
+    }
+
+    private void Dispatch(CoreEvent ev)
+    {
+        switch (ev)
+        {
+            case CoreEvent.Acc(var acc):
+                foreach (var reader in _readers)
+                    reader.OnEvent(acc);
+                break;
+            case CoreEvent.Activated(var node):
+                Engine.OwnerOf(node)?.InvokeActivated();
+                break;
+            case CoreEvent.Callback(var invoke):
+                invoke();
+                break;
+            case CoreEvent.Tick(var id):
+                _tickers.GetValueOrDefault(id)?.OnTick();
+                break;
+        }
+    }
+
+    // ── The loop ──
 
     /// <summary>Stop the event loop after the current iteration.</summary>
     public void Quit() => _running = false;
 
-    /// <summary>Run until <see cref="Quit"/> or the window closes.</summary>
+    /// <summary>Run until <see cref="Quit"/> or the window closes.
+    /// Requires a windowed app.</summary>
     public void Run()
     {
-        Ui.EnsureFocus();
+        if (Host is not SdlHost host)
+            throw new InvalidOperationException(
+                "a headless app has no event loop; drive HandleInput/DispatchEvents/SetNow yourself");
+        Engine.EnsureFocus();
         _running = true;
         while (_running)
         {
             // Every iteration, not just on input: tickers fire from here,
             // and audio automation advances at the loop cadence.
-            Ui.SetNow((ulong)_clock.ElapsedMilliseconds);
+            Engine.SetNow((ulong)_clock.ElapsedMilliseconds);
             _audio?.Tick();
-            foreach (var hostEvent in Host.Pump(5))
+            foreach (var hostEvent in host.Pump(5))
             {
                 switch (hostEvent)
                 {
@@ -170,84 +282,23 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
                         _running = false;
                         break;
                     case HostEvent.KeyDown:
-                        Voice.Stop();
+                        Interrupt();
                         break;
                     case HostEvent.AltTap:
                         AltTap?.Invoke();
                         break;
                     case HostEvent.Key(var keyInput):
-                        // Physical key stream: the focused widget's
-                        // bindings first, then the app-global hook.
-                        if (_widgets.GetValueOrDefault(Ui.Focus)?.TryHandleKey(keyInput) != true)
-                            UnhandledKey?.Invoke(keyInput);
+                        HandleKey(keyInput);
                         break;
                     case HostEvent.FocusLost:
                         FocusLost?.Invoke();
                         break;
                     case HostEvent.Input(var input):
-                        if (!Ui.HandleInput(input))
-                        {
-                            // Escape closes an open dialog with no
-                            // explicit cancel widget.
-                            if (input.Kind == InputKind.Dismiss && _dialogs.Count > 0)
-                                _dialogs.Peek().Dismiss();
-                            else
-                                UnhandledInput?.Invoke(input);
-                        }
+                        HandleInput(input);
                         break;
                 }
             }
-
-            // Drain until quiescent: handlers may queue announcements
-            // that must be spoken this iteration.
-            while (_running)
-            {
-                var batch = Ui.Drain();
-                if (batch.Count == 0) break;
-                foreach (var output in batch)
-                    Dispatch(output);
-            }
+            DispatchEvents();
         }
-    }
-
-    private void Dispatch(OutputEvent output)
-    {
-        switch (output)
-        {
-            case OutputEvent.Speech(var text, _, _):
-                Voice.Speak(text);
-                break;
-            case OutputEvent.Activated(var node):
-                Expect<Button>(node)?.OnActivated();
-                break;
-            case OutputEvent.SecondaryActivated(var node):
-                Expect<Button>(node)?.OnSecondaryActivated();
-                break;
-            case OutputEvent.Toggled(var node, var isChecked):
-                Expect<CheckBox>(node)?.OnToggled(isChecked);
-                break;
-            case OutputEvent.Changed(var node):
-                _widgets.GetValueOrDefault(node)?.OnChanged();
-                break;
-            case OutputEvent.Tick(var id):
-                _tickers.GetValueOrDefault(id)?.OnTick();
-                break;
-        }
-    }
-
-    /// <summary>Null for nodes not registered with the class layer (the
-    /// raw-Ui escape hatch); throws when a registered widget's type
-    /// contradicts the event — that is protocol confusion, not a state
-    /// to limp through.</summary>
-    private T? Expect<T>(NodeId node) where T : Widget
-    {
-        var widget = _widgets.GetValueOrDefault(node);
-        return widget switch
-        {
-            null => null,
-            T typed => typed,
-            _ => throw new InvalidOperationException(
-                $"event for node {node.Value} expected {typeof(T).Name}, found {widget.GetType().Name}"),
-        };
     }
 }

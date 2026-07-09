@@ -1,46 +1,153 @@
 namespace Srui;
 
-/// <summary>A node handle. Zero means "no node".</summary>
-public readonly record struct NodeId(ulong Value)
+/// <summary>Widget states — conditions the user cannot directly change.</summary>
+[Flags]
+public enum WidgetStates : uint
 {
-    public static readonly NodeId None = new(0);
-    public bool IsNone => Value == 0;
+    None = 0,
+    Disabled = 1 << 0,
+    Required = 1 << 1,
+    Warning = 1 << 2,
+    Hidden = 1 << 3,
 }
 
-/// <summary>What kind of accessibility event a Speech output came from.</summary>
-public enum SpeechSource
+/// <summary>What a Typing event describes.</summary>
+public enum TypingKind
 {
-    Focused = 0,
-    Typing = 1,
-    TextNav = 2,
-    Selection = 3,
-    ItemNav = 4,
-    TabChange = 5,
-    SliderChange = 6,
-    Filter = 7,
-    Clipboard = 8,
-    Announce = 9,
+    Insert,
+    Delete,
+    DeleteWord,
 }
 
-/// <summary>One drained output event.</summary>
-public abstract record OutputEvent
+/// <summary>What a Selection event describes.</summary>
+public enum SelectionKind
 {
-    /// <summary>An accessibility event, pre-rendered to an utterance.</summary>
-    public sealed record Speech(string Text, SpeechSource Source, NodeId Node) : OutputEvent;
+    Selected,
+    Unselected,
+    Cleared,
+    All,
+}
 
-    /// <summary>A button was pressed (directly, or via primary/cancel routing).</summary>
-    public sealed record Activated(NodeId Node) : OutputEvent;
+/// <summary>An edge the user ran into (or landed on) while navigating.</summary>
+public enum Boundary
+{
+    Top,
+    Bottom,
+    Left,
+    Right,
+}
 
-    public sealed record SecondaryActivated(NodeId Node) : OutputEvent;
+public enum ClipboardOp
+{
+    Copy,
+    Cut,
+    Paste,
+}
 
-    /// <summary>A checkbox toggled; Checked is the new value.</summary>
-    public sealed record Toggled(NodeId Node, bool Checked) : OutputEvent;
+/// <summary>Granularity of a text-cursor move.</summary>
+public enum NavGranularity
+{
+    Char,
+    Word,
+    LineEdge,
+    TextEdge,
+    LineUp,
+    LineDown,
+}
 
-    /// <summary>A widget's state changed (text, selection, slider...).</summary>
-    public sealed record Changed(NodeId Node) : OutputEvent;
+/// <summary>A snapshot of the six semantic properties a screen reader
+/// announces, in NVDA order: name, role, value, states, description,
+/// shortcut. Role is the spoken role text (empty for role-less widgets);
+/// StateText is dynamic state spoken before the flag states (e.g. "no
+/// filter"); Shortcuts lists every combo attached to the widget, first
+/// added first (announcements speak the first). Taken at emission time,
+/// so readers never race the tree.</summary>
+public sealed record WidgetInfo(
+    string? Name,
+    string Role,
+    string Value,
+    string StateText,
+    WidgetStates States,
+    string Description,
+    IReadOnlyList<KeyCombo> Shortcuts);
 
-    /// <summary>A ticker's interval elapsed (see Ui.AddTicker).</summary>
-    public sealed record Tick(ulong Ticker) : OutputEvent;
+/// <summary>Structured payload describing what the user should perceive.
+/// Readers consume these; the reference speech rendering lives in
+/// <see cref="SpeechRenderer"/>. Every variant except Announce carries
+/// the widget it concerns.</summary>
+public abstract record AccessibilityEvent
+{
+    /// <summary>Focus moved to (or was re-announced on) a widget. Info is
+    /// the golden-six snapshot at emission. ContextLabels holds the names
+    /// of Label siblings preceding the widget in child order — empty on
+    /// ordinary focus moves, populated for context re-announcements after
+    /// a view transition (dialog openings).</summary>
+    public sealed record Focused(Widget Widget, WidgetInfo Info, IReadOnlyList<string> ContextLabels)
+        : AccessibilityEvent;
+
+    /// <summary>Text was inserted or deleted in an editor. Carries only
+    /// the perceptual content (what the user hears), not document text.
+    /// Grapheme is a single grapheme for Insert/Delete and empty for
+    /// DeleteWord; LastWord is set when an insert just crossed a word
+    /// boundary or when the kind is DeleteWord.</summary>
+    public sealed record Typing(Widget Widget, string Grapheme, string? LastWord, TypingKind Kind)
+        : AccessibilityEvent;
+
+    /// <summary>Cursor moved within text without an edit. Context is the
+    /// spoken content for the landing position at this granularity — the
+    /// expanded character, the word, or the line. BoundaryHit is set when
+    /// nav was attempted past an edge and the cursor did not move.</summary>
+    public sealed record TextNav(
+        Widget Widget, string GraphemeAtCursor, string Context,
+        NavGranularity Granularity, Boundary? BoundaryHit) : AccessibilityEvent;
+
+    /// <summary>Selection extended, contracted, cleared, or set-all.
+    /// Delta is the text added to or removed from the selection (or
+    /// "{n} characters" for large selections).</summary>
+    public sealed record Selection(Widget Widget, string Delta, SelectionKind Kind)
+        : AccessibilityEvent;
+
+    /// <summary>Discrete-value list/grid widget changed selection.
+    /// Position is (zero-based index, total), or null when the widget has
+    /// no indexable concept.</summary>
+    public sealed record ItemNav(
+        Widget Widget, string Item, (int Index, int Total)? Position, Boundary? BoundaryHit)
+        : AccessibilityEvent;
+
+    /// <summary>Tab control moved to a different tab. No boundary because
+    /// tabs are circular.</summary>
+    public sealed record TabChange(Widget Widget, string TabName, (int Index, int Total) Position)
+        : AccessibilityEvent;
+
+    /// <summary>Slider value changed.</summary>
+    public sealed record SliderChange(Widget Widget, int Value, string Unit) : AccessibilityEvent;
+
+    /// <summary>Filter / typeahead query changed; results recomputed.</summary>
+    public sealed record Filter(Widget Widget, string Query, string? FirstResult, int ResultCount)
+        : AccessibilityEvent;
+
+    /// <summary>Clipboard operation completed.</summary>
+    public sealed record Clipboard(Widget Widget, ClipboardOp Op) : AccessibilityEvent;
+
+    /// <summary>Free-form announcement — the escape hatch for anything
+    /// without a structured variant.</summary>
+    public sealed record Announce(string Text) : AccessibilityEvent;
+}
+
+/// <summary>A consumer of accessibility events: self-voicing speech,
+/// braille, a platform accessibility bridge, a test recorder. Readers are
+/// attached with <see cref="SruiApp.AddReader"/> and receive every
+/// accessibility event the drain delivers, in order.</summary>
+public interface IReader
+{
+    void OnEvent(AccessibilityEvent e);
+
+    /// <summary>The user acted (a key went down, or the app demanded
+    /// urgency): whatever is being presented is stale. The speech reader
+    /// silences here; readers with no notion of interruption ignore it.</summary>
+    void OnInterrupt()
+    {
+    }
 }
 
 /// <summary>One pumped host event.</summary>
@@ -48,8 +155,8 @@ public abstract record HostEvent
 {
     public sealed record Quit : HostEvent;
 
-    /// <summary>A physical key went down; silence speech before handling
-    /// the corresponding Input.</summary>
+    /// <summary>A physical key went down; readers are interrupted before
+    /// the corresponding Input is handled.</summary>
     public sealed record KeyDown : HostEvent;
 
     /// <summary>A clean Alt tap (commonly bound to a menu/palette).</summary>

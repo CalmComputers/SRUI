@@ -6,7 +6,7 @@ namespace Srui.Net.Tests;
 
 public class EditBoxCoreTests
 {
-    private static readonly NodeId Node = new(1);
+    private static readonly Widget Node = new CustomWidget(SruiApp.Headless(), "editor");
 
     private static List<string> Speech(EditBoxCore.Result result) =>
         result.Events

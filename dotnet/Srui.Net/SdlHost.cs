@@ -34,8 +34,8 @@ public sealed class SdlHost : IDisposable
         }
     }
 
-    /// <summary>Install this host's system clipboard on a Ui.</summary>
-    public void ProvideClipboard(Ui ui) => ui.InstallClipboard(new SdlClipboard());
+    /// <summary>Install this host's system clipboard on an app's engine.</summary>
+    public void ProvideClipboard(SruiApp app) => app.Engine.SetClipboard(new SdlClipboard());
 
     // Shared result for empty batches: the pump runs a few hundred times
     // a second and is almost always empty, so returning a fresh list per
