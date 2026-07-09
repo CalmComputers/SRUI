@@ -31,7 +31,12 @@ internal static class Coalesce
     /// SliderChange, Filter) keep only the last occurrence of their kind —
     /// an intermediate focus move is discarded in favor of the settled one.
     /// Action events (Typing, TextNav, Clipboard, Announce) and all
-    /// Activated/Callback/Tick events keep emission order.</summary>
+    /// Activated/Callback/Tick events keep emission order. The surviving
+    /// Focused event is additionally delivered last in the batch: focus
+    /// describes where the user is now, and everything else in the batch
+    /// describes what just happened — so a handler that closes a dialog
+    /// and then announces its result is heard as result first, restored
+    /// focus second, regardless of emission order.</summary>
     public static List<CoreEvent> Apply(List<CoreEvent> events)
     {
         // Pass 1: last occurrence index per state-event kind.
@@ -42,14 +47,21 @@ internal static class Coalesce
         if (lastIndex is null)
             return events;
 
-        // Pass 2: drop state events that aren't the last of their kind.
+        // Pass 2: drop state events that aren't the last of their kind,
+        // holding the settled focus back for the end.
         var result = new List<CoreEvent>(events.Count);
+        CoreEvent? focused = null;
         for (var i = 0; i < events.Count; i++)
         {
             if (StateKind(events[i]) is Type kind && lastIndex[kind] != i)
                 continue;
-            result.Add(events[i]);
+            if (events[i] is CoreEvent.Acc(AccessibilityEvent.Focused))
+                focused = events[i];
+            else
+                result.Add(events[i]);
         }
+        if (focused is not null)
+            result.Add(focused);
         return result;
     }
 

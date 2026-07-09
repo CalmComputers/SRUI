@@ -194,8 +194,20 @@ public class CoalesceTests
         var f = FocusedEvent("A");
         var list = new ListBox(App, "L", ["first"]);
         var item = new CoreEvent.Acc(new AccessibilityEvent.ItemNav(list, "first", (0, 3), null));
-        // Focused and ItemNav are different kinds — both survive.
+        // Focused and ItemNav are different kinds — both survive (the
+        // focus moves to the end of the batch).
         var output = Coalesce.Apply([f, item]);
-        Assert.Equal(new CoreEvent[] { f, item }, output);
+        Assert.Equal(new CoreEvent[] { item, f }, output);
+    }
+
+    [Fact]
+    public void CoalesceDeliversSettledFocusLast()
+    {
+        // What happened is spoken before where you are: an announcement
+        // emitted after a focus change still precedes it in the batch.
+        var f = FocusedEvent("A");
+        var announce = new CoreEvent.Acc(new AccessibilityEvent.Announce("Created."));
+        var output = Coalesce.Apply([f, announce]);
+        Assert.Equal(new CoreEvent[] { announce, f }, output);
     }
 }

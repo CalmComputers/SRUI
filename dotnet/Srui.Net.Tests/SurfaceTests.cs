@@ -718,6 +718,31 @@ public class DialogTests
     }
 
     [Fact]
+    public void DialogResultIsSpokenBeforeRestoredFocus()
+    {
+        var ui = new TestUi();
+        var save = new Button(ui.App, "Save");
+        save.Focus();
+        ui.Drain();
+
+        // The natural handler shape: close, then report the result. The
+        // restored lower-layer focus must be heard AFTER the result.
+        var dialog = ui.App.OpenDialog();
+        var create = new Button(dialog, "Create");
+        create.Activated += () =>
+        {
+            dialog.Close();
+            ui.App.Announce("Created playlist Untitled.");
+        };
+        ui.App.SetPrimary(create);
+        dialog.AnnounceOpened();
+        ui.Drain();
+
+        Assert.True(ui.Input(InputKind.Activate));
+        Assert.Equal(new[] { "Created playlist Untitled.", "Save button" }, ui.Spoken());
+    }
+
+    [Fact]
     public void ConfirmDialogRoutesChoices()
     {
         var ui = new TestUi();
