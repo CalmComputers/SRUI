@@ -49,7 +49,7 @@ One object per widget: SruiApp and the Widget classes are the whole public story
 
 Readers: structured accessibility events (AccessibilityEvent with Widget references and WidgetInfo snapshots) reach any number of attached IReader implementations; SpeechReader (Prism) is installed by the windowed constructor, and SruiApp.Headless() plus HandleInput/HandleKey/DispatchEvents/SetNow make any host loop (or test) a first-class driver. SpeechRenderer is the public reference rendering.
 
-The bind-dialog toolkit is complete: KeyCombo is public with display/config forms, TryParseConfig, and ReservedReason (framework-reserved combos with spoken refusals); Widget.ReservesKey is a public virtual every widget kind implements.
+The bind-dialog toolkit is complete: KeyCombo is public with display/config forms, TryParseConfig, and ReservedReason (framework-reserved combos with spoken refusals); Widget.ReservesKey is a public virtual every widget kind implements. Logical inputs carry physical provenance (the combo that actually produced them, including shift+printables), so shortcut matching and ShortcutField capture are exact; synthetic inputs without provenance fall back to the canonical reverse map.
 
 Game-style input rides the physical key stream (architecture.md, section 6.4): Widget.BindKey attaches press/repeat/release handlers to any widget, focus-scoped, with SruiApp.UnhandledKey and SruiApp.FocusLost as the app-level hooks. Typing, list typeahead, and filter queries are astral-plane-safe (surrogate pairs are one character throughout).
 

@@ -181,11 +181,17 @@ public readonly record struct KeyCombo(Key Key, bool Ctrl, bool Alt, bool Shift)
         Key.Code,
         (Ctrl ? Mods.Ctrl : Mods.None) | (Alt ? Mods.Alt : Mods.None) | (Shift ? Mods.Shift : Mods.None));
 
-    /// <summary>Reverse-map a logical input to the combo that would produce
-    /// it under the default input map. Null for synthetic inputs
-    /// (SpeakFocus) with no single physical combo.</summary>
+    /// <summary>The combo behind a logical input. Inputs from a real
+    /// keyboard carry their physical provenance (the host stamps the
+    /// combo that actually produced them) and that is returned verbatim —
+    /// shift+backspace stays shift+backspace even though ctrl+backspace
+    /// maps to the same logical kind. Synthetic inputs (tests, host
+    /// injection) carry none, and fall back to the canonical reverse map
+    /// under the default layout. Null when neither exists (SpeakFocus).</summary>
     public static KeyCombo? FromInput(in InputEvent input)
     {
+        if (input.Key != 0)
+            return FromFlat(input.Key, input.Mods);
         var ch = (char)input.Ch;
         return input.Kind switch
         {

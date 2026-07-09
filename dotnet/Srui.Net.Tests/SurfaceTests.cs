@@ -626,6 +626,52 @@ public class ShortcutTests
     }
 
     [Fact]
+    public void ShortcutMatchingUsesThePhysicalCombo()
+    {
+        var ui = new TestUi();
+        var arena = new CustomWidget(ui.App, "Arena");
+        var wordDelete = new Button(ui.App, "Word delete");
+        var fired = 0;
+        wordDelete.Activated += () => fired++;
+        wordDelete.AddShortcut("shift+backspace", ShortcutAction.Activate);
+        arena.Focus();
+        ui.Drain();
+
+        // ctrl+backspace maps to the same logical kind but is a
+        // different combo: no match.
+        Assert.False(ui.Input(
+            new InputEvent(InputKind.DeleteWordBackward, 0, Keys.Backspace, Mods.Ctrl)));
+        ui.Drain();
+        Assert.Equal(0, fired);
+
+        Assert.True(ui.Input(
+            new InputEvent(InputKind.DeleteWordBackward, 0, Keys.Backspace, Mods.Shift)));
+        ui.Drain();
+        Assert.Equal(1, fired);
+    }
+
+    [Fact]
+    public void PlainLetterShortcutIgnoresShiftedTyping()
+    {
+        var ui = new TestUi();
+        var arena = new CustomWidget(ui.App, "Arena");
+        var other = new Button(ui.App, "Other");
+        other.AddShortcut(KeyCombo.Plain(Key.Char('x')));
+        arena.Focus();
+        ui.Drain();
+
+        // 'X' with shift carries (x, shift): not the plain-x shortcut.
+        Assert.False(ui.Input(
+            new InputEvent(InputKind.TypeChar, 'X', Keys.Char('x'), Mods.Shift)));
+        Assert.True(arena.IsFocused);
+
+        // Unshifted x still jumps.
+        Assert.True(ui.Input(
+            new InputEvent(InputKind.TypeChar, 'x', Keys.Char('x'), Mods.None)));
+        Assert.True(other.IsFocused);
+    }
+
+    [Fact]
     public void UnparseableShortcutIsRejected()
     {
         var (ui, save, _, _) = DemoUi();
@@ -1360,6 +1406,34 @@ public class ShortcutFieldTests
         // Escape still dismisses (unconsumed here — no cancel widget).
         Assert.False(ui.Input(InputKind.Dismiss));
         Assert.Equal(KeyCombo.WithCtrl(Key.Tab), field.Combo);
+    }
+
+    [Fact]
+    public void CapturesThePhysicalComboNotTheCanonicalOne()
+    {
+        var ui = new TestUi();
+        var field = new ShortcutField(ui.App, "Shortcut");
+        field.Focus();
+        ui.Drain();
+
+        // shift+backspace and ctrl+backspace both map to word-delete; the
+        // field captures what was actually pressed.
+        Assert.True(ui.Input(
+            new InputEvent(InputKind.DeleteWordBackward, 0, Keys.Backspace, Mods.Shift)));
+        Assert.Equal(KeyCombo.WithShift(Key.Backspace), field.Combo);
+        Assert.Equal(new[] { "shift backspace" }, ui.Spoken());
+
+        // A shifted letter arrives as a typed uppercase rune carrying its key.
+        Assert.True(ui.Input(
+            new InputEvent(InputKind.TypeChar, 'Q', Keys.Char('q'), Mods.Shift)));
+        Assert.Equal(KeyCombo.WithShift(Key.Char('q')), field.Combo);
+        Assert.Equal(new[] { "shift q" }, ui.Spoken());
+        Assert.Equal("shift+q", field.Combo?.ToConfigString());
+
+        // Synthetic inputs (no physical origin) fall back to the
+        // canonical reverse map.
+        Assert.True(ui.Input(InputEvent.Simple(InputKind.DeleteWordBackward)));
+        Assert.Equal(KeyCombo.WithCtrl(Key.Backspace), field.Combo);
     }
 
     [Fact]

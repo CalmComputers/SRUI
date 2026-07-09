@@ -16,6 +16,13 @@ namespace Srui.Core;
 internal sealed class InputMapper
 {
     private bool _modifiersHeld;
+    /// <summary>The physical combo of a printable keydown whose logical
+    /// input arrives as the next TextInput event (SDL sends KEY_DOWN
+    /// before TEXT_INPUT for the generating key). Lets the TypeChar carry
+    /// its physical provenance — shift+q is representable even though the
+    /// typed rune is just 'Q'. One-shot: consumed by the TextInput,
+    /// cleared by any other keydown or a focus transition.</summary>
+    private (uint Key, Mods Mods)? _pendingTypedKey;
     /// <summary>True while Alt is physically held and no other key has
     /// been pressed.</summary>
     private bool _altClean;
@@ -46,7 +53,18 @@ internal sealed class InputMapper
                 else if (!IsModifierKey(ev.Key))
                     _altClean = false;
 
-                return MapKeyDown(ev.Key, ev.Mod);
+                var mapped = MapKeyDown(ev.Key, ev.Mod);
+                // A suppressed printable arrives next as TextInput;
+                // remember the physical key so the TypeChar carries it.
+                if (!IsModifierKey(ev.Key))
+                {
+                    _pendingTypedKey = null;
+                    if (mapped is null && !ctrl && !alt
+                        && PhysicalCombo(ev.Key, ev.Mod) is (var key, var mods)
+                        && (new Key(key).IsChar(out _) || new Key(key) == Key.Space))
+                        _pendingTypedKey = (key, mods);
+                }
+                return mapped;
             }
 
             case Sdl3.EventKeyUp:
@@ -69,15 +87,19 @@ internal sealed class InputMapper
             case Sdl3.EventWindowFocusLost:
                 _altClean = false;
                 _altTapPending = false;
+                _pendingTypedKey = null;
                 return null;
 
             case Sdl3.EventWindowFocusGained:
                 _altClean = false;
                 _altTapPending = false;
+                _pendingTypedKey = null;
                 return InputEvent.Simple(InputKind.SpeakFocus);
 
             case Sdl3.EventTextInput:
             {
+                var pending = _pendingTypedKey;
+                _pendingTypedKey = null;
                 if (_modifiersHeld || ev.TextPtr == IntPtr.Zero)
                     return null;
                 var text = Marshal.PtrToStringUTF8(ev.TextPtr);
@@ -86,7 +108,9 @@ internal sealed class InputMapper
                 // Exactly one scalar, not a control character.
                 var rune = Rune.GetRuneAt(text, 0);
                 if (rune.Utf16SequenceLength == text.Length && !Rune.IsControl(rune))
-                    return new InputEvent(InputKind.TypeChar, (uint)rune.Value, 0, Mods.None);
+                    return new InputEvent(
+                        InputKind.TypeChar, (uint)rune.Value,
+                        pending?.Key ?? 0, pending?.Mods ?? Mods.None);
                 return null;
             }
 
@@ -104,7 +128,19 @@ internal sealed class InputMapper
         return pending;
     }
 
+    /// <summary>Map a keydown to its logical input, stamped with its
+    /// physical provenance: the (key, mods) combo travels on the event,
+    /// so shortcut matching and combo capture never reverse-map.</summary>
     private static InputEvent? MapKeyDown(uint keycode, ushort keymod)
+    {
+        if (MapKeyDownInner(keycode, keymod) is not InputEvent mapped)
+            return null;
+        if (mapped.Key == 0 && PhysicalCombo(keycode, keymod) is (var key, var mods))
+            return mapped with { Key = key, Mods = mods };
+        return mapped;
+    }
+
+    private static InputEvent? MapKeyDownInner(uint keycode, ushort keymod)
     {
         var ctrl = (keymod & Sdl3.KmodCtrl) != 0;
         var alt = (keymod & Sdl3.KmodAlt) != 0;

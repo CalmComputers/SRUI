@@ -61,26 +61,22 @@ public class ShortcutField : Widget
                 }
                 return true;
 
-            // RawKey — capture the combo directly.
-            case InputKind.RawKey:
-                Capture(KeyCombo.FromFlat(input.Key, input.Mods));
-                return true;
-
-            // Let Tab, Escape, and framework inputs through.
+            // Let Tab, Escape, and framework inputs through so the
+            // keyboard user can always leave the field. (Modified forms —
+            // Ctrl+Tab, Shift+Escape — arrive as other kinds and are
+            // captured like anything else.)
             case InputKind.NavigateNext or InputKind.NavigatePrev
                 or InputKind.Dismiss or InputKind.SpeakFocus:
                 return false;
 
-            // Any other input with a combo mapping — capture it.
+            // Everything else with a combo is captured as it was actually
+            // pressed: inputs carry their physical provenance, so
+            // shift+backspace captures as shift+backspace even though it
+            // and ctrl+backspace produce the same logical kind.
             default:
                 if (KeyCombo.FromInput(input) is KeyCombo combo)
-                {
-                    if (combo.Key == Key.Tab || combo.Key == Key.Escape)
-                        return false; // let through for navigation/dismiss
                     Capture(combo);
-                    return true;
-                }
-                // Unknown input — consume silently.
+                // Inputs with no combo form are consumed silently.
                 return true;
         }
     }

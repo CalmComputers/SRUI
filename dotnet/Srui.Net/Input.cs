@@ -113,8 +113,11 @@ public enum KeyPhase
 /// Keys).</summary>
 public readonly record struct KeyInput(uint Key, Mods Mods, KeyPhase Phase);
 
-/// <summary>A logical input event: a kind plus its payload (a typed
-/// codepoint in Ch, or a flat key/mods pair for RawKey).</summary>
+/// <summary>A logical input event: a kind plus its payload. Ch carries
+/// the typed codepoint (TypeChar, Shortcut); Key/Mods carry the physical
+/// combo that produced the input, in the flat encoding — stamped by the
+/// host mapper on every keyboard-originated event, zero on synthetic
+/// ones. For RawKey the combo IS the payload.</summary>
 public readonly record struct InputEvent(InputKind Kind, uint Ch, uint Key, Mods Mods)
 {
     public static InputEvent Simple(InputKind kind) => new(kind, 0, 0, Mods.None);
