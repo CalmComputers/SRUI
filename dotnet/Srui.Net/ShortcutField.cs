@@ -50,8 +50,15 @@ public class ShortcutField : Widget
     {
         switch (input.Kind)
         {
-            // Delete/Backspace clears the shortcut.
+            // Bare Delete/Backspace clears the shortcut; a modified form
+            // (shift+backspace and friends) is an ordinary capturable
+            // combo, distinguished by its physical provenance.
             case InputKind.DeleteBackward or InputKind.DeleteForward:
+                if (KeyCombo.FromInput(input) is { } del && (del.Ctrl || del.Alt || del.Shift))
+                {
+                    Capture(del);
+                    return true;
+                }
                 if (_combo is not null)
                 {
                     _combo = null;

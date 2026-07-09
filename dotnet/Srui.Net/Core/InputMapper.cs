@@ -185,7 +185,8 @@ internal sealed class InputMapper
             }
         }
 
-        // Shift+movement → selection, Shift+Backspace/Delete → word delete.
+        // Shift+movement → selection. Windows editing conventions:
+        // Shift+Backspace is plain backspace, Shift+Delete is cut.
         if (shift && !ctrl && !alt)
         {
             switch (keycode)
@@ -197,8 +198,8 @@ internal sealed class InputMapper
                 case Sdl3.KeyHome: return InputEvent.Simple(InputKind.SelectToLineStart);
                 case Sdl3.KeyEnd: return InputEvent.Simple(InputKind.SelectToLineEnd);
 
-                case Sdl3.KeyBackspace: return InputEvent.Simple(InputKind.DeleteWordBackward);
-                case Sdl3.KeyDelete: return InputEvent.Simple(InputKind.DeleteWordForward);
+                case Sdl3.KeyBackspace: return InputEvent.Simple(InputKind.DeleteBackward);
+                case Sdl3.KeyDelete: return InputEvent.Simple(InputKind.Cut);
             }
         }
 

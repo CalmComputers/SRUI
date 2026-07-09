@@ -55,14 +55,18 @@ public class InputMapperTests
     }
 
     [Fact]
-    public void ShiftBackspaceKeepsItsCombo()
+    public void ShiftedEditingKeysFollowWindowsConventions()
     {
-        // shift+backspace and ctrl+backspace both map to word-delete;
-        // the event remembers which one was pressed.
+        // Shift+Backspace is plain backspace, Shift+Delete is cut,
+        // Ctrl+Backspace is word-delete — each carrying its own combo.
         var mapper = new InputMapper();
-        var ev = mapper.Map(KeyDown(Sdl3.KeyBackspace, Sdl3.KmodShift));
-        Assert.Equal(InputKind.DeleteWordBackward, ev?.Kind);
-        Assert.Equal(KeyCombo.WithShift(Key.Backspace), KeyCombo.FromInput(ev!.Value));
+        var shiftBackspace = mapper.Map(KeyDown(Sdl3.KeyBackspace, Sdl3.KmodShift));
+        Assert.Equal(InputKind.DeleteBackward, shiftBackspace?.Kind);
+        Assert.Equal(KeyCombo.WithShift(Key.Backspace), KeyCombo.FromInput(shiftBackspace!.Value));
+
+        var shiftDelete = mapper.Map(KeyDown(Sdl3.KeyDelete, Sdl3.KmodShift));
+        Assert.Equal(InputKind.Cut, shiftDelete?.Kind);
+        Assert.Equal(KeyCombo.WithShift(Key.Delete), KeyCombo.FromInput(shiftDelete!.Value));
 
         var ctrl = mapper.Map(KeyDown(Sdl3.KeyBackspace, Sdl3.KmodCtrl));
         Assert.Equal(InputKind.DeleteWordBackward, ctrl?.Kind);

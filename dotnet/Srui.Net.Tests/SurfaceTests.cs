@@ -637,15 +637,17 @@ public class ShortcutTests
         arena.Focus();
         ui.Drain();
 
-        // ctrl+backspace maps to the same logical kind but is a
-        // different combo: no match.
+        // ctrl+backspace and plain backspace are different combos even
+        // where kinds overlap: no match.
         Assert.False(ui.Input(
             new InputEvent(InputKind.DeleteWordBackward, 0, Keys.Backspace, Mods.Ctrl)));
+        Assert.False(ui.Input(
+            new InputEvent(InputKind.DeleteBackward, 0, Keys.Backspace, Mods.None)));
         ui.Drain();
         Assert.Equal(0, fired);
 
         Assert.True(ui.Input(
-            new InputEvent(InputKind.DeleteWordBackward, 0, Keys.Backspace, Mods.Shift)));
+            new InputEvent(InputKind.DeleteBackward, 0, Keys.Backspace, Mods.Shift)));
         ui.Drain();
         Assert.Equal(1, fired);
     }
@@ -1416,10 +1418,10 @@ public class ShortcutFieldTests
         field.Focus();
         ui.Drain();
 
-        // shift+backspace and ctrl+backspace both map to word-delete; the
-        // field captures what was actually pressed.
+        // shift+backspace arrives as the same logical kind as the bare
+        // clear gesture; the provenance tells the field to capture it.
         Assert.True(ui.Input(
-            new InputEvent(InputKind.DeleteWordBackward, 0, Keys.Backspace, Mods.Shift)));
+            new InputEvent(InputKind.DeleteBackward, 0, Keys.Backspace, Mods.Shift)));
         Assert.Equal(KeyCombo.WithShift(Key.Backspace), field.Combo);
         Assert.Equal(new[] { "shift backspace" }, ui.Spoken());
 

@@ -155,12 +155,14 @@ public class EditBox : Widget
             if (combo.Key == Key.Home || combo.Key == Key.End) return true;
             if (combo.Key == Key.Backspace || combo.Key == Key.Delete) return true;
         }
-        // Shift+movement (selection).
+        // Shift+movement (selection), Shift+Backspace (backspace),
+        // Shift+Delete (cut).
         if (combo.Shift && !combo.Ctrl && !combo.Alt)
         {
             if (combo.Key == Key.Left || combo.Key == Key.Right
                 || combo.Key == Key.Up || combo.Key == Key.Down
-                || combo.Key == Key.Home || combo.Key == Key.End) return true;
+                || combo.Key == Key.Home || combo.Key == Key.End
+                || combo.Key == Key.Backspace || combo.Key == Key.Delete) return true;
         }
         // Ctrl+movement/editing.
         if (combo.Ctrl && !combo.Alt)
