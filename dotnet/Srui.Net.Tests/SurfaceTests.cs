@@ -439,7 +439,7 @@ public class ActivationTests
         var other = new Button(ui.App, "Other");
         var fired = 0;
         volume.Activated += () => fired++;
-        volume.AddShortcut("ctrl+m", ShortcutAction.Activate);
+        volume.AddShortcut(KeyCombo.WithCtrl(Key.Char('m')), ShortcutAction.Activate);
         other.Focus();
         ui.Drain();
 
@@ -477,7 +477,7 @@ public class ShortcutTests
     public void ShortcutJumpFocusesAndAnnounces()
     {
         var (ui, save, _, wrap) = DemoUi();
-        wrap.AddShortcut("ctrl+w");
+        wrap.AddShortcut(KeyCombo.WithCtrl(Key.Char('w')));
         save.Focus();
         ui.Drain();
 
@@ -494,7 +494,7 @@ public class ShortcutTests
         var (ui, save, _, wrap) = DemoUi();
         var presses = 0;
         save.Activated += () => presses++;
-        save.AddShortcut("ctrl+g", ShortcutAction.Activate);
+        save.AddShortcut(KeyCombo.WithCtrl(Key.Char('g')), ShortcutAction.Activate);
         wrap.Focus();
         ui.Drain();
 
@@ -511,7 +511,7 @@ public class ShortcutTests
         var (ui, save, _, wrap) = DemoUi();
         var presses = 0;
         save.Activated += () => presses++;
-        save.AddShortcut("ctrl+s", ShortcutAction.JumpAndActivate);
+        save.AddShortcut(KeyCombo.WithCtrl(Key.Char('s')), ShortcutAction.JumpAndActivate);
         wrap.Focus();
         ui.Drain();
 
@@ -526,7 +526,7 @@ public class ShortcutTests
     public void ShortcutOnUnreachableWidgetIsInert()
     {
         var (ui, save, options, wrap) = DemoUi();
-        wrap.AddShortcut("ctrl+w");
+        wrap.AddShortcut(KeyCombo.WithCtrl(Key.Char('w')));
         save.Focus();
         ui.Drain();
 
@@ -617,7 +617,7 @@ public class ShortcutTests
     public void ClearShortcutsRemovesBindingsAndAnnouncement()
     {
         var (ui, save, _, _) = DemoUi();
-        save.AddShortcut("ctrl+s", ShortcutAction.Activate);
+        save.AddShortcut(KeyCombo.WithCtrl(Key.Char('s')), ShortcutAction.Activate);
         save.ClearShortcuts();
         ui.App.EnsureFocus();
 
@@ -633,7 +633,7 @@ public class ShortcutTests
         var wordDelete = new Button(ui.App, "Word delete");
         var fired = 0;
         wordDelete.Activated += () => fired++;
-        wordDelete.AddShortcut("shift+backspace", ShortcutAction.Activate);
+        wordDelete.AddShortcut(KeyCombo.WithShift(Key.Backspace), ShortcutAction.Activate);
         arena.Focus();
         ui.Drain();
 
@@ -673,13 +673,84 @@ public class ShortcutTests
         Assert.True(other.IsFocused);
     }
 
-    [Fact]
-    public void UnparseableShortcutIsRejected()
+}
+
+public class KeyBindingTests
+{
+    private static KeyInput Transition(KeyCombo combo, KeyPhase phase)
     {
-        var (ui, save, _, _) = DemoUi();
-        Assert.False(save.AddShortcut("ctrl+banana+q"));
-        Assert.True(save.AddShortcut("ctrl+q"));
-        _ = ui;
+        var (key, mods) = combo.ToFlat();
+        return new KeyInput(key, mods, phase);
+    }
+
+    [Fact]
+    public void BindKeyFiresOnlyWhileFocused()
+    {
+        var ui = new TestUi();
+        var arena = new CustomWidget(ui.App, "Arena");
+        var other = new Button(ui.App, "Other");
+        var presses = 0;
+        var q = KeyCombo.Plain(Key.Char('q'));
+        arena.BindKey(q, KeyPhase.Press, () => presses++);
+
+        arena.Focus();
+        ui.Drain();
+        Assert.True(ui.App.HandleKey(Transition(q, KeyPhase.Press)));
+        Assert.Equal(1, presses);
+
+        other.Focus();
+        ui.Drain();
+        Assert.False(ui.App.HandleKey(Transition(q, KeyPhase.Press)));
+        Assert.Equal(1, presses);
+    }
+
+    [Fact]
+    public void PressMatchesExactComboReleaseMatchesKeyAlone()
+    {
+        var ui = new TestUi();
+        var arena = new CustomWidget(ui.App, "Arena");
+        var q = KeyCombo.Plain(Key.Char('q'));
+        var pressed = 0;
+        var released = 0;
+        arena.BindKey(q, KeyPhase.Press, () => pressed++);
+        arena.BindKey(q, KeyPhase.Release, () => released++);
+        arena.Focus();
+        ui.Drain();
+
+        // Shift+Q is a different press binding, but the same release.
+        Assert.False(ui.App.HandleKey(
+            Transition(KeyCombo.WithShift(Key.Char('q')), KeyPhase.Press)));
+        Assert.Equal(0, pressed);
+        Assert.True(ui.App.HandleKey(
+            Transition(KeyCombo.WithShift(Key.Char('q')), KeyPhase.Release)));
+        Assert.Equal(1, released);
+    }
+
+    [Fact]
+    public void ReleaseBindingWithModifiersThrows()
+    {
+        var ui = new TestUi();
+        var arena = new CustomWidget(ui.App, "Arena");
+        Assert.Throws<ArgumentException>(() => arena.BindKey(
+            KeyCombo.WithShift(Key.Char('q')), KeyPhase.Release, () => { }));
+    }
+
+    [Fact]
+    public void UnbindKeyRemovesEveryHandlerForTheCombo()
+    {
+        var ui = new TestUi();
+        var arena = new CustomWidget(ui.App, "Arena");
+        var presses = 0;
+        var q = KeyCombo.Plain(Key.Char('q'));
+        arena.BindKey(q, KeyPhase.Press, () => presses++);
+        arena.BindKey(q, KeyPhase.Press, () => presses++);
+        arena.Focus();
+        ui.Drain();
+
+        Assert.True(arena.UnbindKey(q, KeyPhase.Press));
+        Assert.False(arena.UnbindKey(q, KeyPhase.Press));
+        Assert.False(ui.App.HandleKey(Transition(q, KeyPhase.Press)));
+        Assert.Equal(0, presses);
     }
 }
 

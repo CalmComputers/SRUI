@@ -317,16 +317,16 @@ void StopWalk(int dir)
     walkDir = 0;
     app.Announce("Stopped.");
 }
-arena.BindKey("left", KeyPhase.Press, () => StartWalk(-1, "West."));
-arena.BindKey("right", KeyPhase.Press, () => StartWalk(1, "East."));
-arena.BindKey("left", KeyPhase.Release, () => StopWalk(-1));
-arena.BindKey("right", KeyPhase.Release, () => StopWalk(1));
-arena.BindKey("q", KeyPhase.Press, () =>
+arena.BindKey(KeyCombo.Plain(Key.Left), KeyPhase.Press, () => StartWalk(-1, "West."));
+arena.BindKey(KeyCombo.Plain(Key.Right), KeyPhase.Press, () => StartWalk(1, "East."));
+arena.BindKey(KeyCombo.Plain(Key.Left), KeyPhase.Release, () => StopWalk(-1));
+arena.BindKey(KeyCombo.Plain(Key.Right), KeyPhase.Release, () => StopWalk(1));
+arena.BindKey(KeyCombo.Plain(Key.Char('q')), KeyPhase.Press, () =>
 {
     drawing = true;
     app.AnnounceNow("Drawing.");
 });
-arena.BindKey("q", KeyPhase.Release, () =>
+arena.BindKey(KeyCombo.Plain(Key.Char('q')), KeyPhase.Release, () =>
 {
     if (!drawing)
         return;
@@ -339,12 +339,12 @@ arena.BindKey("q", KeyPhase.Release, () =>
 // Bindings work on every widget, not just role-less ones: the Drum
 // button drums on D's press and release while it is focused (Enter and
 // Space still press it normally).
-drum.BindKey("d", KeyPhase.Press, () =>
+drum.BindKey(KeyCombo.Plain(Key.Char('d')), KeyPhase.Press, () =>
 {
     navSound.Play();
     app.AnnounceNow("Boom.");
 });
-drum.BindKey("d", KeyPhase.Release, () => app.Announce("Tss."));
+drum.BindKey(KeyCombo.Plain(Key.Char('d')), KeyPhase.Release, () => app.Announce("Tss."));
 drum.Activated += () =>
 {
     navSound.Play();
@@ -408,9 +408,9 @@ quit.Activated += () => app.Confirm("Really quit?", onYes: app.Quit);
 // Ctrl+J jumps to Start job and presses it. Start job lives on the
 // Dynamic panel, so Ctrl+J is inert elsewhere (a hidden or disabled
 // widget's shortcuts don't fire).
-views.AddShortcut("alt+v");
-quit.AddShortcut("ctrl+q", ShortcutAction.Activate);
-startJob.AddShortcut("ctrl+j", ShortcutAction.JumpAndActivate);
+views.AddShortcut(KeyCombo.WithAlt(Key.Char('v')));
+quit.AddShortcut(KeyCombo.WithCtrl(Key.Char('q')), ShortcutAction.Activate);
+startJob.AddShortcut(KeyCombo.WithCtrl(Key.Char('j')), ShortcutAction.JumpAndActivate);
 
 // Host-side bindings: Ctrl+G greets, Ctrl+L opens the log, and a
 // user-rebindable combo rolls a die (Ctrl+Space until the Bind dialog
@@ -476,7 +476,7 @@ void AddMnemonicButton(Button button, HashSet<char> taken)
         var letter = char.ToLowerInvariant(raw);
         if (letter is < 'a' or > 'z' || !taken.Add(letter))
             continue;
-        button.AddShortcut($"alt+{letter}", ShortcutAction.Activate);
+        button.AddShortcut(KeyCombo.WithAlt(Key.Char(letter)), ShortcutAction.Activate);
         return;
     }
 }

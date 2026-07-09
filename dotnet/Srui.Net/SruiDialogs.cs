@@ -21,7 +21,7 @@ public static class SruiDialogs
             var letter = char.ToLowerInvariant(raw);
             if (letter is < 'a' or > 'z' || !taken.Add(letter))
                 continue;
-            button.AddShortcut($"alt+{letter}", ShortcutAction.Activate);
+            button.AddShortcut(KeyCombo.WithAlt(Key.Char(letter)), ShortcutAction.Activate);
             return;
         }
     }

@@ -81,20 +81,6 @@ public static class Keys
 
     public static uint Char(char c) => CharBase | c;
     public static uint F(byte n) => FBase | n;
-
-    /// <summary>Parse a config-form combo ("ctrl+shift+s") into the flat
-    /// key/mods encoding. False when the string does not parse.</summary>
-    public static bool TryParse(string combo, out uint key, out Mods mods)
-    {
-        if (!KeyCombo.TryParseConfig(combo, out var parsed))
-        {
-            key = 0;
-            mods = Mods.None;
-            return false;
-        }
-        (key, mods) = parsed.ToFlat();
-        return true;
-    }
 }
 
 /// <summary>Phase of a physical key transition.</summary>

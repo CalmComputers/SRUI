@@ -156,27 +156,27 @@ public abstract class Widget : IWidgetContainer
     /// while this widget is focused — game-style input, independent of
     /// the logical input stream (a Press binding fires even for keys the
     /// widget consumes, e.g. letters in an edit box). Press and Repeat
-    /// match the exact combo ("q", "shift+q" are distinct bindings);
+    /// match the exact combo (plain q and shift+q are distinct bindings);
     /// Release matches the key alone, so a modifier pressed mid-hold
-    /// cannot orphan the release. Throws ArgumentException on an
-    /// unparseable combo or a Release combo with modifiers.</summary>
-    public void BindKey(string combo, KeyPhase phase, Action handler)
+    /// cannot orphan the release. Throws ArgumentException on a Release
+    /// combo with modifiers.</summary>
+    public void BindKey(KeyCombo combo, KeyPhase phase, Action handler)
     {
-        if (!Keys.TryParse(combo, out var key, out var mods))
-            throw new ArgumentException($"unparseable combo \"{combo}\"", nameof(combo));
+        var (key, mods) = combo.ToFlat();
         if (phase == KeyPhase.Release && mods != Mods.None)
             throw new ArgumentException(
-                $"release bindings match the key regardless of modifiers; bind the bare key instead of \"{combo}\"",
+                $"release bindings match the key regardless of modifiers; bind the bare key instead of \"{combo.ToConfigString()}\"",
                 nameof(combo));
         (_keyBindings ??= []).Add((key, mods, phase, handler));
     }
 
     /// <summary>Remove every handler bound to this combo and phase.
     /// Returns true when any was removed.</summary>
-    public bool UnbindKey(string combo, KeyPhase phase)
+    public bool UnbindKey(KeyCombo combo, KeyPhase phase)
     {
-        if (_keyBindings is null || !Keys.TryParse(combo, out var key, out var mods))
+        if (_keyBindings is null)
             return false;
+        var (key, mods) = combo.ToFlat();
         return _keyBindings.RemoveAll(b =>
             b.Phase == phase && b.Key == key && (phase == KeyPhase.Release || b.Mods == mods)) > 0;
     }
@@ -207,20 +207,10 @@ public abstract class Widget : IWidgetContainer
 
     // ── Shortcuts ──
 
-    /// <summary>Attach a shortcut ("ctrl+shift+s" config form): pressing
-    /// it jumps to this widget, activates it, or both. A widget may carry
-    /// any number of shortcuts; the first added is the one focus
-    /// announcements speak. A hidden or disabled widget's shortcuts are
-    /// inert. Returns false when the combo fails to parse.</summary>
-    public bool AddShortcut(string combo, ShortcutAction action = ShortcutAction.Jump)
-    {
-        if (!KeyCombo.TryParseConfig(combo, out var parsed))
-            return false;
-        AddShortcut(parsed, action);
-        return true;
-    }
-
-    /// <summary>Attach a shortcut from an already-parsed combo.</summary>
+    /// <summary>Attach a shortcut: pressing the combo jumps to this
+    /// widget, activates it, or both. A widget may carry any number of
+    /// shortcuts; the first added is the one focus announcements speak.
+    /// A hidden or disabled widget's shortcuts are inert.</summary>
     public void AddShortcut(KeyCombo combo, ShortcutAction action = ShortcutAction.Jump) =>
         Engine.AddShortcut(Node, combo, action);
 

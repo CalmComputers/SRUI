@@ -44,7 +44,7 @@ var quit = new Button(app, "Quit");
 // spoken with the button ("Greet button control g").
 app.SetPrimary(greet);
 app.SetCancel(quit);
-greet.AddShortcut("ctrl+g", ShortcutAction.Activate);
+greet.AddShortcut(KeyCombo.WithCtrl(Key.Char('g')), ShortcutAction.Activate);
 
 // Arrowing the slider slides the ping across a lane two units ahead.
 position.Changed += () =>
