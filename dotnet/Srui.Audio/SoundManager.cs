@@ -93,6 +93,11 @@ public sealed class SoundManager : IDisposable
 
     public uint SampleRate => Engine.SampleRate;
 
+    /// <summary>The device period in frames — the granularity at which
+    /// the device pulls audio, and the dominant term in trigger-to-ear
+    /// latency. Divide by <see cref="SampleRate"/> for seconds.</summary>
+    public uint DevicePeriodFrames => Engine.PeriodFrames;
+
     private void UpdateAllSounds()
     {
         // Swap-remove dead references in place; no allocation.

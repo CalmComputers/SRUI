@@ -27,6 +27,10 @@ Console.WriteLine($"speech backend: {app.Voice?.BackendName}");
 
 // App-owned: the event loop drives its automation, no ticker needed.
 var audio = app.Audio;
+Console.WriteLine(
+    $"audio: {audio.SampleRate} Hz, period {audio.DevicePeriodFrames} frames "
+    + $"(~{audio.DevicePeriodFrames * 1000.0 / audio.SampleRate:F1}ms), "
+    + $"hrtf {(audio.IsHrtfAvailable ? "available" : "unavailable")}");
 // Cosmos convention: angle 0 faces +X (east). Face +Y (north/forward)
 // so item positions along X read as left/right.
 audio.SetListener(0.0f, 0.0f, 0.0f, 90.0f);

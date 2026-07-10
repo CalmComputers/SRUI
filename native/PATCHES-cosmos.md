@@ -60,7 +60,17 @@ configured, so every decode path accepts .opus:
 - ma_convreverb.c: ma_convreverb_node_load_ir_file sets
   ppCustomBackendVTables (covers impulse responses).
 
-# 6. miniaudio.h: UTF-8 paths open wide on Windows
+# 6. miniaudio_impl.c: 256-frame period, granted-period getter
+
+ma_engine_init_with_caching requests periodSizeInFrames = 256 (was 512)
+for lower trigger-to-ear latency, and a new exported helper
+ma_engine_get_actual_period_frames returns the period the device
+actually granted (WASAPI aligns the request; IAudioClient3 clamps it to
+the driver's range). The C# side sizes the Steam Audio frame from the
+granted value, so the phonon block and the device period cannot
+disagree regardless of what the driver decides.
+
+# 7. miniaudio.h: UTF-8 paths open wide on Windows
 
 The managed side passes file paths as UTF-8, but miniaudio's file
 opens read them in the ANSI codepage — any non-ASCII filename failed

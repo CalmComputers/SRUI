@@ -63,8 +63,12 @@ MA_API ma_result ma_engine_init_with_caching(ma_engine* pEngine) {
     // Create engine with resource manager
     ma_engine_config engineConfig = ma_engine_config_init();
     engineConfig.pResourceManager = g_resource_manager;
-    // Fixed period size for Steam Audio compatibility (must match phonon frame size)
-    engineConfig.periodSizeInFrames = 512;
+    // SRUI: small fixed period for low trigger-to-ear latency (~5.3ms at
+    // 48kHz). WASAPI may grant a different size (IAudioClient3 clamps to
+    // the driver's supported range); callers read the granted value via
+    // ma_engine_get_actual_period_frames and size the phonon frame to
+    // match, so the request and the Steam Audio block never disagree.
+    engineConfig.periodSizeInFrames = 256;
 
     result = ma_engine_init(&engineConfig, pEngine);
     if (result != MA_SUCCESS) {
@@ -75,6 +79,18 @@ MA_API ma_result ma_engine_init_with_caching(ma_engine* pEngine) {
     }
 
     return MA_SUCCESS;
+}
+
+// SRUI: the period size the device actually granted (frames), which can
+// differ from the requested 256 — WASAPI aligns it, and IAudioClient3
+// clamps it to the driver's supported range. The C# side reads this to
+// size the phonon frame and to report latency diagnostics.
+MA_API ma_uint32 ma_engine_get_actual_period_frames(ma_engine* pEngine) {
+    ma_device* pDevice = ma_engine_get_device(pEngine);
+    if (pDevice == NULL) {
+        return 0;
+    }
+    return pDevice->playback.internalPeriodSizeInFrames;
 }
 
 MA_API void ma_engine_uninit_with_caching(ma_engine* pEngine) {

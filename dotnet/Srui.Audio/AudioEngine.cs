@@ -27,11 +27,21 @@ internal sealed class AudioEngine : IDisposable
             throw new AudioException("audio engine initialization failed");
         }
 
-        // Steam Audio for HRTF; 512 must match the engine's period size.
+        // Steam Audio's frame size must match the device period — so ask
+        // the engine what WASAPI actually granted (the requested 256 may
+        // be aligned or clamped by the driver) and size phonon to that.
         var sampleRate = NativeMethods.ma_engine_get_sample_rate(Handle);
-        HrtfAvailable = NativeMethods.ma_phonon_init(sampleRate, 512) == 0
+        PeriodFrames = NativeMethods.ma_engine_get_actual_period_frames(Handle);
+        if (PeriodFrames == 0)
+            PeriodFrames = 256;
+        HrtfAvailable = NativeMethods.ma_phonon_init(sampleRate, PeriodFrames) == 0
             || NativeMethods.ma_phonon_is_initialized() != 0;
     }
+
+    /// <summary>The device period in frames — the granularity at which
+    /// the device pulls audio, and the dominant term in trigger-to-ear
+    /// latency (one period of start jitter plus the buffer depth).</summary>
+    public uint PeriodFrames { get; }
 
     public uint SampleRate =>
         Handle == IntPtr.Zero ? 44100 : NativeMethods.ma_engine_get_sample_rate(Handle);
