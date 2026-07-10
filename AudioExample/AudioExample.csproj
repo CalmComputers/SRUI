@@ -13,7 +13,7 @@
 
   <!-- Native dependencies staged by native/build-native.ps1. -->
   <PropertyGroup>
-    <SruiNativeDir>..\..\native\out\</SruiNativeDir>
+    <SruiNativeDir>..\native\out\</SruiNativeDir>
   </PropertyGroup>
   <ItemGroup>
     <None Include="$(SruiNativeDir)cosmos.dll" CopyToOutputDirectory="PreserveNewest" />

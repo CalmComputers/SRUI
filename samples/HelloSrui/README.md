@@ -2,7 +2,7 @@
 
 # 1. What This Is
 
-A minimal application that consumes srui as a set of compiled binaries — no project references, no source tree, exactly what a closed-source consumer sees. It shows the full stack: a window with speaking widgets (Srui.Net over the native engine) and positional audio with a bus effect (Srui.Audio over cosmos). The project is deliberately not part of dotnet/Srui.slnx.
+A minimal application that consumes srui as a set of compiled binaries — no project references, no source tree, exactly what a closed-source consumer sees. It shows the full stack: a window with speaking widgets (Srui.Net over the native engine) and positional audio with a bus effect (Srui.Audio over cosmos). The project is deliberately not part of Srui.slnx.
 
 # 2. Producing the Binary Drop
 
@@ -29,7 +29,7 @@ Three things, all visible in HelloSrui.csproj:
 
 Two runtime rules carry over from srui itself: one SruiApp belongs to one thread, and the app needs a real window with keyboard focus (speech goes through the running screen reader, or platform TTS as fallback), so it is not useful headless.
 
-Audio comes from `app.Audio`: an app-owned SoundManager whose automation (pitch tweens, spatialization refresh) the event loop advances itself, about every 5 ms at idle. Only a consumer using Srui.Audio without SruiApp calls `SoundManager.Tick` from its own loop (dotnet/AudioExample in the srui source shows that pattern). A UI-only application that never touches `app.Audio` can omit Srui.Audio.dll, cosmos.dll, and phonon.dll — the assembly loads lazily.
+Audio comes from `app.Audio`: an app-owned SoundManager whose automation (pitch tweens, spatialization refresh) the event loop advances itself, about every 5 ms at idle. Only a consumer using Srui.Audio without SruiApp calls `SoundManager.Tick` from its own loop (AudioExample in the srui source shows that pattern). A UI-only application that never touches `app.Audio` can omit Srui.Audio.dll, cosmos.dll, and phonon.dll — the assembly loads lazily.
 
 # 4. Running
 

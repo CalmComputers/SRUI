@@ -16,7 +16,7 @@
   <!-- Native dependencies staged by native/build-native.ps1. They are
        optimized C/C++ regardless of the .NET configuration. -->
   <PropertyGroup>
-    <SruiNativeDir>..\..\native\out\</SruiNativeDir>
+    <SruiNativeDir>..\native\out\</SruiNativeDir>
   </PropertyGroup>
   <ItemGroup>
     <None Include="$(SruiNativeDir)prism.dll" CopyToOutputDirectory="PreserveNewest" />

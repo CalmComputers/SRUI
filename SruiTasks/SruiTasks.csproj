@@ -15,7 +15,7 @@
   <!-- Native dependencies staged by native/build-native.ps1. No game
        audio here, so only the window and speech DLLs are needed. -->
   <PropertyGroup>
-    <SruiNativeDir>..\..\native\out\</SruiNativeDir>
+    <SruiNativeDir>..\native\out\</SruiNativeDir>
   </PropertyGroup>
   <ItemGroup>
     <None Include="$(SruiNativeDir)prism.dll" CopyToOutputDirectory="PreserveNewest" />

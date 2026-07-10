@@ -4,16 +4,16 @@
 $ErrorActionPreference = "Stop"
 
 & (Join-Path $PSScriptRoot "native\build-native.ps1")
-dotnet build dotnet/Srui.Net/Srui.Net.csproj -c Release
+dotnet build Srui.Net/Srui.Net.csproj -c Release
 if ($LASTEXITCODE -ne 0) { throw "Srui.Net build failed" }
-dotnet build dotnet/Srui.Audio/Srui.Audio.csproj -c Release
+dotnet build Srui.Audio/Srui.Audio.csproj -c Release
 if ($LASTEXITCODE -ne 0) { throw "Srui.Audio build failed" }
 
 $dist = Join-Path $PSScriptRoot "dist"
 New-Item -ItemType Directory -Force $dist | Out-Null
 
-Copy-Item dotnet/Srui.Net/bin/Release/net10.0/Srui.Net.dll $dist
-Copy-Item dotnet/Srui.Audio/bin/Release/net10.0/Srui.Audio.dll $dist
+Copy-Item Srui.Net/bin/Release/net10.0/Srui.Net.dll $dist
+Copy-Item Srui.Audio/bin/Release/net10.0/Srui.Audio.dll $dist
 # UI stack: prism (speech), SDL3 (window/input). Audio: cosmos
 # (engine/DSP), phonon (Steam Audio HRTF).
 foreach ($dll in "prism.dll", "SDL3.dll", "cosmos.dll", "phonon.dll") {

@@ -6,14 +6,14 @@ SRUI is a screen-reader-first UI toolkit in C#: a retained semantic tree, keyboa
 
 # 2. Layout
 
-.NET projects under dotnet/ (solution: dotnet/Srui.slnx); native sources and builds under native/.
+.NET projects at the repository root (solution: Srui.slnx); native sources and builds under native/.
 
-- dotnet/Srui.Net — the toolkit. The engine lives in Core/ (namespace Srui.Core, internal): tree, focus/navigation, event queue and coalescing, the text engine (rope, TextNav, EditorState), plus the SDL3 and prism P/Invoke layers. The public namespace Srui holds SruiApp, the Widget base class and built-in widgets (one file per major widget; each widget object IS its node and carries its own behavior), Dialog, SruiDialogs, SdlHost, Speech and SpeechReader, and the public vocabulary (InputEvent, AccessibilityEvent, WidgetInfo, Key/KeyCombo, IReader, IClipboard). SruiApp owns an on-demand SoundManager (SruiApp.Audio) and ticks it from the event loop.
-- dotnet/Srui.Net.Tests — xUnit suite. Behavioral tests drive the public surface (headless SruiApp + recording reader, asserting rendered utterances); engine invariants (rope, text navigation, tree, tab ring) are property-tested through internals (InternalsVisibleTo). Headless; no native DLLs needed.
-- dotnet/Srui.Audio — game audio over cosmos.dll: Sound, SoundGroup buses with effect chains, HRTF pooling, tweens. Standalone consumers (no SruiApp) drive SoundManager.Tick from their own loop.
-- dotnet/SruiDemo — end-to-end demo: a tab-switched widget gallery exercising every widget type, a custom-authored table widget (TableWidget.cs — the reference for behavior authoring from outside the toolkit), all canned and hand-built dialogs, dynamic state, the event stream (with a reviewable event log on Ctrl+L), and sound-augmented lists over Srui.Audio.
-- dotnet/SruiTasks — the object-oriented demo: a small to-do app built as classes rather than a script — an application shell (TaskApp), composite panels as Group subclasses, and built-ins extended by overriding On* methods and ReservesKey (TaskListBox, HistoryEditBox, ConfirmButton), with a state-bearing IListItem type (TaskItem) driving the list item operations. Where SruiDemo shows the widget set breadth-first, SruiTasks is the reference for structuring an application around subclassed behavior. Speech only — needs just prism.dll and SDL3.dll.
-- dotnet/AudioExample — Srui.Audio walkthrough (no UI stack; needs only cosmos.dll and phonon.dll).
+- Srui.Net — the toolkit. The engine lives in Core/ (namespace Srui.Core, internal): tree, focus/navigation, event queue and coalescing, the text engine (rope, TextNav, EditorState), plus the SDL3 and prism P/Invoke layers. The public namespace Srui holds SruiApp, the Widget base class and built-in widgets (one file per major widget; each widget object IS its node and carries its own behavior), Dialog, SruiDialogs, SdlHost, Speech and SpeechReader, and the public vocabulary (InputEvent, AccessibilityEvent, WidgetInfo, Key/KeyCombo, IReader, IClipboard). SruiApp owns an on-demand SoundManager (SruiApp.Audio) and ticks it from the event loop.
+- Srui.Net.Tests — xUnit suite. Behavioral tests drive the public surface (headless SruiApp + recording reader, asserting rendered utterances); engine invariants (rope, text navigation, tree, tab ring) are property-tested through internals (InternalsVisibleTo). Headless; no native DLLs needed.
+- Srui.Audio — game audio over cosmos.dll: Sound, SoundGroup buses with effect chains, HRTF pooling, tweens. Standalone consumers (no SruiApp) drive SoundManager.Tick from their own loop.
+- SruiDemo — end-to-end demo: a tab-switched widget gallery exercising every widget type, a custom-authored table widget (TableWidget.cs — the reference for behavior authoring from outside the toolkit), all canned and hand-built dialogs, dynamic state, the event stream (with a reviewable event log on Ctrl+L), and sound-augmented lists over Srui.Audio.
+- SruiTasks — the object-oriented demo: a small to-do app built as classes rather than a script — an application shell (TaskApp), composite panels as Group subclasses, and built-ins extended by overriding On* methods and ReservesKey (TaskListBox, HistoryEditBox, ConfirmButton), with a state-bearing IListItem type (TaskItem) driving the list item operations. Where SruiDemo shows the widget set breadth-first, SruiTasks is the reference for structuring an application around subclassed behavior. Speech only — needs just prism.dll and SDL3.dll.
+- AudioExample — Srui.Audio walkthrough (no UI stack; needs only cosmos.dll and phonon.dll).
 - native/ — everything native: cosmos/ (vendored miniaudio + cosmos DSP nodes + Steam Audio glue + the xiph opus stack; decodes wav, flac, mp3, vorbis, and opus, UTF-8 filenames throughout), phonon/ (Steam Audio binaries), prism/ (vendored Prism), prebuilt/SDL3.dll, and build-native.ps1 which stages every DLL into native/out/.
 - samples/HelloSrui — consuming srui as compiled binaries (the dist.ps1 drop), deliberately outside the solution.
 - The tag rust-era marks the last commit of the retired Rust implementation the engine was ported from; the tag handle-era marks the last commit of the handle-addressed public API (NodeId + Ui facade + wrapper registry) before widgets became their own nodes.
@@ -22,16 +22,16 @@ SRUI is a screen-reader-first UI toolkit in C#: a retained semantic tree, keyboa
 
 Native first, managed second — but the native step is rare: run native/build-native.ps1 when native sources change or on a fresh clone; it stages prism.dll, SDL3.dll, cosmos.dll, and phonon.dll into native/out/, from which the csproj files copy them. The DLLs are optimized C/C++ regardless of the .NET configuration. The script's toolchain paths (cmake, ninja, clang-cl, vcvars, midl) are overridable via env vars documented at its top.
 
-- C# demo: `dotnet run --project dotnet/SruiDemo`
-- Object-oriented demo: `dotnet run --project dotnet/SruiTasks`
-- Audio walkthrough: `dotnet run --project dotnet/AudioExample`
+- C# demo: `dotnet run --project SruiDemo`
+- Object-oriented demo: `dotnet run --project SruiTasks`
+- Audio walkthrough: `dotnet run --project AudioExample`
 - Binary drop for external consumers: `./dist.ps1` (see samples/HelloSrui)
 
 The demos speak through Prism (the running screen reader, or platform TTS as fallback) and need a real window with keyboard focus, so they are not useful headless.
 
 # 4. Testing
 
-`dotnet test dotnet/Srui.Net.Tests` — everything runs fully headless. Behavioral tests build widgets in a headless SruiApp (SruiApp.Headless), push logical input through app.HandleInput, and assert the utterances a recording reader hears (SurfaceTests.cs holds the harness: TestUi/TestReader). Engine invariants are property-tested with seeded-random generators. New behavior is expected to arrive with its invariants encoded the same way. SruiDemo is the end-to-end check for anything the headless suite cannot see (real window, real speech).
+`dotnet test Srui.Net.Tests` — everything runs fully headless. Behavioral tests build widgets in a headless SruiApp (SruiApp.Headless), push logical input through app.HandleInput, and assert the utterances a recording reader hears (SurfaceTests.cs holds the harness: TestUi/TestReader). Engine invariants are property-tested with seeded-random generators. New behavior is expected to arrive with its invariants encoded the same way. SruiDemo is the end-to-end check for anything the headless suite cannot see (real window, real speech).
 
 # 5. Rules
 
