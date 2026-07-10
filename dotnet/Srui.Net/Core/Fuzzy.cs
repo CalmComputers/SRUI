@@ -152,11 +152,12 @@ internal static class Fuzzy
     /// matching ones sorted by descending score, ties broken by ordinal
     /// Text order. An empty query returns all items in their original
     /// order without consulting scores.</summary>
-    public static List<IListItem> FilterItems(string query, IReadOnlyList<IListItem> items)
+    public static List<T> FilterItems<T>(string query, IReadOnlyList<T> items)
+        where T : IListItem
     {
         if (query.Length == 0)
-            return new List<IListItem>(items);
-        var scored = new List<(int Score, IListItem Item)>(items.Count);
+            return new List<T>(items);
+        var scored = new List<(int Score, T Item)>(items.Count);
         foreach (var item in items)
             if (item.FilterScore(query) is int score)
                 scored.Add((score, item));
@@ -165,7 +166,7 @@ internal static class Fuzzy
             var byScore = b.Score.CompareTo(a.Score);
             return byScore != 0 ? byScore : string.CompareOrdinal(a.Item.Text, b.Item.Text);
         });
-        var result = new List<IListItem>(scored.Count);
+        var result = new List<T>(scored.Count);
         foreach (var (_, item) in scored)
             result.Add(item);
         return result;

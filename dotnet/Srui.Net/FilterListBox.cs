@@ -2,46 +2,34 @@ using Srui.Core;
 
 namespace Srui;
 
-/// <summary>Type-to-filter list: printable characters build a query,
-/// Backspace erases it, arrows and Home/End navigate the filtered
-/// results. Enter is not claimed (the layer's primary reads the
+/// <summary>Type-to-filter list over typed items: printable characters
+/// build a query, Backspace erases it, arrows and Home/End navigate the
+/// filtered results. Enter is not claimed (the layer's primary reads the
 /// selection). Matching and ranking belong to the items: each
-/// <see cref="IListItem"/> scores itself against the query
+/// <typeparamref name="T"/> scores itself against the query
 /// (<see cref="IListItem.FilterScore"/> — null excludes, higher first;
 /// the default is the built-in fuzzy match), so command-palette-style
-/// item types can rank recency or pin entries.</summary>
-public class FilterListBox : Widget
+/// item types can rank recency or pin entries. Plain strings arrive
+/// through the non-generic <see cref="FilterListBox"/>.</summary>
+public class FilterListBox<T> : Widget where T : class, IListItem
 {
-    private List<IListItem> _items;
+    private List<T> _items;
     private string _filter = "";
     private int _selected;
 
-    public FilterListBox(IWidgetContainer parent, string name, IReadOnlyList<IListItem> items)
+    public FilterListBox(IWidgetContainer parent, string name, IReadOnlyList<T> items)
         : base(parent, name, "list")
     {
-        _items = new List<IListItem>(items);
-    }
-
-    public FilterListBox(IWidgetContainer parent, string name, IReadOnlyList<string> items)
-        : this(parent, name, Wrap(items))
-    {
-    }
-
-    private static List<IListItem> Wrap(IReadOnlyList<string> items)
-    {
-        var wrapped = new List<IListItem>(items.Count);
-        foreach (var item in items)
-            wrapped.Add(new ListItem(item));
-        return wrapped;
+        _items = new List<T>(items);
     }
 
     /// <summary>The current query ("" for no filter).</summary>
     public string Filter => _filter;
 
     /// <summary>The items currently matching the filter, best match first.</summary>
-    public List<IListItem> Results => Fuzzy.FilterItems(_filter, _items);
+    public List<T> Results => Fuzzy.FilterItems(_filter, _items);
 
-    public IListItem? SelectedItem
+    public T? SelectedItem
     {
         get
         {
@@ -53,12 +41,12 @@ public class FilterListBox : Widget
     /// <summary>The full item list. Setting replaces it (the filter is
     /// kept, the selection reset) and speaks the newly selected result
     /// when focused and audibly changed.</summary>
-    public IReadOnlyList<IListItem> Items
+    public IReadOnlyList<T> Items
     {
         get => _items;
         set
         {
-            var copy = new List<IListItem>(value);
+            var copy = new List<T>(value);
             Engine.UpdateLabel(Node, _ =>
             {
                 _items = copy;
@@ -66,10 +54,6 @@ public class FilterListBox : Widget
             });
         }
     }
-
-    /// <summary>Replace the item list with plain strings; equivalent to
-    /// setting <see cref="Items"/>.</summary>
-    public void SetItems(IReadOnlyList<string> items) => Items = Wrap(items);
 
     /// <summary>Clear the filter and selection; the reset selection
     /// speaks when focused and audibly changed.</summary>
@@ -96,10 +80,10 @@ public class FilterListBox : Widget
     protected internal override string StateText =>
         _filter.Length == 0 ? "no filter" : $"filter {_filter}";
 
-    private void AnnounceResult(List<IListItem> filtered, Boundary? boundary) =>
+    private void AnnounceResult(List<T> filtered, Boundary? boundary) =>
         AnnounceItem(filtered[_selected].Text, (_selected, filtered.Count), boundary);
 
-    private void SelectAndAnnounce(List<IListItem> filtered, int index)
+    private void SelectAndAnnounce(List<T> filtered, int index)
     {
         _selected = index;
         AnnounceResult(filtered, null);
@@ -163,7 +147,7 @@ public class FilterListBox : Widget
                 return true;
             case InputKind.TypeChar:
                 if (System.Text.Rune.IsValid((int)input.Ch))
-                    _filter += ListBox.AsciiLowerString(char.ConvertFromUtf32((int)input.Ch));
+                    _filter += AsciiMatch.LowerString(char.ConvertFromUtf32((int)input.Ch));
                 FilterChanged();
                 return true;
             case InputKind.DeleteBackward when _filter.Length > 0:
@@ -176,4 +160,24 @@ public class FilterListBox : Widget
                 return false;
         }
     }
+}
+
+/// <summary>The untyped filter list — <see cref="FilterListBox{T}"/>
+/// over plain <see cref="IListItem"/> values, carrying the string
+/// convenience overloads.</summary>
+public class FilterListBox : FilterListBox<IListItem>
+{
+    public FilterListBox(IWidgetContainer parent, string name, IReadOnlyList<IListItem> items)
+        : base(parent, name, items)
+    {
+    }
+
+    public FilterListBox(IWidgetContainer parent, string name, IReadOnlyList<string> items)
+        : this(parent, name, ListBox.Wrap(items))
+    {
+    }
+
+    /// <summary>Replace the item list with plain strings; equivalent to
+    /// setting <see cref="Items"/>.</summary>
+    public void SetItems(IReadOnlyList<string> items) => Items = ListBox.Wrap(items);
 }

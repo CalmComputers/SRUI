@@ -229,6 +229,43 @@ public class ListItemTests
     }
 
     [Fact]
+    public void TypedListBoxReadsItemsBackWithoutCasts()
+    {
+        var ui = new TestUi();
+        var sweep = new Chore("sweep");
+        var dust = new Chore("dust");
+        var list = new ListBox<Chore>(ui.App, "Chores", [sweep, dust]);
+        list.Focus();
+        ui.Drain();
+
+        Chore? selected = list.SelectedItem; // typed — no cast
+        Assert.Same(sweep, selected);
+
+        // The typed surface supports LINQ over item state directly.
+        list.SetItems(list.Items.Where(c => !ReferenceEquals(c, sweep)).ToList());
+        ui.Drain();
+        Assert.Same(dust, list.SelectedItem);
+        Assert.All(list.Items, c => Assert.False(c.Done));
+    }
+
+    [Fact]
+    public void TypedFilterListBoxReturnsTypedResults()
+    {
+        var ui = new TestUi();
+        var open = new Command("open file", 1);
+        var list = new FilterListBox<Command>(ui.App, "Palette",
+            [open, new Command("hidden", 9)]);
+        list.Focus();
+        ui.Drain();
+
+        ui.Type('o');
+        ui.Drain();
+        Command? selected = list.SelectedItem; // typed — no cast
+        Assert.Same(open, selected);
+        Assert.Equal([open], list.Results);
+    }
+
+    [Fact]
     public void FilterWithNoResultsAnswersArrowsWithEmpty()
     {
         var ui = new TestUi();

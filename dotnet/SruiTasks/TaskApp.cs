@@ -32,7 +32,7 @@ public sealed class TaskApp
         _views.Changed += () =>
         {
             if (_views.ActiveTab == "Summary")
-                _summary.ShowReport(_tasks.List.Tasks);
+                _summary.ShowReport(_tasks.List.Items);
         };
 
         // Alt+V jumps to the view switcher, Ctrl+N to the entry box;

@@ -51,22 +51,19 @@ public sealed class TaskItem(string title) : IListItem
 /// Claiming Space costs multi-word type-ahead ("water t" would toggle at
 /// the space) — the kind of tradeoff every key-claiming subclass makes;
 /// letter cycling and single-word prefixes still work.</summary>
-public class TaskListBox : ListBox
+public class TaskListBox : ListBox<TaskItem>
 {
     public TaskListBox(IWidgetContainer parent, string name, IEnumerable<TaskItem> tasks)
         : base(parent, name, tasks.ToList(), numbered: true)
     {
     }
 
-    /// <summary>The tasks, in list order — the base's items, typed.</summary>
-    public IEnumerable<TaskItem> Tasks => Items.Cast<TaskItem>();
-
-    private TaskItem Selected => (TaskItem)Items[SelectedIndex];
+    private TaskItem Selected => Items[SelectedIndex];
 
     /// <summary>Remove every done task; returns how many went.</summary>
     public int ClearCompleted()
     {
-        var keep = Items.Where(t => !((TaskItem)t).Done).ToList();
+        var keep = Items.Where(t => !t.Done).ToList();
         var removed = Items.Count - keep.Count;
         if (removed > 0)
             SetItems(keep);

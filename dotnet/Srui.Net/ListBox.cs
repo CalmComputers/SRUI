@@ -2,26 +2,29 @@ using Srui.Core;
 
 namespace Srui;
 
-/// <summary>Single-selection list. Arrows move the selection with
-/// boundary announcements, Home/End jump, printable characters do
-/// first-letter cycling and multi-letter prefix search. Enter is
-/// deliberately not claimed: it falls through to the layer's primary
-/// widget (Windows dialog convention), which reads the selection.
+/// <summary>Single-selection list over typed items. Arrows move the
+/// selection with boundary announcements, Home/End jump, printable
+/// characters do first-letter cycling and multi-letter prefix search.
+/// Enter is deliberately not claimed: it falls through to the layer's
+/// primary widget (Windows dialog convention), which reads the selection.
 ///
-/// Items are <see cref="IListItem"/> values — application types
-/// implement the interface, plain strings arrive through the string
-/// overloads. The item operations (<see cref="RemoveAt"/>,
-/// <see cref="Insert"/>, <see cref="SetItem"/>, <see cref="RefreshItem"/>)
-/// own the structural consequences — selection clamping and what the
-/// user hears about where the selection landed; editorial feedback
-/// ("Deleted X.") stays with the caller, as an attributed Announce.</summary>
-public class ListBox : Widget
+/// Items are <typeparamref name="T"/> values implementing
+/// <see cref="IListItem"/> — state-bearing subclasses derive from the
+/// typed form (<c>class TaskListBox : ListBox&lt;TaskItem&gt;</c>) and read
+/// their items back without casts; plain strings arrive through the
+/// non-generic <see cref="ListBox"/>'s string overloads. The item
+/// operations (<see cref="RemoveAt"/>, <see cref="Insert"/>,
+/// <see cref="SetItem"/>) own the structural consequences — selection
+/// clamping and what the user hears about where the selection landed;
+/// editorial feedback ("Deleted X.") stays with the caller, as an
+/// attributed Announce.</summary>
+public class ListBox<T> : Widget where T : class, IListItem
 {
     /// <summary>Timeout for resetting the typeahead buffer (milliseconds
     /// of host time).</summary>
     private const ulong TypeAheadTimeoutMs = 400;
 
-    private List<IListItem> _items;
+    private List<T> _items;
     private int _selected;
     /// <summary>When true, announcements and focus state text carry "N of M".</summary>
     private readonly bool _numbered;
@@ -29,33 +32,18 @@ public class ListBox : Widget
     private ulong? _lastKeystrokeMs;
 
     public ListBox(
-        IWidgetContainer parent, string name, IReadOnlyList<IListItem> items,
+        IWidgetContainer parent, string name, IReadOnlyList<T> items,
         bool numbered = false)
         : base(parent, name, "list")
     {
-        _items = new List<IListItem>(items);
+        _items = new List<T>(items);
         _numbered = numbered;
-    }
-
-    public ListBox(
-        IWidgetContainer parent, string name, IReadOnlyList<string> items,
-        bool numbered = false)
-        : this(parent, name, Wrap(items), numbered)
-    {
-    }
-
-    private static List<IListItem> Wrap(IReadOnlyList<string> items)
-    {
-        var wrapped = new List<IListItem>(items.Count);
-        foreach (var item in items)
-            wrapped.Add(new ListItem(item));
-        return wrapped;
     }
 
     /// <summary>The items. Setting replaces the list (selection clamped)
     /// and speaks the newly selected item when focused and audibly
     /// changed.</summary>
-    public IReadOnlyList<IListItem> Items
+    public IReadOnlyList<T> Items
     {
         get => _items;
         set => SetItems(value);
@@ -63,9 +51,9 @@ public class ListBox : Widget
 
     /// <summary>Replace the item list (selection clamped); equivalent to
     /// setting <see cref="Items"/>.</summary>
-    public virtual void SetItems(IReadOnlyList<IListItem> items)
+    public virtual void SetItems(IReadOnlyList<T> items)
     {
-        var copy = new List<IListItem>(items);
+        var copy = new List<T>(items);
         Engine.UpdateLabel(Node, _ =>
         {
             _items = copy;
@@ -74,24 +62,17 @@ public class ListBox : Widget
         });
     }
 
-    /// <summary>Replace the item list with plain strings.</summary>
-    public void SetItems(IReadOnlyList<string> items) => SetItems(Wrap(items));
-
     /// <summary>Replace the items without any announcement — the
-    /// counterpart of <see cref="SetItems(IReadOnlyList{IListItem})"/>
-    /// for subclass input handlers, which mutate state silently and then
+    /// counterpart of <see cref="SetItems(IReadOnlyList{T})"/> for
+    /// subclass input handlers, which mutate state silently and then
     /// emit what the user should hear. The selection is clamped; the
     /// label follows by itself.</summary>
-    protected void SetItemsSilently(IReadOnlyList<IListItem> items)
+    protected void SetItemsSilently(IReadOnlyList<T> items)
     {
-        _items = new List<IListItem>(items);
+        _items = new List<T>(items);
         if (_items.Count > 0 && _selected >= _items.Count)
             _selected = _items.Count - 1;
     }
-
-    /// <summary>Replace the items with plain strings, silently.</summary>
-    protected void SetItemsSilently(IReadOnlyList<string> items) =>
-        SetItemsSilently(Wrap(items));
 
     /// <summary>Remove the item at the index. Removing the selected item
     /// while focused speaks the survivor the selection lands on exactly
@@ -122,7 +103,7 @@ public class ListBox : Widget
     /// and focus announcements pick the new count up automatically —
     /// except into an empty list while focused: there the selection lands
     /// on the new item, and it speaks exactly as an arrow move would.</summary>
-    public void Insert(int index, IListItem item)
+    public void Insert(int index, T item)
     {
         if ((uint)index > (uint)_items.Count)
             throw new ArgumentOutOfRangeException(nameof(index));
@@ -134,28 +115,19 @@ public class ListBox : Widget
             AnnounceSelected(null);
     }
 
-    /// <summary>Insert a plain-text item at the index.</summary>
-    public void Insert(int index, string item) => Insert(index, new ListItem(item));
-
-    /// <summary>Append an item. Silent, like <see cref="Insert(int, IListItem)"/>.</summary>
-    public void Add(IListItem item) => Insert(_items.Count, item);
-
-    /// <summary>Append a plain-text item.</summary>
-    public void Add(string item) => Add(new ListItem(item));
+    /// <summary>Append an item. Silent, like <see cref="Insert(int, T)"/>.</summary>
+    public void Add(T item) => Insert(_items.Count, item);
 
     /// <summary>Replace the item at the index with a different one.
     /// Silent: the caller speaks the delta when the user should hear one.
     /// Mutating an existing item's state needs no call at all — its Text
     /// is read live wherever the framework needs the line.</summary>
-    public void SetItem(int index, IListItem item)
+    public void SetItem(int index, T item)
     {
         if ((uint)index >= (uint)_items.Count)
             throw new ArgumentOutOfRangeException(nameof(index));
         _items[index] = item;
     }
-
-    /// <summary>Replace the item at the index with plain text.</summary>
-    public void SetItem(int index, string item) => SetItem(index, new ListItem(item));
 
     /// <summary>The selected index, or -1 when the list is empty. A
     /// programmatic move (clamped) while focused speaks the item exactly
@@ -177,7 +149,7 @@ public class ListBox : Widget
         }
     }
 
-    public IListItem? SelectedItem => _selected < _items.Count ? _items[_selected] : null;
+    public T? SelectedItem => _selected < _items.Count ? _items[_selected] : null;
 
     /// <summary>The selected item's line (or "empty"), pulled fresh at
     /// announcement time — an item whose Text is computed from mutated
@@ -213,13 +185,13 @@ public class ListBox : Widget
 
     private void HandleTypeAhead(string runeText)
     {
-        var runeLower = AsciiLowerString(runeText);
+        var runeLower = AsciiMatch.LowerString(runeText);
 
         var now = NowMs;
         var shouldReset = _lastKeystrokeMs is not ulong last
             || now - Math.Min(now, last) > TypeAheadTimeoutMs;
         // Cycling: the same letter typed repeatedly.
-        var cycling = _typeAheadBuffer.Length > 0 && IsRepeatsOf(_typeAheadBuffer, runeLower);
+        var cycling = _typeAheadBuffer.Length > 0 && AsciiMatch.IsRepeatsOf(_typeAheadBuffer, runeLower);
 
         if (shouldReset || cycling)
             _typeAheadBuffer = "";
@@ -233,7 +205,7 @@ public class ListBox : Widget
             for (var offset = 1; offset <= count; offset++)
             {
                 var idx = (_selected + offset) % count;
-                if (StartsWithAsciiLower(_items[idx].Text, runeLower))
+                if (AsciiMatch.StartsWithLower(_items[idx].Text, runeLower))
                 {
                     SelectAndAnnounce(idx);
                     break;
@@ -248,7 +220,7 @@ public class ListBox : Widget
             for (var offset = 0; offset < count; offset++)
             {
                 var idx = (_selected + offset) % count;
-                if (StartsWithAsciiLower(_items[idx].Text, needle))
+                if (AsciiMatch.StartsWithLower(_items[idx].Text, needle))
                 {
                     if (idx != _selected)
                         SelectAndAnnounce(idx);
@@ -259,36 +231,6 @@ public class ListBox : Widget
             }
         }
     }
-
-    internal static string AsciiLowerString(string s)
-    {
-        var chars = s.ToCharArray();
-        for (var i = 0; i < chars.Length; i++)
-            chars[i] = ToAsciiLower(chars[i]);
-        return new string(chars);
-    }
-
-    private static bool IsRepeatsOf(string s, string unit)
-    {
-        if (unit.Length == 0 || s.Length % unit.Length != 0)
-            return false;
-        for (var i = 0; i < s.Length; i += unit.Length)
-            if (string.CompareOrdinal(s, i, unit, 0, unit.Length) != 0)
-                return false;
-        return true;
-    }
-
-    private static bool StartsWithAsciiLower(string item, string needle)
-    {
-        if (item.Length < needle.Length)
-            return false;
-        for (var i = 0; i < needle.Length; i++)
-            if (ToAsciiLower(item[i]) != needle[i])
-                return false;
-        return true;
-    }
-
-    private static char ToAsciiLower(char c) => c is >= 'A' and <= 'Z' ? (char)(c + 32) : c;
 
     public override bool ReservesKey(KeyCombo combo)
     {
@@ -350,4 +292,83 @@ public class ListBox : Widget
                 return false;
         }
     }
+}
+
+/// <summary>The untyped list — <see cref="ListBox{T}"/> over plain
+/// <see cref="IListItem"/> values, carrying the string convenience
+/// overloads (plain strings wrap into <see cref="ListItem"/>).</summary>
+public class ListBox : ListBox<IListItem>
+{
+    public ListBox(
+        IWidgetContainer parent, string name, IReadOnlyList<IListItem> items,
+        bool numbered = false)
+        : base(parent, name, items, numbered)
+    {
+    }
+
+    public ListBox(
+        IWidgetContainer parent, string name, IReadOnlyList<string> items,
+        bool numbered = false)
+        : this(parent, name, Wrap(items), numbered)
+    {
+    }
+
+    internal static List<IListItem> Wrap(IReadOnlyList<string> items)
+    {
+        var wrapped = new List<IListItem>(items.Count);
+        foreach (var item in items)
+            wrapped.Add(new ListItem(item));
+        return wrapped;
+    }
+
+    /// <summary>Replace the item list with plain strings.</summary>
+    public void SetItems(IReadOnlyList<string> items) => SetItems(Wrap(items));
+
+    /// <summary>Replace the items with plain strings, silently.</summary>
+    protected void SetItemsSilently(IReadOnlyList<string> items) =>
+        SetItemsSilently(Wrap(items));
+
+    /// <summary>Insert a plain-text item at the index.</summary>
+    public void Insert(int index, string item) => Insert(index, new ListItem(item));
+
+    /// <summary>Append a plain-text item.</summary>
+    public void Add(string item) => Add(new ListItem(item));
+
+    /// <summary>Replace the item at the index with plain text.</summary>
+    public void SetItem(int index, string item) => SetItem(index, new ListItem(item));
+}
+
+/// <summary>ASCII-lowercase matching for list type-ahead: matching is
+/// case-insensitive in ASCII only, deliberately locale-free.</summary>
+internal static class AsciiMatch
+{
+    internal static string LowerString(string s)
+    {
+        var chars = s.ToCharArray();
+        for (var i = 0; i < chars.Length; i++)
+            chars[i] = ToLower(chars[i]);
+        return new string(chars);
+    }
+
+    internal static bool IsRepeatsOf(string s, string unit)
+    {
+        if (unit.Length == 0 || s.Length % unit.Length != 0)
+            return false;
+        for (var i = 0; i < s.Length; i += unit.Length)
+            if (string.CompareOrdinal(s, i, unit, 0, unit.Length) != 0)
+                return false;
+        return true;
+    }
+
+    internal static bool StartsWithLower(string item, string needle)
+    {
+        if (item.Length < needle.Length)
+            return false;
+        for (var i = 0; i < needle.Length; i++)
+            if (ToLower(item[i]) != needle[i])
+                return false;
+        return true;
+    }
+
+    private static char ToLower(char c) => c is >= 'A' and <= 'Z' ? (char)(c + 32) : c;
 }
