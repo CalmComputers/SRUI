@@ -35,8 +35,6 @@ public class ListBox : Widget
     {
         _items = new List<IListItem>(items);
         _numbered = numbered;
-        SetValue(_selected < _items.Count ? _items[_selected].Text : "empty");
-        SyncStateText();
     }
 
     public ListBox(
@@ -68,12 +66,11 @@ public class ListBox : Widget
     public virtual void SetItems(IReadOnlyList<IListItem> items)
     {
         var copy = new List<IListItem>(items);
-        Engine.UpdateLabel(Node, label =>
+        Engine.UpdateLabel(Node, _ =>
         {
             _items = copy;
             if (_items.Count > 0 && _selected >= _items.Count)
                 _selected = _items.Count - 1;
-            SyncInto(label);
         });
     }
 
@@ -83,15 +80,13 @@ public class ListBox : Widget
     /// <summary>Replace the items without any announcement — the
     /// counterpart of <see cref="SetItems(IReadOnlyList{IListItem})"/>
     /// for subclass input handlers, which mutate state silently and then
-    /// emit what the user should hear (matching <see cref="Widget.SetValue"/>).
-    /// The selection is clamped; focus announcements pick the new items
-    /// up automatically.</summary>
+    /// emit what the user should hear. The selection is clamped; the
+    /// label follows by itself.</summary>
     protected void SetItemsSilently(IReadOnlyList<IListItem> items)
     {
         _items = new List<IListItem>(items);
         if (_items.Count > 0 && _selected >= _items.Count)
             _selected = _items.Count - 1;
-        SyncLabel();
     }
 
     /// <summary>Replace the items with plain strings, silently.</summary>
@@ -114,7 +109,6 @@ public class ListBox : Widget
             _selected--;
         else if (_selected >= _items.Count && _selected > 0)
             _selected = _items.Count - 1;
-        SyncLabel();
         if (!wasSelected || !IsFocused)
             return;
         if (_items.Count == 0)
@@ -136,7 +130,6 @@ public class ListBox : Widget
         _items.Insert(index, item);
         if (!wasEmpty && index <= _selected)
             _selected++;
-        SyncLabel();
         if (wasEmpty && IsFocused)
             AnnounceSelected(null);
     }
@@ -159,7 +152,6 @@ public class ListBox : Widget
         if ((uint)index >= (uint)_items.Count)
             throw new ArgumentOutOfRangeException(nameof(index));
         _items[index] = item;
-        SyncLabel();
     }
 
     /// <summary>Replace the item at the index with plain text.</summary>
@@ -180,7 +172,6 @@ public class ListBox : Widget
             if (target == _selected)
                 return;
             _selected = target;
-            SyncLabel();
             if (IsFocused)
                 AnnounceSelected(null);
         }
@@ -188,41 +179,15 @@ public class ListBox : Widget
 
     public IListItem? SelectedItem => _selected < _items.Count ? _items[_selected] : null;
 
-    /// <summary>Focus announcements pull the label fresh, so an item
-    /// whose Text is computed from mutated application state reads
-    /// correctly with no sync call.</summary>
-    protected internal override void RefreshLabel() => SyncLabel();
+    /// <summary>The selected item's line (or "empty"), pulled fresh at
+    /// announcement time — an item whose Text is computed from mutated
+    /// application state reads correctly with no sync call.</summary>
+    protected internal override string ValueText =>
+        _selected < _items.Count ? _items[_selected].Text : "empty";
 
-    /// <summary>Keep the golden six in step with the widget state: value
-    /// is the selected item (or "empty"), state text is "N of M" when
-    /// numbered.</summary>
-    private void SyncLabel()
-    {
-        SetValue(_selected < _items.Count ? _items[_selected].Text : "empty");
-        SyncStateText();
-    }
-
-    private void SyncStateText()
-    {
-        if (_numbered)
-            SetStateText(_selected < _items.Count ? $"{_selected + 1} of {_items.Count}" : "");
-    }
-
-    private void SyncInto(WidgetLabel label)
-    {
-        if (_selected < _items.Count)
-        {
-            label.Value = _items[_selected].Text;
-            if (_numbered)
-                label.StateText = $"{_selected + 1} of {_items.Count}";
-        }
-        else
-        {
-            label.Value = "empty";
-            if (_numbered)
-                label.StateText = "";
-        }
-    }
+    /// <summary>"N of M" when numbered.</summary>
+    protected internal override string StateText =>
+        _numbered && _selected < _items.Count ? $"{_selected + 1} of {_items.Count}" : "";
 
     /// <summary>The selection announcement, shared between user-driven
     /// navigation and programmatic SelectedIndex moves.</summary>
@@ -238,12 +203,10 @@ public class ListBox : Widget
     /// and focus announcement carry.</summary>
     private void AnnounceEmpty() => AnnounceItem("empty", null, null);
 
-    /// <summary>Selection moved by input: sync label, announce, notify
-    /// the program.</summary>
+    /// <summary>Selection moved by input: announce, notify the program.</summary>
     private void SelectAndAnnounce(int index)
     {
         _selected = index;
-        SyncLabel();
         AnnounceSelected(null);
         PostChanged();
     }

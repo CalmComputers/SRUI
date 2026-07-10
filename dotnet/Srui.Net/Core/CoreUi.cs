@@ -137,25 +137,35 @@ internal sealed class CoreUi
 
     // ── Label mutation ──
 
-    /// <summary>Mutate a node's label. If the node is focused, each
+    /// <summary>Mutate a node's label and/or the widget state its derived
+    /// label fields are computed from. If the node is focused, each
     /// changed property is spoken as a delta — the new name, role text,
     /// value, or description (LabelChange), or a state flag's transition
     /// (StateChange) — never a full re-announcement, which is reserved
-    /// for focus arriving. If the mutation made the focused node
-    /// unreachable (hidden, or inside a newly hidden subtree; disabled
-    /// widgets stay reachable), focus recovers to the nearest focusable
-    /// node and announces there, after the deltas. Widgets syncing state
-    /// during their own input handling write the label directly instead —
-    /// their emission is the announcement.</summary>
+    /// for focus arriving. The value delta is detected by pulling the
+    /// widget's ValueText before and after the mutation, so a programmatic
+    /// setter speaks only when audibly changed. If the mutation made the
+    /// focused node unreachable (hidden, or inside a newly hidden subtree;
+    /// disabled widgets stay reachable), focus recovers to the nearest
+    /// focusable node and announces there, after the deltas. Widgets
+    /// syncing state during their own input handling mutate directly
+    /// instead — their emission is the announcement.</summary>
     public void UpdateLabel(NodeId id, Action<WidgetLabel> mutate)
     {
         var node = _tree.Get(id);
         if (node is null)
             return;
+        if (_tree.Focus != id)
+        {
+            mutate(node.Label);
+            RecoverUnreachableFocus();
+            return;
+        }
+        var owner = node.Owner as Widget;
         var before = node.Label.Clone();
+        var valueBefore = owner?.ValueText;
         mutate(node.Label);
-        if (_tree.Focus == id)
-            EmitLabelDeltas(id, before, node.Label);
+        EmitLabelDeltas(id, before, node.Label, valueBefore, owner?.ValueText);
         RecoverUnreachableFocus();
     }
 
@@ -164,7 +174,9 @@ internal sealed class CoreUi
     /// silent: state text and shortcuts ride the next focus announcement,
     /// and hiding the focused widget reads as the focus recovery it
     /// causes.</summary>
-    private void EmitLabelDeltas(NodeId id, WidgetLabel before, WidgetLabel after)
+    private void EmitLabelDeltas(
+        NodeId id, WidgetLabel before, WidgetLabel after,
+        string? valueBefore, string? valueAfter)
     {
         if (_tree.Get(id)?.Owner is not Widget widget)
             return;
@@ -174,9 +186,9 @@ internal sealed class CoreUi
         if (before.RoleText != after.RoleText)
             EmitAccessibility(new AccessibilityEvent.LabelChange(
                 widget, LabelPart.Role, after.RoleText));
-        if (before.Value != after.Value)
+        if (valueBefore != valueAfter)
             EmitAccessibility(new AccessibilityEvent.LabelChange(
-                widget, LabelPart.Value, after.Value));
+                widget, LabelPart.Value, valueAfter ?? ""));
         if (before.Description != after.Description)
             EmitAccessibility(new AccessibilityEvent.LabelChange(
                 widget, LabelPart.Description, after.Description));
@@ -312,9 +324,8 @@ internal sealed class CoreUi
         var node = _tree.Get(id);
         if (node?.Owner is Widget owner)
         {
-            owner.RefreshLabel();
             _events.Add(new CoreEvent.Acc(new AccessibilityEvent.Focused(
-                owner, node.Label.ToInfo(), EmptyContext)));
+                owner, node.Label.ToInfo(owner.ValueText, owner.StateText), EmptyContext)));
         }
     }
 
@@ -332,9 +343,8 @@ internal sealed class CoreUi
         var node = _tree.Get(id);
         if (node?.Owner is not Widget owner)
             return;
-        owner.RefreshLabel();
         _events.Add(new CoreEvent.Acc(new AccessibilityEvent.Focused(
-            owner, node.Label.ToInfo(), ContextLabelsFor(id))));
+            owner, node.Label.ToInfo(owner.ValueText, owner.StateText), ContextLabelsFor(id))));
     }
 
     private List<string> ContextLabelsFor(NodeId id)

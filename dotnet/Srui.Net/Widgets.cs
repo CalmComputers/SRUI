@@ -78,10 +78,10 @@ public class CheckBox : Widget
         : base(parent, name, "check box")
     {
         _checked = isChecked;
-        SetValue(ValueText(isChecked));
     }
 
-    private static string ValueText(bool isChecked) => isChecked ? "checked" : "not checked";
+    /// <summary>"checked" / "not checked", pulled at announcement time.</summary>
+    protected internal override string ValueText => _checked ? "checked" : "not checked";
 
     /// <summary>The checked state. A programmatic change while focused
     /// speaks the new value exactly as a user-driven toggle would; it does
@@ -94,7 +94,6 @@ public class CheckBox : Widget
             if (value == _checked)
                 return;
             _checked = value;
-            SetValue(ValueText(value));
             if (IsFocused)
                 Promulgate(new AccessibilityEvent.Toggle(this, value));
         }
@@ -115,7 +114,6 @@ public class CheckBox : Widget
         {
             _checked = !_checked;
             var isChecked = _checked;
-            SetValue(ValueText(isChecked));
             Post(() => OnToggled(isChecked));
             Promulgate(new AccessibilityEvent.Toggle(this, isChecked));
             return true;

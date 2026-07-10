@@ -24,13 +24,17 @@ public class TableWidget : Widget
     {
         _columns = columns;
         _rows = rows;
-        SetValue($"{_columns[_col]}: {Cell}");
-        SetStateText($"row {_row + 1} of {_rows.Count}");
     }
 
     public int Row => _row;
 
     public string Cell => _rows[_row][_col];
+
+    // The label is a function of the cell cursor: the framework pulls
+    // these at announcement time, so no sync calls appear in OnInput.
+    protected override string ValueText => $"{_columns[_col]}: {Cell}";
+
+    protected override string StateText => $"row {_row + 1} of {_rows.Count}";
 
     /// <summary>Enter on the table; the argument is the row index.</summary>
     public event Action<int>? RowActivated;
@@ -67,8 +71,6 @@ public class TableWidget : Widget
         var col = Math.Clamp(toCol, 0, _columns.Length - 1);
         var moved = (row, col) != (_row, _col);
         (_row, _col) = (row, col);
-        SetValue($"{_columns[_col]}: {Cell}");
-        SetStateText($"row {_row + 1} of {_rows.Count}");
 
         if (vertical)
         {

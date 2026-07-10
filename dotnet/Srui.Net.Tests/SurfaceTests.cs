@@ -2010,13 +2010,13 @@ public class WidgetAuthoringTests
             : base(parent, name, roleText: "grid")
         {
             _cells = cells;
-            SetValue(Cell);
-            SetStateText(Position);
         }
 
         public string Cell => _cells[_row][_col];
 
-        private string Position => $"row {_row + 1} column {_col + 1}";
+        protected internal override string ValueText => Cell;
+
+        protected internal override string StateText => $"row {_row + 1} column {_col + 1}";
 
         public event Action<string>? CellChosen;
 
@@ -2046,8 +2046,6 @@ public class WidgetAuthoringTests
                         : dc < 0 ? Boundary.Left : Boundary.Right
                     : null;
                 (_row, _col) = (row, col);
-                SetValue(Cell);
-                SetStateText(Position);
                 AnnounceItem(boundary is Boundary.Left or Boundary.Right
                     ? $"edge, {Cell}"
                     : Cell, null, boundary is Boundary.Top or Boundary.Bottom ? boundary : null);

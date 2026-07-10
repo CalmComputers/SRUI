@@ -11,8 +11,11 @@ public class ShortcutField : Widget
     public ShortcutField(IWidgetContainer parent, string name)
         : base(parent, name, "shortcut field")
     {
-        SetValue("blank");
     }
+
+    /// <summary>The captured combo's display form, or "blank".</summary>
+    protected internal override string ValueText =>
+        _combo is KeyCombo combo ? combo.DisplayName() : "blank";
 
     /// <summary>When false, capturing a combo produces no speech feedback
     /// (for bind dialogs that narrate on their own terms).</summary>
@@ -23,11 +26,7 @@ public class ShortcutField : Widget
     public KeyCombo? Combo
     {
         get => _combo;
-        set => Engine.UpdateLabel(Node, label =>
-        {
-            _combo = value;
-            label.Value = value is KeyCombo combo ? combo.DisplayName() : "blank";
-        });
+        set => Engine.UpdateLabel(Node, _ => _combo = value);
     }
 
     // A shortcut field captures any keypress as its value.
@@ -36,7 +35,6 @@ public class ShortcutField : Widget
     private void Capture(KeyCombo combo)
     {
         _combo = combo;
-        SetValue(combo.DisplayName());
         if (Echo)
             SayValue(combo.DisplayName());
         PostChanged();
@@ -62,7 +60,6 @@ public class ShortcutField : Widget
                 if (_combo is not null)
                 {
                     _combo = null;
-                    SetValue("blank");
                     SayValue("blank");
                     PostChanged();
                 }

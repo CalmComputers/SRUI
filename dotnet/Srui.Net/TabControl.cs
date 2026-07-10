@@ -16,9 +16,11 @@ public class TabControl : Widget
     {
         _tabs = new List<string>(tabs);
         _active = _tabs.Count == 0 ? 0 : Math.Clamp(active, 0, _tabs.Count - 1);
-        if (_active < _tabs.Count)
-            SetValue(_tabs[_active]);
     }
+
+    /// <summary>The active tab's name, pulled at announcement time.</summary>
+    protected internal override string ValueText =>
+        _active < _tabs.Count ? _tabs[_active] : "";
 
     public IReadOnlyList<string> Tabs => _tabs;
 
@@ -56,7 +58,6 @@ public class TabControl : Widget
             if (target == _active)
                 return;
             _active = target;
-            SetValue(_tabs[_active]);
             SyncPanels();
             if (IsFocused)
                 Promulgate(new AccessibilityEvent.TabChange(this, _tabs[_active], (_active, _tabs.Count)));
@@ -91,7 +92,6 @@ public class TabControl : Widget
     private void Switch(int to)
     {
         _active = to;
-        SetValue(_tabs[_active]);
         Promulgate(new AccessibilityEvent.TabChange(this, _tabs[_active], (_active, _tabs.Count)));
         // Panels are other widgets: touch them at drain, outside
         // dispatch — before Changed subscribers, so handlers see the

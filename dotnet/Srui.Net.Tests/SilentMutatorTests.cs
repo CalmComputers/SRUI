@@ -6,7 +6,7 @@ namespace Srui.Net.Tests;
 /// <summary>The protected silent mutators (ListBox.SetItemsSilently,
 /// EditBox.SetTextSilently): a subclass input handler reshapes base-owned
 /// state without triggering the public setters' focused re-announcement,
-/// then owns the emission — the same contract as Widget.SetValue.</summary>
+/// then owns the emission.</summary>
 public class SilentMutatorTests
 {
     /// <summary>A list where Space toggles a ", done" suffix on the

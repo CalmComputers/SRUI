@@ -24,8 +24,11 @@ public class Slider : Widget
         _smallStep = smallStep;
         _largeStep = largeStep;
         _unit = unit;
-        SetValue($"{_value}{_unit}");
     }
+
+    /// <summary>The value with its unit ("50%"), pulled at announcement
+    /// time.</summary>
+    protected internal override string ValueText => $"{_value}{_unit}";
 
     public int Minimum => _min;
 
@@ -43,7 +46,6 @@ public class Slider : Widget
             if (clamped == _value)
                 return;
             _value = clamped;
-            SetValue($"{_value}{_unit}");
             if (IsFocused)
                 Promulgate(new AccessibilityEvent.SliderChange(this, _value, _unit));
         }
@@ -100,7 +102,6 @@ public class Slider : Widget
         }
         if (delta is int d)
             _value = Math.Clamp(_value + d, _min, _max);
-        SetValue($"{_value}{_unit}");
         // Announce even when clamped at an edge; notify only real change.
         Promulgate(new AccessibilityEvent.SliderChange(this, _value, _unit));
         if (_value != prev)

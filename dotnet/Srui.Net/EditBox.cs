@@ -17,8 +17,11 @@ public class EditBox : Widget
         : base(parent, name, RoleTextFor(false, multiline))
     {
         _editor = new EditorState(text, multiline);
-        SetValue(EditBoxCore.LabelValue(_editor));
     }
+
+    /// <summary>The current line (multiline) or the text (single-line),
+    /// pulled fresh at announcement time.</summary>
+    protected internal override string ValueText => EditBoxCore.LabelValue(_editor);
 
     private static string RoleTextFor(bool readOnly, bool multiline) => (readOnly, multiline) switch
     {
@@ -35,11 +38,7 @@ public class EditBox : Widget
     public string Text
     {
         get => _editor.Text();
-        set => Engine.UpdateLabel(Node, label =>
-        {
-            _editor.SetText(value);
-            label.Value = EditBoxCore.LabelValue(_editor);
-        });
+        set => Engine.UpdateLabel(Node, _ => _editor.SetText(value));
     }
 
     /// <summary>A read-only editor swallows typing silently and lets
@@ -52,7 +51,6 @@ public class EditBox : Widget
         {
             _editor.ReadOnly = value;
             label.RoleText = RoleTextFor(value, _editor.Multiline);
-            label.Value = EditBoxCore.LabelValue(_editor);
         });
     }
 
@@ -72,7 +70,6 @@ public class EditBox : Widget
             _editor.Selection = null;
             _editor.PreferredColumn = null;
             _editor.Cursor = target;
-            SetValue(EditBoxCore.LabelValue(_editor));
             if (moved && IsFocused && !_editor.IsEmpty)
                 Promulgate(EditBoxCore.CharNavEvent(this, _editor));
         }
@@ -94,7 +91,6 @@ public class EditBox : Widget
                 _editor.Selection = (a, c);
                 _editor.Cursor = c;
                 _editor.PreferredColumn = null;
-                SetValue(EditBoxCore.LabelValue(_editor));
                 if (a != c && IsFocused)
                 {
                     var start = Math.Min(a, c);
@@ -109,7 +105,6 @@ public class EditBox : Widget
             {
                 var had = _editor.HasSelection;
                 _editor.Selection = null;
-                SetValue(EditBoxCore.LabelValue(_editor));
                 if (had && IsFocused)
                     Promulgate(new AccessibilityEvent.Selection(this, "", SelectionKind.Cleared));
             }
@@ -123,7 +118,6 @@ public class EditBox : Widget
     public void SelectAll()
     {
         _editor.SelectAll();
-        SetValue(EditBoxCore.LabelValue(_editor));
         if (_editor.IsEmpty || !IsFocused)
             return;
         var length = _editor.Length;
@@ -136,16 +130,14 @@ public class EditBox : Widget
     /// <summary>Replace the text without any announcement — the
     /// counterpart of the <see cref="Text"/> setter for subclass input
     /// handlers, which mutate state silently and then emit what the user
-    /// should hear (matching <see cref="Widget.SetValue"/>). The cursor
-    /// lands at the end of the new text and the selection is cleared —
-    /// positioned to continue typing.</summary>
+    /// should hear. The cursor lands at the end of the new text and the
+    /// selection is cleared — positioned to continue typing.</summary>
     protected void SetTextSilently(string text)
     {
         _editor.SetText(text);
         _editor.Selection = null;
         _editor.Cursor = _editor.Length;
         _editor.PreferredColumn = null;
-        SetValue(EditBoxCore.LabelValue(_editor));
     }
 
     /// <summary>Clamp a position to the text and snap it off the middle
@@ -201,7 +193,6 @@ public class EditBox : Widget
             Promulgate(ev);
         if (result.Changed)
             PostChanged();
-        SetValue(EditBoxCore.LabelValue(_editor));
         return true;
     }
 }

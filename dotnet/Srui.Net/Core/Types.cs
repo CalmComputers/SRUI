@@ -15,25 +15,24 @@ internal readonly record struct NodeId(ulong Value)
 /// announcements speak.</summary>
 internal readonly record struct WidgetShortcut(KeyCombo Combo, ShortcutAction Action);
 
-/// <summary>The six semantic properties of every widget, in NVDA
-/// announcement order: Name Role Value States Description Shortcut — plus
-/// the navigation traits the tree machinery needs (Focusable,
-/// IsContextLabel). Role is carried as its spoken text; what a role
-/// reserves during interaction is the owning widget's affair
-/// (<see cref="Srui.Widget.ReservesKey"/>). Name is nullable because a
-/// small number of widgets have no user-facing name and announce as
-/// "role value" only.</summary>
+/// <summary>The authored subset of the golden six (name, role,
+/// description, flag states, shortcuts) plus the navigation traits the
+/// tree machinery needs (Focusable, IsContextLabel). The derived fields
+/// — value and dynamic state text — are not stored: they are functions
+/// of widget state, pulled from the owning widget
+/// (<see cref="Srui.Widget.ValueText"/>/<see cref="Srui.Widget.StateText"/>)
+/// whenever an announcement or snapshot needs them. Role is carried as
+/// its spoken text; what a role reserves during interaction is the
+/// owning widget's affair (<see cref="Srui.Widget.ReservesKey"/>). Name
+/// is nullable because a small number of widgets have no user-facing
+/// name and announce as "role value" only.</summary>
 internal sealed class WidgetLabel
 {
     public string? Name;
     /// <summary>Spoken role text ("button", "edit read only"). Empty for
     /// role-less widgets — speech skips the empty field.</summary>
     public string RoleText = "";
-    public string Value = "";
     public WidgetStates States;
-    /// <summary>Dynamic state text spoken before flag states (e.g.
-    /// "filter ed", "no filter").</summary>
-    public string StateText = "";
     public string Description = "";
     /// <summary>Shortcuts attached to the widget (see Widget.AddShortcut).
     /// Focus announcements speak the first one.</summary>
@@ -52,13 +51,14 @@ internal sealed class WidgetLabel
         RoleText = roleText;
     }
 
-    /// <summary>The public golden-six snapshot, taken at event emission.</summary>
-    public WidgetInfo ToInfo()
+    /// <summary>The public golden-six snapshot, taken at event emission.
+    /// The derived fields are the caller's pulls from the owning widget.</summary>
+    public WidgetInfo ToInfo(string value, string stateText)
     {
         var shortcuts = Shortcuts.Count == 0
             ? EmptyShortcuts
             : Shortcuts.Select(s => s.Combo).ToArray();
-        return new WidgetInfo(Name, RoleText, Value, StateText, States, Description, shortcuts);
+        return new WidgetInfo(Name, RoleText, value, stateText, States, Description, shortcuts);
     }
 
     private static readonly KeyCombo[] EmptyShortcuts = [];
@@ -67,9 +67,7 @@ internal sealed class WidgetLabel
     {
         var copy = new WidgetLabel(Name, RoleText)
         {
-            Value = Value,
             States = States,
-            StateText = StateText,
             Description = Description,
             Shortcuts = new List<WidgetShortcut>(Shortcuts),
             Focusable = Focusable,

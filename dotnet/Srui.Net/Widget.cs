@@ -28,8 +28,9 @@ public interface IWidgetContainer
 /// events), by subclassing a built-in widget (override the <c>On*</c>
 /// methods, keep the base call so composition subscribers still fire), or
 /// by authoring a new widget kind from this base: override
-/// <see cref="OnInput"/> to claim input, keep the label in sync with
-/// <see cref="SetValue"/>/<see cref="SetStateText"/>, and describe what
+/// <see cref="OnInput"/> to claim input, expose the label's derived
+/// fields as functions of widget state
+/// (<see cref="ValueText"/>/<see cref="StateText"/>), and describe what
 /// the user should perceive with <see cref="Announce"/>/
 /// <see cref="AnnounceItem"/>/<see cref="Promulgate"/>. A widget authored
 /// that way is a full citizen:
@@ -253,50 +254,34 @@ public abstract class Widget : IWidgetContainer
     /// <summary>Handle a logical input directed at this widget while it
     /// is focused; the focused widget gets first claim, before framework
     /// navigation and shortcuts. Return true to consume. Mutate your own
-    /// state and keep the label in sync (<see cref="SetValue"/>,
-    /// <see cref="SetStateText"/>), describe the perceptual result with
-    /// <see cref="Announce"/>/<see cref="AnnounceItem"/>/
-    /// <see cref="Promulgate"/>, and defer program notifications with
-    /// <see cref="Post"/>/<see cref="PostChanged"/> — handlers run after
-    /// dispatch settles,
+    /// state (the label follows by itself — <see cref="ValueText"/> and
+    /// <see cref="StateText"/> are functions of it), describe the
+    /// perceptual result with <see cref="Announce"/>/
+    /// <see cref="AnnounceItem"/>/<see cref="Promulgate"/>, and defer
+    /// program notifications with <see cref="Post"/>/
+    /// <see cref="PostChanged"/> — handlers run after dispatch settles,
     /// so they may freely open dialogs or remove widgets.</summary>
     protected virtual bool OnInput(in InputEvent input) => false;
 
     internal bool HandleEngineInput(in InputEvent input) => OnInput(input);
 
-    /// <summary>Set the label's value field — the third of the golden six
-    /// (a list's selected item, an editor's current line). Silent: pair it
-    /// with an emission when the user should hear the change; focus
-    /// announcements pick it up automatically.</summary>
-    protected void SetValue(string value)
-    {
-        if (Label is { } label)
-            label.Value = value;
-    }
+    /// <summary>The label's value field — the third of the golden six (a
+    /// list's selected item, an editor's current line). A function of
+    /// widget state, never stored: the framework pulls it whenever an
+    /// announcement or snapshot needs it, so it can never go stale.
+    /// Override with a cheap, side-effect-free computation over your own
+    /// state; the base has no value.</summary>
+    protected internal virtual string ValueText => "";
 
-    /// <summary>Set the label's dynamic state text, spoken before the flag
-    /// states in focus announcements ("no filter"). Silent, like
-    /// <see cref="SetValue"/>.</summary>
-    protected void SetStateText(string text)
-    {
-        if (Label is { } label)
-            label.StateText = text;
-    }
+    /// <summary>The label's dynamic state text, spoken before the flag
+    /// states in focus announcements ("no filter"). A function of widget
+    /// state, pulled like <see cref="ValueText"/>.</summary>
+    protected internal virtual string StateText => "";
 
     /// <summary>Change the spoken role text; speaks the new role text
     /// when focused.</summary>
     protected void SetRoleText(string roleText) =>
         Engine.UpdateLabel(Node, label => label.RoleText = roleText);
-
-    /// <summary>Called just before the framework reads this widget's
-    /// label to compose a focus announcement. Override to recompute
-    /// derived label state with <see cref="SetValue"/>/<see cref="SetStateText"/>
-    /// when it depends on data the widget cannot observe changing — a
-    /// list item whose Text is computed from application state. Keep it
-    /// cheap and side-effect-free; the base does nothing.</summary>
-    protected internal virtual void RefreshLabel()
-    {
-    }
 
     // Out to the user: the Announce family (Promulgate is the raw form).
 

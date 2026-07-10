@@ -20,7 +20,6 @@ public class FilterListBox : Widget
         : base(parent, name, "list")
     {
         _items = new List<IListItem>(items);
-        SyncLabel();
     }
 
     public FilterListBox(IWidgetContainer parent, string name, IReadOnlyList<string> items)
@@ -60,11 +59,10 @@ public class FilterListBox : Widget
         set
         {
             var copy = new List<IListItem>(value);
-            Engine.UpdateLabel(Node, label =>
+            Engine.UpdateLabel(Node, _ =>
             {
                 _items = copy;
                 _selected = 0;
-                SyncInto(label);
             });
         }
     }
@@ -76,33 +74,27 @@ public class FilterListBox : Widget
     /// <summary>Clear the filter and selection; the reset selection
     /// speaks when focused and audibly changed.</summary>
     public void ClearFilter() =>
-        Engine.UpdateLabel(Node, label =>
+        Engine.UpdateLabel(Node, _ =>
         {
             _filter = "";
             _selected = 0;
-            SyncInto(label);
         });
 
-    /// <summary>Focus announcements pull the label fresh, so item lines
-    /// computed from mutated application state read correctly with no
-    /// sync call.</summary>
-    protected internal override void RefreshLabel() => SyncLabel();
-
-    /// <summary>Label value mirrors the selected result; state text
-    /// carries the filter ("no filter" / "filter {query}").</summary>
-    private void SyncLabel()
+    /// <summary>The selected result's line (or "empty"), pulled fresh at
+    /// announcement time — item lines computed from mutated application
+    /// state read correctly with no sync call.</summary>
+    protected internal override string ValueText
     {
-        var filtered = Results;
-        SetValue(_selected < filtered.Count ? filtered[_selected].Text : "empty");
-        SetStateText(_filter.Length == 0 ? "no filter" : $"filter {_filter}");
+        get
+        {
+            var filtered = Results;
+            return _selected < filtered.Count ? filtered[_selected].Text : "empty";
+        }
     }
 
-    private void SyncInto(WidgetLabel label)
-    {
-        var filtered = Results;
-        label.Value = _selected < filtered.Count ? filtered[_selected].Text : "empty";
-        label.StateText = _filter.Length == 0 ? "no filter" : $"filter {_filter}";
-    }
+    /// <summary>The filter ("no filter" / "filter {query}").</summary>
+    protected internal override string StateText =>
+        _filter.Length == 0 ? "no filter" : $"filter {_filter}";
 
     private void AnnounceResult(List<IListItem> filtered, Boundary? boundary) =>
         AnnounceItem(filtered[_selected].Text, (_selected, filtered.Count), boundary);
@@ -110,7 +102,6 @@ public class FilterListBox : Widget
     private void SelectAndAnnounce(List<IListItem> filtered, int index)
     {
         _selected = index;
-        SyncLabel();
         AnnounceResult(filtered, null);
         PostChanged();
     }
@@ -120,7 +111,6 @@ public class FilterListBox : Widget
     private void FilterChanged()
     {
         _selected = 0;
-        SyncLabel();
         var filtered = Results;
         Promulgate(new AccessibilityEvent.Filter(
             this, _filter, filtered.Count > 0 ? filtered[0].Text : null, filtered.Count));
