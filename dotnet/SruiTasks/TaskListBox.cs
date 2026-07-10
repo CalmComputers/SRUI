@@ -88,23 +88,19 @@ public class TaskListBox : ListBox
     {
         if (Items.Count == 0)
             return base.OnInput(input);
-        switch (input.Kind)
-        {
-            case InputKind.TypeChar when (char)input.Ch == ' ':
-                return ToggleDone();
-            case InputKind.DeleteForward:
-                return RemoveSelected();
-            case InputKind.SelectLineUp: // shift+up
-                return Reorder(-1);
-            case InputKind.SelectLineDown: // shift+down
-                return Reorder(+1);
-            case InputKind.MoveLeft:
-                return StepPriority(-1);
-            case InputKind.MoveRight:
-                return StepPriority(+1);
-            default:
-                return base.OnInput(input);
-        }
+        if (input.IsChar(' '))
+            return ToggleDone();
+        if (input.Is(Key.Delete))
+            return RemoveSelected();
+        if (input.Is(KeyCombo.WithShift(Key.Up)))
+            return Reorder(-1);
+        if (input.Is(KeyCombo.WithShift(Key.Down)))
+            return Reorder(+1);
+        if (input.Is(Key.Left))
+            return StepPriority(-1);
+        if (input.Is(Key.Right))
+            return StepPriority(+1);
+        return base.OnInput(input);
     }
 
     private bool ToggleDone()
