@@ -39,12 +39,12 @@ public class ShortcutField : Widget
         SetValue(combo.DisplayName());
         if (Echo)
             SayValue(combo.DisplayName());
-        NotifyChanged();
+        PostChanged();
     }
 
     /// <summary>A shortcut field has no indexable concept, so its value
     /// changes ride ItemNav with no position.</summary>
-    private void SayValue(string value) => EmitItem(value, null, null);
+    private void SayValue(string value) => AnnounceItem(value, null, null);
 
     protected override bool OnInput(in InputEvent input)
     {
@@ -64,7 +64,7 @@ public class ShortcutField : Widget
                     _combo = null;
                     SetValue("blank");
                     SayValue("blank");
-                    NotifyChanged();
+                    PostChanged();
                 }
                 return true;
 

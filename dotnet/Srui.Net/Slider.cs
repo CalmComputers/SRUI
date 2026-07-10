@@ -45,7 +45,7 @@ public class Slider : Widget
             _value = clamped;
             SetValue($"{_value}{_unit}");
             if (IsFocused)
-                Emit(new AccessibilityEvent.SliderChange(this, _value, _unit));
+                Promulgate(new AccessibilityEvent.SliderChange(this, _value, _unit));
         }
     }
 
@@ -102,9 +102,9 @@ public class Slider : Widget
             _value = Math.Clamp(_value + d, _min, _max);
         SetValue($"{_value}{_unit}");
         // Announce even when clamped at an edge; notify only real change.
-        Emit(new AccessibilityEvent.SliderChange(this, _value, _unit));
+        Promulgate(new AccessibilityEvent.SliderChange(this, _value, _unit));
         if (_value != prev)
-            NotifyChanged();
+            PostChanged();
         return true;
     }
 }

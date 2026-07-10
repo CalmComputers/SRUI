@@ -34,7 +34,7 @@ public class SilentMutatorTests
                 SetItemsSilently(
                     _texts.Select((t, i) => _done.Contains(i) ? $"{t}, done" : t).ToList());
                 Announce(_done.Contains(index) ? "Done." : "Not done.");
-                NotifyChanged();
+                PostChanged();
                 return true;
             }
             return base.OnInput(input);

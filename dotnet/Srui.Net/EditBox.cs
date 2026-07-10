@@ -74,7 +74,7 @@ public class EditBox : Widget
             _editor.Cursor = target;
             SetValue(EditBoxCore.LabelValue(_editor));
             if (moved && IsFocused && !_editor.IsEmpty)
-                Emit(EditBoxCore.CharNavEvent(this, _editor));
+                Promulgate(EditBoxCore.CharNavEvent(this, _editor));
         }
     }
 
@@ -102,7 +102,7 @@ public class EditBox : Widget
                     var delta = end - start > SpeechRenderer.SpeakLimit
                         ? $"{end - start} characters"
                         : _editor.SliceToString(start, end);
-                    Emit(new AccessibilityEvent.Selection(this, delta, SelectionKind.Selected));
+                    Promulgate(new AccessibilityEvent.Selection(this, delta, SelectionKind.Selected));
                 }
             }
             else
@@ -111,7 +111,7 @@ public class EditBox : Widget
                 _editor.Selection = null;
                 SetValue(EditBoxCore.LabelValue(_editor));
                 if (had && IsFocused)
-                    Emit(new AccessibilityEvent.Selection(this, "", SelectionKind.Cleared));
+                    Promulgate(new AccessibilityEvent.Selection(this, "", SelectionKind.Cleared));
             }
         }
     }
@@ -130,7 +130,7 @@ public class EditBox : Widget
         var delta = length > SpeechRenderer.SpeakLimit
             ? $"{length} characters"
             : _editor.Text();
-        Emit(new AccessibilityEvent.Selection(this, delta, SelectionKind.All));
+        Promulgate(new AccessibilityEvent.Selection(this, delta, SelectionKind.All));
     }
 
     /// <summary>Replace the text without any announcement — the
@@ -198,9 +198,9 @@ public class EditBox : Widget
         if (!result.Consumed)
             return false;
         foreach (var ev in result.Events)
-            Emit(ev);
+            Promulgate(ev);
         if (result.Changed)
-            NotifyChanged();
+            PostChanged();
         SetValue(EditBoxCore.LabelValue(_editor));
         return true;
     }

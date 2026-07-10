@@ -118,9 +118,9 @@ public class ListBox : Widget
         if (!wasSelected || !IsFocused)
             return;
         if (_items.Count == 0)
-            EmitEmpty();
+            AnnounceEmpty();
         else
-            EmitSelected(null);
+            AnnounceSelected(null);
     }
 
     /// <summary>Insert an item at the index. Silent — the selection stays
@@ -138,7 +138,7 @@ public class ListBox : Widget
             _selected++;
         SyncLabel();
         if (wasEmpty && IsFocused)
-            EmitSelected(null);
+            AnnounceSelected(null);
     }
 
     /// <summary>Insert a plain-text item at the index.</summary>
@@ -182,7 +182,7 @@ public class ListBox : Widget
             _selected = target;
             SyncLabel();
             if (IsFocused)
-                EmitSelected(null);
+                AnnounceSelected(null);
         }
     }
 
@@ -226,17 +226,17 @@ public class ListBox : Widget
 
     /// <summary>The selection announcement, shared between user-driven
     /// navigation and programmatic SelectedIndex moves.</summary>
-    private void EmitSelected(Boundary? boundary)
+    private void AnnounceSelected(Boundary? boundary)
     {
         if (_selected >= _items.Count)
             return;
         (int, int)? position = _numbered ? (_selected, _items.Count) : null;
-        EmitItem(_items[_selected].Text, position, boundary);
+        AnnounceItem(_items[_selected].Text, position, boundary);
     }
 
     /// <summary>What an empty list says — the same word its label value
     /// and focus announcement carry.</summary>
-    private void EmitEmpty() => EmitItem("empty", null, null);
+    private void AnnounceEmpty() => AnnounceItem("empty", null, null);
 
     /// <summary>Selection moved by input: sync label, announce, notify
     /// the program.</summary>
@@ -244,8 +244,8 @@ public class ListBox : Widget
     {
         _selected = index;
         SyncLabel();
-        EmitSelected(null);
-        NotifyChanged();
+        AnnounceSelected(null);
+        PostChanged();
     }
 
     private void HandleTypeAhead(string runeText)
@@ -290,7 +290,7 @@ public class ListBox : Widget
                     if (idx != _selected)
                         SelectAndAnnounce(idx);
                     else
-                        EmitSelected(null);
+                        AnnounceSelected(null);
                     break;
                 }
             }
@@ -351,7 +351,7 @@ public class ListBox : Widget
                 case InputKind.MoveDown or InputKind.MoveUp
                     or InputKind.MoveToDocStart or InputKind.MoveToLineStart
                     or InputKind.MoveToDocEnd or InputKind.MoveToLineEnd:
-                    EmitEmpty();
+                    AnnounceEmpty();
                     return true;
                 default:
                     return false;
@@ -363,13 +363,13 @@ public class ListBox : Widget
                 if (_selected + 1 < _items.Count)
                     SelectAndAnnounce(_selected + 1);
                 else
-                    EmitSelected(Boundary.Bottom);
+                    AnnounceSelected(Boundary.Bottom);
                 return true;
             case InputKind.MoveUp:
                 if (_selected > 0)
                     SelectAndAnnounce(_selected - 1);
                 else
-                    EmitSelected(Boundary.Top);
+                    AnnounceSelected(Boundary.Top);
                 return true;
             case InputKind.MoveToDocStart or InputKind.MoveToLineStart:
                 if (_selected != 0)

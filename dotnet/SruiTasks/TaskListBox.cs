@@ -114,7 +114,7 @@ public class TaskListBox : ListBox
         // The item's Text now carries ", done"; the list reads it live,
         // so only the delta needs speaking.
         Announce(task.Done ? "Done." : "Not done.");
-        NotifyChanged();
+        PostChanged();
         return true;
     }
 
@@ -124,7 +124,7 @@ public class TaskListBox : ListBox
         // survivor with its position, or "empty").
         Announce($"Deleted {Selected.Title}.");
         RemoveAt(SelectedIndex);
-        NotifyChanged();
+        PostChanged();
         return true;
     }
 
@@ -136,7 +136,7 @@ public class TaskListBox : ListBox
         {
             // At the edge: re-announce in place with the boundary, the
             // same vocabulary list navigation uses.
-            EmitItem(Items[from].Text, (from, Items.Count),
+            AnnounceItem(Items[from].Text, (from, Items.Count),
                 direction < 0 ? Boundary.Top : Boundary.Bottom);
             return true;
         }
@@ -146,7 +146,7 @@ public class TaskListBox : ListBox
         // The public setter shares the user-driven emission: the item
         // with its new position ("Water the plants, 2 of 4").
         SelectedIndex = to;
-        NotifyChanged();
+        PostChanged();
         return true;
     }
 
@@ -159,7 +159,7 @@ public class TaskListBox : ListBox
         // Announce even when clamped at an edge, like a slider.
         Announce($"{PriorityWord(target)} priority.");
         if (moved)
-            NotifyChanged();
+            PostChanged();
         return true;
     }
 

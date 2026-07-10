@@ -2048,11 +2048,11 @@ public class WidgetAuthoringTests
                 (_row, _col) = (row, col);
                 SetValue(Cell);
                 SetStateText(Position);
-                EmitItem(boundary is Boundary.Left or Boundary.Right
+                AnnounceItem(boundary is Boundary.Left or Boundary.Right
                     ? $"edge, {Cell}"
                     : Cell, null, boundary is Boundary.Top or Boundary.Bottom ? boundary : null);
                 if (boundary is null)
-                    NotifyChanged();
+                    PostChanged();
                 return true;
             }
             if (input.Kind == InputKind.Activate)

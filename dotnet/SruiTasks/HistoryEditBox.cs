@@ -52,7 +52,7 @@ public class HistoryEditBox : EditBox
         {
             _history.Add(text);
             SetTextSilently("");
-            NotifyChanged();
+            PostChanged();
         }
         _recall = null;
         _draft = "";
@@ -66,7 +66,7 @@ public class HistoryEditBox : EditBox
     {
         if (_history.Count == 0)
         {
-            EmitItem(CurrentSpoken(), null, Boundary.Top);
+            AnnounceItem(CurrentSpoken(), null, Boundary.Top);
             return true;
         }
         if (_recall is not int index)
@@ -81,7 +81,7 @@ public class HistoryEditBox : EditBox
         else
         {
             // Already at the oldest: re-announce in place.
-            EmitItem(_history[0], null, Boundary.Top);
+            AnnounceItem(_history[0], null, Boundary.Top);
         }
         return true;
     }
@@ -90,7 +90,7 @@ public class HistoryEditBox : EditBox
     {
         if (_recall is not int index)
         {
-            EmitItem(CurrentSpoken(), null, Boundary.Bottom);
+            AnnounceItem(CurrentSpoken(), null, Boundary.Bottom);
             return true;
         }
         if (index < _history.Count - 1)
@@ -102,8 +102,8 @@ public class HistoryEditBox : EditBox
             // Below the newest entry lies the draft.
             _recall = null;
             SetTextSilently(_draft);
-            NotifyChanged();
-            EmitItem(CurrentSpoken(), null, null);
+            PostChanged();
+            AnnounceItem(CurrentSpoken(), null, null);
         }
         return true;
     }
@@ -112,8 +112,8 @@ public class HistoryEditBox : EditBox
     {
         _recall = index;
         SetTextSilently(_history[index]);
-        NotifyChanged();
-        EmitItem(_history[index], null, null);
+        PostChanged();
+        AnnounceItem(_history[index], null, null);
     }
 
     private string CurrentSpoken() => Text.Length == 0 ? "blank" : Text;

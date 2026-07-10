@@ -57,7 +57,7 @@ public class Button : Widget
         {
             case InputKind.Activate:
             case InputKind.TypeChar when (char)input.Ch == ' ':
-                EmitActivated();
+                PostActivated();
                 return true;
             case InputKind.SecondaryActivate:
                 Post(OnSecondaryActivated);
@@ -96,7 +96,7 @@ public class CheckBox : Widget
             _checked = value;
             SetValue(ValueText(value));
             if (IsFocused)
-                Emit(new AccessibilityEvent.Toggle(this, value));
+                Promulgate(new AccessibilityEvent.Toggle(this, value));
         }
     }
 
@@ -117,7 +117,7 @@ public class CheckBox : Widget
             var isChecked = _checked;
             SetValue(ValueText(isChecked));
             Post(() => OnToggled(isChecked));
-            Emit(new AccessibilityEvent.Toggle(this, isChecked));
+            Promulgate(new AccessibilityEvent.Toggle(this, isChecked));
             return true;
         }
         return false;

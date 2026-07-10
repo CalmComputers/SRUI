@@ -59,7 +59,7 @@ public class TabControl : Widget
             SetValue(_tabs[_active]);
             SyncPanels();
             if (IsFocused)
-                Emit(new AccessibilityEvent.TabChange(this, _tabs[_active], (_active, _tabs.Count)));
+                Promulgate(new AccessibilityEvent.TabChange(this, _tabs[_active], (_active, _tabs.Count)));
         }
     }
 
@@ -92,12 +92,12 @@ public class TabControl : Widget
     {
         _active = to;
         SetValue(_tabs[_active]);
-        Emit(new AccessibilityEvent.TabChange(this, _tabs[_active], (_active, _tabs.Count)));
+        Promulgate(new AccessibilityEvent.TabChange(this, _tabs[_active], (_active, _tabs.Count)));
         // Panels are other widgets: touch them at drain, outside
         // dispatch — before Changed subscribers, so handlers see the
         // settled view.
         if (_panels.Length != 0)
             Post(SyncPanels);
-        NotifyChanged();
+        PostChanged();
     }
 }

@@ -75,16 +75,16 @@ public class TableWidget : Widget
             // The column is unchanged, so the cell alone orients; the
             // row position rides along, boundary edges announce in place.
             Boundary? boundary = moved ? null : toRow < row ? Boundary.Top : Boundary.Bottom;
-            EmitItem(Cell, (_row, _rows.Count), boundary);
+            AnnounceItem(Cell, (_row, _rows.Count), boundary);
         }
         else
         {
             // Landing in a new column: lead with its header.
-            EmitItem(moved ? $"{_columns[_col]}: {Cell}" : $"edge, {_columns[_col]}: {Cell}",
+            AnnounceItem(moved ? $"{_columns[_col]}: {Cell}" : $"edge, {_columns[_col]}: {Cell}",
                 null, null);
         }
         if (moved)
-            NotifyChanged();
+            PostChanged();
         return true;
     }
 }

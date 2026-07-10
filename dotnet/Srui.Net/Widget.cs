@@ -30,8 +30,9 @@ public interface IWidgetContainer
 /// by authoring a new widget kind from this base: override
 /// <see cref="OnInput"/> to claim input, keep the label in sync with
 /// <see cref="SetValue"/>/<see cref="SetStateText"/>, and describe what
-/// the user should perceive with <see cref="Emit"/>/<see cref="EmitItem"/>/
-/// <see cref="Announce"/>. A widget authored that way is a full citizen:
+/// the user should perceive with <see cref="Announce"/>/
+/// <see cref="AnnounceItem"/>/<see cref="Promulgate"/>. A widget authored
+/// that way is a full citizen:
 /// tab ring, focus recovery, dialog layers, shortcuts, and readers all
 /// apply to it exactly as to the built-ins.
 /// </summary>
@@ -254,9 +255,10 @@ public abstract class Widget : IWidgetContainer
     /// navigation and shortcuts. Return true to consume. Mutate your own
     /// state and keep the label in sync (<see cref="SetValue"/>,
     /// <see cref="SetStateText"/>), describe the perceptual result with
-    /// <see cref="Emit"/>/<see cref="EmitItem"/>/<see cref="Announce"/>,
-    /// and defer program notifications with <see cref="Post"/>/
-    /// <see cref="NotifyChanged"/> — handlers run after dispatch settles,
+    /// <see cref="Announce"/>/<see cref="AnnounceItem"/>/
+    /// <see cref="Promulgate"/>, and defer program notifications with
+    /// <see cref="Post"/>/<see cref="PostChanged"/> — handlers run after
+    /// dispatch settles,
     /// so they may freely open dialogs or remove widgets.</summary>
     protected virtual bool OnInput(in InputEvent input) => false;
 
@@ -296,24 +298,26 @@ public abstract class Widget : IWidgetContainer
     {
     }
 
+    // Out to the user: the Announce family (Promulgate is the raw form).
+
     /// <summary>Queue a free-form announcement attributed to this widget
     /// (polite: speaks after whatever is already queued).</summary>
     protected void Announce(string text) =>
-        Emit(new AccessibilityEvent.Announce(text, this));
-
-    /// <summary>Queue a structured accessibility event for the readers.</summary>
-    protected void Emit(AccessibilityEvent e) => Engine.EmitAccessibility(e);
+        Promulgate(new AccessibilityEvent.Announce(text, this));
 
     /// <summary>Queue an item-navigation event for this widget: the
     /// selected item's text, its position ((index, total), or null when
     /// the widget has no indexable concept), and the boundary that was
     /// hit, if any.</summary>
-    protected void EmitItem(string item, (int Index, int Total)? position, Boundary? boundary) =>
-        Emit(new AccessibilityEvent.ItemNav(this, item, position, boundary));
+    protected void AnnounceItem(string item, (int Index, int Total)? position, Boundary? boundary) =>
+        Promulgate(new AccessibilityEvent.ItemNav(this, item, position, boundary));
 
-    /// <summary>Queue this widget's activation: the Activated event is
-    /// raised when the host drains, exactly as for a press.</summary>
-    protected void EmitActivated() => Engine.Emit(new CoreEvent.Activated(Node));
+    /// <summary>Queue a structured accessibility event for the readers —
+    /// the raw form under the Announce family, for events the
+    /// conveniences don't cover.</summary>
+    protected void Promulgate(AccessibilityEvent e) => Engine.EmitAccessibility(e);
+
+    // Into the program at drain time: the Post family.
 
     /// <summary>Defer a program notification to drain time, after input
     /// dispatch has settled. This is how a widget raises its own
@@ -321,7 +325,11 @@ public abstract class Widget : IWidgetContainer
     protected void Post(Action callback) => Engine.Emit(new CoreEvent.Callback(callback));
 
     /// <summary>Post the Changed notification.</summary>
-    protected void NotifyChanged() => Post(OnChanged);
+    protected void PostChanged() => Post(OnChanged);
+
+    /// <summary>Post this widget's activation: the Activated event is
+    /// raised when the host drains, exactly as for a press.</summary>
+    protected void PostActivated() => Engine.Emit(new CoreEvent.Activated(Node));
 
     /// <summary>The host clock (monotonic milliseconds, advanced every
     /// loop iteration) — for typeahead-style timeouts.</summary>

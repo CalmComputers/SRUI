@@ -104,15 +104,15 @@ public class FilterListBox : Widget
         label.StateText = _filter.Length == 0 ? "no filter" : $"filter {_filter}";
     }
 
-    private void EmitResult(List<IListItem> filtered, Boundary? boundary) =>
-        EmitItem(filtered[_selected].Text, (_selected, filtered.Count), boundary);
+    private void AnnounceResult(List<IListItem> filtered, Boundary? boundary) =>
+        AnnounceItem(filtered[_selected].Text, (_selected, filtered.Count), boundary);
 
     private void SelectAndAnnounce(List<IListItem> filtered, int index)
     {
         _selected = index;
         SyncLabel();
-        EmitResult(filtered, null);
-        NotifyChanged();
+        AnnounceResult(filtered, null);
+        PostChanged();
     }
 
     /// <summary>Filter text changed: reset the selection and report the
@@ -122,9 +122,9 @@ public class FilterListBox : Widget
         _selected = 0;
         SyncLabel();
         var filtered = Results;
-        Emit(new AccessibilityEvent.Filter(
+        Promulgate(new AccessibilityEvent.Filter(
             this, _filter, filtered.Count > 0 ? filtered[0].Text : null, filtered.Count));
-        NotifyChanged();
+        PostChanged();
     }
 
     public override bool ReservesKey(KeyCombo combo)
@@ -149,13 +149,13 @@ public class FilterListBox : Widget
                 if (_selected + 1 < filtered.Count)
                     SelectAndAnnounce(filtered, _selected + 1);
                 else
-                    EmitResult(filtered, Boundary.Bottom);
+                    AnnounceResult(filtered, Boundary.Bottom);
                 return true;
             case InputKind.MoveUp when filtered.Count > 0:
                 if (_selected > 0)
                     SelectAndAnnounce(filtered, _selected - 1);
                 else
-                    EmitResult(filtered, Boundary.Top);
+                    AnnounceResult(filtered, Boundary.Top);
                 return true;
             case InputKind.MoveToDocStart or InputKind.MoveToLineStart when filtered.Count > 0:
                 if (_selected != 0)
@@ -169,7 +169,7 @@ public class FilterListBox : Widget
                 or InputKind.MoveToDocStart or InputKind.MoveToLineStart
                 or InputKind.MoveToDocEnd or InputKind.MoveToLineEnd:
                 // No results — answer with what the label already says.
-                EmitItem("empty", null, null);
+                AnnounceItem("empty", null, null);
                 return true;
             case InputKind.TypeChar:
                 if (System.Text.Rune.IsValid((int)input.Ch))
