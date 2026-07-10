@@ -62,10 +62,10 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
 
     /// <summary>Game audio, created on first use and owned by the app.
     /// The event loop advances its automation (pitch tweens,
-    /// spatialization) every iteration — about 5ms at idle — so
-    /// SoundManager.Tick never needs manual driving here. Consumers
-    /// without an SruiApp use Srui.Audio standalone and tick their own
-    /// loop.</summary>
+    /// spatialization) every iteration — <see cref="LoopWaitMs"/> at
+    /// idle — so SoundManager.Tick never needs manual driving here.
+    /// Consumers without an SruiApp use Srui.Audio standalone and tick
+    /// their own loop.</summary>
     public SoundManager Audio => _audio ??= new SoundManager(_audioPeriodFrames);
 
     /// <summary>Called with input nothing consumed — the place for
@@ -171,7 +171,7 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
 
     /// <summary>Start a periodic ticker; subscribe to its Tick event.
     /// Resolution is the SetNow cadence — in a windowed app, the event
-    /// loop (~5ms).</summary>
+    /// loop (<see cref="LoopWaitMs"/> at idle).</summary>
     public Ticker StartTicker(uint intervalMs)
     {
         var ticker = new Ticker(this, Engine.AddTicker(intervalMs));
@@ -218,7 +218,8 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
 
     /// <summary>The engine clock, monotonic milliseconds — the value
     /// the last <see cref="SetNow"/> supplied, which the windowed event
-    /// loop refreshes every iteration (~5ms). Frame-coherent: reads
+    /// loop refreshes every iteration (<see cref="LoopWaitMs"/> at
+    /// idle). Frame-coherent: reads
     /// between two loop iterations all see the same value, the one the
     /// engine's tickers and typeahead saw; game logic usually wants
     /// exactly that. For finer-than-loop timing use
@@ -299,6 +300,15 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
 
     // ── The loop ──
 
+    /// <summary>How long one idle event-loop iteration waits for input,
+    /// in milliseconds (default 2). Input interrupts the wait
+    /// immediately, so this bounds only idle latency: the cadence at
+    /// which tickers fire, audio automation advances, and
+    /// <see cref="Now"/> refreshes. Smaller buys finer timing for more
+    /// wakeups; 0 busy-polls. Takes effect on the next
+    /// iteration.</summary>
+    public uint LoopWaitMs { get; set; } = 2;
+
     /// <summary>Stop the event loop after the current iteration.</summary>
     public void Quit() => _running = false;
 
@@ -317,7 +327,7 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
             // and audio automation advances at the loop cadence.
             Engine.SetNow((ulong)_clock.ElapsedMilliseconds);
             _audio?.Tick();
-            foreach (var hostEvent in host.Pump(5))
+            foreach (var hostEvent in host.Pump(LoopWaitMs))
             {
                 switch (hostEvent)
                 {
