@@ -60,9 +60,9 @@ configured, so every decode path accepts .opus:
 - ma_convreverb.c: ma_convreverb_node_load_ir_file sets
   ppCustomBackendVTables (covers impulse responses).
 
-# 6. miniaudio_impl.c: 256-frame period, granted-period getter
+# 6. miniaudio_impl.c: 128-frame period, granted-period getter
 
-ma_engine_init_with_caching requests periodSizeInFrames = 256 (was 512)
+ma_engine_init_with_caching requests periodSizeInFrames = 128 (was 512)
 for lower trigger-to-ear latency, and a new exported helper
 ma_engine_get_actual_period_frames returns the period the device
 actually granted (WASAPI aligns the request; IAudioClient3 clamps it to
