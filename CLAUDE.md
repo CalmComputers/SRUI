@@ -27,7 +27,7 @@ Native first, managed second — but the native step is rare: run native/build-n
 - Object-oriented demo: `dotnet run --project SruiTasks`
 - Audio walkthrough: `dotnet run --project AudioExample`
 - Binary drop for external consumers: `./dist.ps1` (see samples/HelloSrui)
-- Native AOT check: `dotnet publish AotDemo -c Release -r win-x64`, then run `AotDemo/bin/Release/net10.0/win-x64/publish/AotDemo.exe --headless` (exit 0 = pass). On this machine the VS Installer directory must be on PATH first (`$env:PATH += ';C:\Program Files (x86)\Microsoft Visual Studio\Installer'`): the BuildTools vcvars chain calls a bare vswhere.exe, and its error output otherwise corrupts the linker path the ILCompiler captures.
+- Native AOT check: `dotnet publish AotDemo -c Release -r win-x64`, then run `AotDemo/bin/Release/net10.0/win-x64/publish/AotDemo.exe --headless` (exit 0 = pass). The publish needs the VS Installer directory on PATH — the BuildTools vcvars chain calls a bare vswhere.exe, and its error output otherwise corrupts the linker path the ILCompiler captures. It is on the user PATH on this machine; a shell whose inherited environment predates that addition needs `$env:PATH += ';C:\Program Files (x86)\Microsoft Visual Studio\Installer'` first.
 
 The demos speak through Prism (the running screen reader, or platform TTS as fallback) and need a real window with keyboard focus, so they are not useful headless.
 
