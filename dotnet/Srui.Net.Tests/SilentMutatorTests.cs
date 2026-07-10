@@ -26,7 +26,7 @@ public class SilentMutatorTests
 
         protected override bool OnInput(in InputEvent input)
         {
-            if (input.Kind == InputKind.TypeChar && (char)input.Ch == ' ')
+            if (input.IsChar(' '))
             {
                 var index = SelectedIndex;
                 if (!_done.Add(index))

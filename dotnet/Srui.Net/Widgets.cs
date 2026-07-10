@@ -56,7 +56,7 @@ public class Button : Widget
         switch (input.Kind)
         {
             case InputKind.Activate:
-            case InputKind.TypeChar when (char)input.Ch == ' ':
+            case InputKind.TypeChar when input.IsChar(' '):
                 PostActivated();
                 return true;
             case InputKind.SecondaryActivate:
@@ -110,7 +110,7 @@ public class CheckBox : Widget
 
     protected override bool OnInput(in InputEvent input)
     {
-        if (input.Kind == InputKind.TypeChar && (char)input.Ch == ' ')
+        if (input.IsChar(' '))
         {
             _checked = !_checked;
             var isChecked = _checked;

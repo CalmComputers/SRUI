@@ -112,4 +112,21 @@ public readonly record struct InputEvent(InputKind Kind, uint Ch, uint Key, Mods
 
     public bool IsRawKey(uint key, Mods mods) =>
         Kind == InputKind.RawKey && Key == key && Mods == mods;
+
+    /// <summary>Whether this input was produced by the combo — the
+    /// self-documenting form for input handlers claiming physical intent
+    /// (<c>input.Is(KeyCombo.WithShift(Key.Up))</c>) without knowing
+    /// which logical kind the combo happens to map to. Matches the
+    /// physical provenance when the event carries one; synthetic inputs
+    /// fall back to the canonical reverse map.</summary>
+    public bool Is(KeyCombo combo) => combo.MatchesInput(this);
+
+    /// <summary>Whether this input was produced by the bare, unmodified
+    /// key.</summary>
+    public bool Is(Key key) => Is(KeyCombo.Plain(key));
+
+    /// <summary>Whether this is the given character, typed. Compares the
+    /// full codepoint, so an astral character can never alias a BMP one
+    /// the way a truncating <c>(char)</c> cast would.</summary>
+    public bool IsChar(char c) => Kind == InputKind.TypeChar && Ch == c;
 }
