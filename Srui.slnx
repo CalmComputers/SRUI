@@ -1,4 +1,5 @@
 <Solution>
+  <Project Path="AotDemo/AotDemo.csproj" />
   <Project Path="AudioExample/AudioExample.csproj" />
   <Project Path="Srui.Audio/Srui.Audio.csproj" />
   <Project Path="Srui.Net.Tests/Srui.Net.Tests.csproj" />

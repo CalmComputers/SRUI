@@ -14,6 +14,7 @@ SRUI is a screen-reader-first UI toolkit in C#: a retained semantic tree, keyboa
 - SruiDemo — end-to-end demo: a tab-switched widget gallery exercising every widget type, a custom-authored table widget (TableWidget.cs — the reference for behavior authoring from outside the toolkit), all canned and hand-built dialogs, dynamic state, the event stream (with a reviewable event log on Ctrl+L), and sound-augmented lists over Srui.Audio.
 - SruiTasks — the object-oriented demo: a small to-do app built as classes rather than a script — an application shell (TaskApp), composite panels as Group subclasses, and built-ins extended by overriding On* methods and ReservesKey (TaskListBox, HistoryEditBox, ConfirmButton), with a state-bearing IListItem type (TaskItem) driving the list item operations. Where SruiDemo shows the widget set breadth-first, SruiTasks is the reference for structuring an application around subclassed behavior. Speech only — needs just prism.dll and SDL3.dll.
 - AudioExample — Srui.Audio walkthrough (no UI stack; needs only cosmos.dll and phonon.dll).
+- AotDemo — the Native AOT canary: the smallest windowed app (name field, shout toggle, greet button), published with PublishAot to prove the toolkit compiles and runs ahead-of-time. `--headless` runs a scripted self-check (drives a headless app, prints the transcript, exits nonzero on divergence) so the AOT binary is verifiable in a terminal.
 - native/ — everything native: cosmos/ (vendored miniaudio + cosmos DSP nodes + Steam Audio glue + the xiph opus stack; decodes wav, flac, mp3, vorbis, and opus, UTF-8 filenames throughout), phonon/ (Steam Audio binaries), prism/ (vendored Prism), prebuilt/SDL3.dll, and build-native.ps1 which stages every DLL into native/out/.
 - samples/HelloSrui — consuming srui as compiled binaries (the dist.ps1 drop), deliberately outside the solution.
 - The tag rust-era marks the last commit of the retired Rust implementation the engine was ported from; the tag handle-era marks the last commit of the handle-addressed public API (NodeId + Ui facade + wrapper registry) before widgets became their own nodes.
@@ -26,6 +27,7 @@ Native first, managed second — but the native step is rare: run native/build-n
 - Object-oriented demo: `dotnet run --project SruiTasks`
 - Audio walkthrough: `dotnet run --project AudioExample`
 - Binary drop for external consumers: `./dist.ps1` (see samples/HelloSrui)
+- Native AOT check: `dotnet publish AotDemo -c Release -r win-x64`, then run `AotDemo/bin/Release/net10.0/win-x64/publish/AotDemo.exe --headless` (exit 0 = pass). On this machine the VS Installer directory must be on PATH first (`$env:PATH += ';C:\Program Files (x86)\Microsoft Visual Studio\Installer'`): the BuildTools vcvars chain calls a bare vswhere.exe, and its error output otherwise corrupts the linker path the ILCompiler captures.
 
 The demos speak through Prism (the running screen reader, or platform TTS as fallback) and need a real window with keyboard focus, so they are not useful headless.
 
