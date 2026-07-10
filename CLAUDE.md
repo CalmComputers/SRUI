@@ -44,6 +44,7 @@ The demos speak through Prism (the running screen reader, or platform TTS as fal
 - Vendored code (native/cosmos, native/phonon, native/prism) is snapshot plus documented local patches. Any change to vendored sources must be recorded in native/PATCHES-cosmos.md or native/PATCHES-prism.md so it survives a snapshot update; prefer additive wrapper files (the cosmos_extra.c pattern) over edits to upstream files.
 - A behavior change that alters user-visible UX should be reflected in SruiDemo where the demo exercises it.
 - Docs are Wikipedia-esque prose with numbered headings and no historical narrative; history belongs in commit messages. docs/architecture.md must always describe the present design.
+- Commit as often as possible: each coherent change gets its own commit as soon as the tests are green. Never let unrelated work pile up in the working tree.
 
 # 6. The Public Surface As Of Now
 
