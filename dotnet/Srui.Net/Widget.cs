@@ -103,16 +103,16 @@ public abstract class Widget : IWidgetContainer
 
     // ── The golden six as properties ──
 
-    /// <summary>The widget's spoken name; setting re-announces when
-    /// focused. Null announces as role and value only.</summary>
+    /// <summary>The widget's spoken name; setting speaks the new name
+    /// when focused. Null announces as role and value only.</summary>
     public string? Name
     {
         get => Label?.Name;
         set => Engine.UpdateLabel(Node, label => label.Name = value);
     }
 
-    /// <summary>The widget's spoken description; setting re-announces
-    /// when focused.</summary>
+    /// <summary>The widget's spoken description; setting speaks the new
+    /// description when focused.</summary>
     public string Description
     {
         get => Label?.Description ?? "";
@@ -127,21 +127,27 @@ public abstract class Widget : IWidgetContainer
         set => Engine.SetHidden(Node, value);
     }
 
-    /// <summary>Enable/disable this widget. Focus recovers if it was here.</summary>
+    /// <summary>Enable/disable this widget. A disabled widget stays in
+    /// the tab ring — discoverable, announced "unavailable" — but is
+    /// inert: input, key bindings, shortcuts, and primary/cancel
+    /// activation all pass it by. Toggling while focused speaks the
+    /// transition ("unavailable", "available") and focus stays put.</summary>
     public bool Disabled
     {
         get => Label is { } l && (l.States & WidgetStates.Disabled) != 0;
         set => Engine.SetState(Node, WidgetStates.Disabled, value);
     }
 
-    /// <summary>Spoken as "required" in the focus announcement.</summary>
+    /// <summary>Spoken as "required" in the focus announcement; toggling
+    /// while focused speaks the transition ("required", "not required").</summary>
     public bool Required
     {
         get => Label is { } l && (l.States & WidgetStates.Required) != 0;
         set => Engine.SetState(Node, WidgetStates.Required, value);
     }
 
-    /// <summary>Spoken as "warning" in the focus announcement.</summary>
+    /// <summary>Spoken as "warning" in the focus announcement; toggling
+    /// while focused speaks the transition ("warning", "warning cleared").</summary>
     public bool Warning
     {
         get => Label is { } l && (l.States & WidgetStates.Warning) != 0;
@@ -155,7 +161,8 @@ public abstract class Widget : IWidgetContainer
     /// <summary>Bind a handler to a physical key transition delivered
     /// while this widget is focused — game-style input, independent of
     /// the logical input stream (a Press binding fires even for keys the
-    /// widget consumes, e.g. letters in an edit box). Press and Repeat
+    /// widget consumes, e.g. letters in an edit box). Bindings are inert
+    /// while the widget is disabled, like its shortcuts. Press and Repeat
     /// match the exact combo (plain q and shift+q are distinct bindings);
     /// Release matches the key alone, so a modifier pressed mid-hold
     /// cannot orphan the release. Throws ArgumentException on a Release
@@ -274,13 +281,25 @@ public abstract class Widget : IWidgetContainer
             label.StateText = text;
     }
 
-    /// <summary>Change the spoken role text; re-announces when focused.</summary>
+    /// <summary>Change the spoken role text; speaks the new role text
+    /// when focused.</summary>
     protected void SetRoleText(string roleText) =>
         Engine.UpdateLabel(Node, label => label.RoleText = roleText);
 
-    /// <summary>Queue a free-form announcement (polite: speaks after
-    /// whatever is already queued).</summary>
-    protected void Announce(string text) => Engine.Announce(text);
+    /// <summary>Called just before the framework reads this widget's
+    /// label to compose a focus announcement. Override to recompute
+    /// derived label state with <see cref="SetValue"/>/<see cref="SetStateText"/>
+    /// when it depends on data the widget cannot observe changing — a
+    /// list item whose Text is computed from application state. Keep it
+    /// cheap and side-effect-free; the base does nothing.</summary>
+    protected internal virtual void RefreshLabel()
+    {
+    }
+
+    /// <summary>Queue a free-form announcement attributed to this widget
+    /// (polite: speaks after whatever is already queued).</summary>
+    protected void Announce(string text) =>
+        Emit(new AccessibilityEvent.Announce(text, this));
 
     /// <summary>Queue a structured accessibility event for the readers.</summary>
     protected void Emit(AccessibilityEvent e) => Engine.EmitAccessibility(e);

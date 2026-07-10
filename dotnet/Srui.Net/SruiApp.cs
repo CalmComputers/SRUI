@@ -164,16 +164,11 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     public void SetCancel(Widget widget) => Engine.SetCancel(widget.Node);
 
     /// <summary>Queue a free-form announcement (polite: speaks after
-    /// whatever is already being said).</summary>
+    /// whatever is already being said). There is deliberately no urgent
+    /// variant: a physical keypress already silences speech, and cutting
+    /// speech off from a timer is bad screen-reader manners — use an
+    /// earcon for asynchronous urgency.</summary>
     public void Announce(string text) => Engine.Announce(text);
-
-    /// <summary>Announce urgently: interrupts the readers first. For
-    /// time-critical game events, not routine feedback.</summary>
-    public void AnnounceNow(string text)
-    {
-        Interrupt();
-        Engine.Announce(text);
-    }
 
     /// <summary>Re-announce the focused widget with its context labels
     /// (preceding Label siblings) — the dialog-open announcement.</summary>
@@ -209,11 +204,11 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     }
 
     /// <summary>Dispatch one physical key transition: the focused
-    /// widget's BindKey handlers first, then the UnhandledKey hook.
-    /// False when nothing claimed it.</summary>
+    /// widget's BindKey handlers first (inert while it is disabled),
+    /// then the UnhandledKey hook. False when nothing claimed it.</summary>
     public bool HandleKey(in KeyInput key)
     {
-        if (Engine.OwnerOf(Engine.Focus)?.TryHandleKey(key) == true)
+        if (Engine.ActiveFocusOwner()?.TryHandleKey(key) == true)
             return true;
         return UnhandledKey?.Invoke(key) == true;
     }

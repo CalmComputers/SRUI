@@ -71,15 +71,8 @@ app.SetPrimary(greet);
 app.SetCancel(quit);
 
 // The tabs show one panel at a time; hidden panels leave the tab ring.
-for (var i = 1; i < panels.Length; i++)
-    panels[i].Hidden = true;
-views.Changed += () =>
-{
-    var active = views.ActiveIndex;
-    for (var i = 0; i < panels.Length; i++)
-        panels[i].Hidden = i != active;
-    Log($"views: {panelNames[active]}");
-};
+views.AttachPanels(panels);
+views.Changed += () => Log($"views: {panelNames[views.ActiveIndex]}");
 
 // ── Editor panel: text, toggles, capture ──
 
@@ -123,7 +116,7 @@ rotate.Activated += () =>
     Log($"fruits rotated: first is {fruitItems[0]}");
     app.Announce($"Rotated. First fruit: {fruitItems[0]}.");
 };
-commands.Changed += () => Log($"commands: {commands.SelectedItem ?? "no match"}");
+commands.Changed += () => Log($"commands: {commands.SelectedItem?.Text ?? "no match"}");
 effect.Changed += () =>
 {
     ApplyEffect(effect.SelectedIndex);
@@ -252,8 +245,9 @@ startJob.Activated += () =>
     if (job is not null)
         return;
     progress.Value = 0;
-    // Focus the job explicitly before disabling the button under us —
-    // otherwise focus recovery picks its own, surprising target.
+    // Move to the progress slider before disabling the button under us:
+    // focus would legitimately stay on the disabled button ("unavailable"),
+    // but the user wants to hear the job tick.
     progress.Focus();
     startJob.Disabled = true;
     Log("job started");
@@ -308,7 +302,7 @@ void StartWalk(int dir, string announce)
     if (walkDir == dir)
         return;
     walkDir = dir;
-    app.AnnounceNow(announce);
+    app.Announce(announce);
 }
 void StopWalk(int dir)
 {
@@ -324,7 +318,7 @@ arena.BindKey(KeyCombo.Plain(Key.Right), KeyPhase.Release, () => StopWalk(1));
 arena.BindKey(KeyCombo.Plain(Key.Char('q')), KeyPhase.Press, () =>
 {
     drawing = true;
-    app.AnnounceNow("Drawing.");
+    app.Announce("Drawing.");
 });
 arena.BindKey(KeyCombo.Plain(Key.Char('q')), KeyPhase.Release, () =>
 {
@@ -332,7 +326,7 @@ arena.BindKey(KeyCombo.Plain(Key.Char('q')), KeyPhase.Release, () =>
         return;
     drawing = false;
     navSound.Play(arenaX + 4, 9);
-    app.AnnounceNow("Loosed!");
+    app.Announce("Loosed!");
     Log("arena: arrow loosed");
 });
 
@@ -342,7 +336,7 @@ arena.BindKey(KeyCombo.Plain(Key.Char('q')), KeyPhase.Release, () =>
 drum.BindKey(KeyCombo.Plain(Key.Char('d')), KeyPhase.Press, () =>
 {
     navSound.Play();
-    app.AnnounceNow("Boom.");
+    app.Announce("Boom.");
 });
 drum.BindKey(KeyCombo.Plain(Key.Char('d')), KeyPhase.Release, () => app.Announce("Tss."));
 drum.Activated += () =>
@@ -368,7 +362,7 @@ walkTicker.Tick += () =>
     if (next == arenaX)
     {
         walkDir = 0;
-        app.AnnounceNow("Wall.");
+        app.Announce("Wall.");
         return;
     }
     arenaX = next;
@@ -462,7 +456,7 @@ return;
 void Greet()
 {
     var who = string.IsNullOrEmpty(name.Text) ? "stranger" : name.Text;
-    var fruit = fruits.SelectedItem ?? "nothing";
+    var fruit = fruits.SelectedItem?.Text ?? "nothing";
     app.Announce(
         $"Hello, {who}. The fruit is {fruit}, and word wrap is {(wrap.Checked ? "on" : "off")}.");
 }

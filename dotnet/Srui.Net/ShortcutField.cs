@@ -18,8 +18,8 @@ public class ShortcutField : Widget
     /// (for bind dialogs that narrate on their own terms).</summary>
     public bool Echo { get; set; } = true;
 
-    /// <summary>The captured combo, or null when blank. Setting
-    /// re-announces when focused.</summary>
+    /// <summary>The captured combo, or null when blank. Setting speaks
+    /// the new value when focused ("control p", "blank").</summary>
     public KeyCombo? Combo
     {
         get => _combo;

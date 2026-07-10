@@ -28,22 +28,26 @@ internal static class Coalesce
 {
     /// <summary>Apply coalescing rules to a drained batch: state-describing
     /// accessibility events (Focused, Selection, ItemNav, TabChange,
-    /// SliderChange, Filter) keep only the last occurrence of their kind —
-    /// an intermediate focus move is discarded in favor of the settled one.
-    /// Action events (Typing, TextNav, Clipboard, Announce) and all
-    /// Activated/Callback/Tick events keep emission order. The surviving
-    /// Focused event is additionally delivered last in the batch: focus
-    /// describes where the user is now, and everything else in the batch
-    /// describes what just happened — so a handler that closes a dialog
-    /// and then announces its result is heard as result first, restored
-    /// focus second, regardless of emission order.</summary>
+    /// SliderChange, Toggle, Filter, and the label deltas
+    /// LabelChange/StateChange) keep only the last occurrence of their
+    /// kind — an intermediate focus move is discarded in favor of the
+    /// settled one. The label deltas key per property (and per state
+    /// flag), so a rename and a description change in one batch both
+    /// survive while two renames collapse to the settled name. Action
+    /// events (Typing, TextNav, Clipboard, EditNoop, Announce) and all
+    /// Activated/Callback/Tick events keep emission order. The
+    /// surviving Focused event is additionally delivered last in the
+    /// batch: focus describes where the user is now, and everything else
+    /// in the batch describes what just happened — so a handler that
+    /// closes a dialog and then announces its result is heard as result
+    /// first, restored focus second, regardless of emission order.</summary>
     public static List<CoreEvent> Apply(List<CoreEvent> events)
     {
         // Pass 1: last occurrence index per state-event kind.
-        Dictionary<Type, int>? lastIndex = null;
+        Dictionary<(Type, int), int>? lastIndex = null;
         for (var i = 0; i < events.Count; i++)
-            if (StateKind(events[i]) is Type kind)
-                (lastIndex ??= new Dictionary<Type, int>())[kind] = i;
+            if (StateKind(events[i]) is { } kind)
+                (lastIndex ??= new Dictionary<(Type, int), int>())[kind] = i;
         if (lastIndex is null)
             return events;
 
@@ -53,7 +57,7 @@ internal static class Coalesce
         CoreEvent? focused = null;
         for (var i = 0; i < events.Count; i++)
         {
-            if (StateKind(events[i]) is Type kind && lastIndex[kind] != i)
+            if (StateKind(events[i]) is { } kind && lastIndex[kind] != i)
                 continue;
             if (events[i] is CoreEvent.Acc(AccessibilityEvent.Focused))
                 focused = events[i];
@@ -65,13 +69,22 @@ internal static class Coalesce
         return result;
     }
 
-    private static Type? StateKind(CoreEvent ev) => ev is CoreEvent.Acc(var acc) && acc
-        is AccessibilityEvent.Focused
-        or AccessibilityEvent.Selection
-        or AccessibilityEvent.ItemNav
-        or AccessibilityEvent.TabChange
-        or AccessibilityEvent.SliderChange
-        or AccessibilityEvent.Filter
-        ? acc.GetType()
-        : null;
+    private static (Type, int)? StateKind(CoreEvent ev)
+    {
+        if (ev is not CoreEvent.Acc(var acc))
+            return null;
+        return acc switch
+        {
+            AccessibilityEvent.Focused
+                or AccessibilityEvent.Selection
+                or AccessibilityEvent.ItemNav
+                or AccessibilityEvent.TabChange
+                or AccessibilityEvent.SliderChange
+                or AccessibilityEvent.Toggle
+                or AccessibilityEvent.Filter => (acc.GetType(), 0),
+            AccessibilityEvent.LabelChange(_, var part, _) => (acc.GetType(), (int)part),
+            AccessibilityEvent.StateChange(_, var state, _) => (acc.GetType(), (int)state),
+            _ => null,
+        };
+    }
 }

@@ -44,6 +44,26 @@ public enum ClipboardOp
     Paste,
 }
 
+/// <summary>What an EditNoop event reports — the editor input that had
+/// nothing to act on.</summary>
+public enum EditNoopKind
+{
+    NoText,
+    NothingToSelect,
+    NothingToDelete,
+    SelectedToTop,
+    SelectedToBottom,
+}
+
+/// <summary>The label property a LabelChange event names.</summary>
+public enum LabelPart
+{
+    Name,
+    Role,
+    Value,
+    Description,
+}
+
 /// <summary>Granularity of a text-cursor move.</summary>
 public enum NavGranularity
 {
@@ -73,8 +93,9 @@ public sealed record WidgetInfo(
 
 /// <summary>Structured payload describing what the user should perceive.
 /// Readers consume these; the reference speech rendering lives in
-/// <see cref="SpeechRenderer"/>. Every variant except Announce carries
-/// the widget it concerns.</summary>
+/// <see cref="SpeechRenderer"/>. Every variant carries the widget it
+/// concerns; on Announce the source is optional (null for app-level
+/// announcements).</summary>
 public abstract record AccessibilityEvent
 {
     /// <summary>Focus moved to (or was re-announced on) a widget. Info is
@@ -122,6 +143,11 @@ public abstract record AccessibilityEvent
     /// <summary>Slider value changed.</summary>
     public sealed record SliderChange(Widget Widget, int Value, string Unit) : AccessibilityEvent;
 
+    /// <summary>Check box toggled — by the user, or programmatically
+    /// while focused. The reference rendering speaks the new state alone
+    /// ("checked", "not checked").</summary>
+    public sealed record Toggle(Widget Widget, bool Checked) : AccessibilityEvent;
+
     /// <summary>Filter / typeahead query changed; results recomputed.</summary>
     public sealed record Filter(Widget Widget, string Query, string? FirstResult, int ResultCount)
         : AccessibilityEvent;
@@ -129,9 +155,33 @@ public abstract record AccessibilityEvent
     /// <summary>Clipboard operation completed.</summary>
     public sealed record Clipboard(Widget Widget, ClipboardOp Op) : AccessibilityEvent;
 
+    /// <summary>An editor input with nothing to act on: navigation or
+    /// selection in an empty editor, a delete with nothing beside the
+    /// cursor, or a selection already pinned at a text edge. Context is
+    /// the spoken content at the cursor for the pinned-selection kinds,
+    /// null otherwise.</summary>
+    public sealed record EditNoop(Widget Widget, EditNoopKind Kind, string? Context = null)
+        : AccessibilityEvent;
+
+    /// <summary>A label property of the focused widget changed
+    /// programmatically. Text is the property's new spoken text; the
+    /// reference rendering speaks it alone — the delta, never a full
+    /// re-announcement. Label changes on unfocused widgets are silent
+    /// and produce no event.</summary>
+    public sealed record LabelChange(Widget Widget, LabelPart Part, string Text)
+        : AccessibilityEvent;
+
+    /// <summary>A state flag of the focused widget was set or cleared
+    /// programmatically ("disabled", "required", "warning cleared").
+    /// Hidden never appears here: hiding the focused widget reads as the
+    /// focus recovery it causes.</summary>
+    public sealed record StateChange(Widget Widget, WidgetStates State, bool On)
+        : AccessibilityEvent;
+
     /// <summary>Free-form announcement — the escape hatch for anything
-    /// without a structured variant.</summary>
-    public sealed record Announce(string Text) : AccessibilityEvent;
+    /// without a structured variant. Source is the widget that emitted
+    /// it, or null for app-level announcements.</summary>
+    public sealed record Announce(string Text, Widget? Source = null) : AccessibilityEvent;
 }
 
 /// <summary>A consumer of accessibility events: self-voicing speech,

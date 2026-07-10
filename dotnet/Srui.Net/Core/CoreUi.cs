@@ -137,14 +137,16 @@ internal sealed class CoreUi
 
     // ── Label mutation ──
 
-    /// <summary>Mutate a node's label. If the node is focused and the
-    /// label actually changed, the focus is re-announced (coalescing
-    /// collapses bursts). If the mutation made the focused node
-    /// unreachable (hidden, disabled, or inside a newly hidden subtree),
-    /// focus recovers to the nearest focusable node and announces there
-    /// instead. Widgets syncing state during their own input handling
-    /// write the label directly instead — their emission is the
-    /// announcement.</summary>
+    /// <summary>Mutate a node's label. If the node is focused, each
+    /// changed property is spoken as a delta — the new name, role text,
+    /// value, or description (LabelChange), or a state flag's transition
+    /// (StateChange) — never a full re-announcement, which is reserved
+    /// for focus arriving. If the mutation made the focused node
+    /// unreachable (hidden, or inside a newly hidden subtree; disabled
+    /// widgets stay reachable), focus recovers to the nearest focusable
+    /// node and announces there, after the deltas. Widgets syncing state
+    /// during their own input handling write the label directly instead —
+    /// their emission is the announcement.</summary>
     public void UpdateLabel(NodeId id, Action<WidgetLabel> mutate)
     {
         var node = _tree.Get(id);
@@ -152,12 +154,43 @@ internal sealed class CoreUi
             return;
         var before = node.Label.Clone();
         mutate(node.Label);
-        var changed = !node.Label.ContentEquals(before);
-        if (RecoverUnreachableFocus())
-            return;
-        if (_tree.Focus == id && changed)
-            EmitFocused(id);
+        if (_tree.Focus == id)
+            EmitLabelDeltas(id, before, node.Label);
+        RecoverUnreachableFocus();
     }
+
+    /// <summary>Speak what changed on the focused widget, property by
+    /// property. StateText, shortcuts, and Hidden are structural and stay
+    /// silent: state text and shortcuts ride the next focus announcement,
+    /// and hiding the focused widget reads as the focus recovery it
+    /// causes.</summary>
+    private void EmitLabelDeltas(NodeId id, WidgetLabel before, WidgetLabel after)
+    {
+        if (_tree.Get(id)?.Owner is not Widget widget)
+            return;
+        if (before.Name != after.Name)
+            EmitAccessibility(new AccessibilityEvent.LabelChange(
+                widget, LabelPart.Name, after.Name ?? ""));
+        if (before.RoleText != after.RoleText)
+            EmitAccessibility(new AccessibilityEvent.LabelChange(
+                widget, LabelPart.Role, after.RoleText));
+        if (before.Value != after.Value)
+            EmitAccessibility(new AccessibilityEvent.LabelChange(
+                widget, LabelPart.Value, after.Value));
+        if (before.Description != after.Description)
+            EmitAccessibility(new AccessibilityEvent.LabelChange(
+                widget, LabelPart.Description, after.Description));
+        var flipped = before.States ^ after.States;
+        foreach (var state in SpokenStates)
+        {
+            if ((flipped & state) != 0)
+                EmitAccessibility(new AccessibilityEvent.StateChange(
+                    widget, state, (after.States & state) != 0));
+        }
+    }
+
+    private static readonly WidgetStates[] SpokenStates =
+        [WidgetStates.Disabled, WidgetStates.Required, WidgetStates.Warning];
 
     /// <summary>Show or hide a node (and, for navigation purposes, its
     /// subtree).</summary>
@@ -203,8 +236,9 @@ internal sealed class CoreUi
     }
 
     /// <summary>Whether the user can currently reach this node: focusable
-    /// in itself (visible, enabled, focusable kind) and not inside a
-    /// hidden subtree. Gates focus recovery and primary/cancel activation.</summary>
+    /// in itself (visible, focusable kind — disabled widgets stay
+    /// reachable) and not inside a hidden subtree. Gates focus retention
+    /// and recovery.</summary>
     private bool Reachable(NodeId id)
     {
         var node = _tree.Get(id);
@@ -217,6 +251,20 @@ internal sealed class CoreUi
                 return false;
         }
         return true;
+    }
+
+    /// <summary>Reachable and enabled — able to act on the user's behalf.
+    /// Gates primary/cancel activation.</summary>
+    private bool Activatable(NodeId id) =>
+        Reachable(id) && _tree.Get(id) is { } node && node.Label.IsInteractiveNow;
+
+    /// <summary>The focused node's widget when it can act. A disabled
+    /// widget keeps focus for discoverability but is inert: neither
+    /// logical input nor key bindings reach it.</summary>
+    public Widget? ActiveFocusOwner()
+    {
+        var node = _tree.Get(_tree.Focus);
+        return node is not null && node.Label.IsInteractiveNow ? node.Owner : null;
     }
 
     // ── Focus ──
@@ -263,8 +311,11 @@ internal sealed class CoreUi
     {
         var node = _tree.Get(id);
         if (node?.Owner is Widget owner)
+        {
+            owner.RefreshLabel();
             _events.Add(new CoreEvent.Acc(new AccessibilityEvent.Focused(
                 owner, node.Label.ToInfo(), EmptyContext)));
+        }
     }
 
     private static readonly List<string> EmptyContext = new();
@@ -281,6 +332,7 @@ internal sealed class CoreUi
         var node = _tree.Get(id);
         if (node?.Owner is not Widget owner)
             return;
+        owner.RefreshLabel();
         _events.Add(new CoreEvent.Acc(new AccessibilityEvent.Focused(
             owner, node.Label.ToInfo(), ContextLabelsFor(id))));
     }
@@ -342,13 +394,10 @@ internal sealed class CoreUi
                 return true;
         }
 
-        // 1. The focused widget gets first claim.
-        var focused = _tree.Focus;
-        if (!focused.IsNone && _tree.Get(focused)?.Owner is Widget owner)
-        {
-            if (owner.HandleEngineInput(input))
-                return true;
-        }
+        // 1. The focused widget gets first claim — unless disabled: a
+        //    disabled widget keeps focus for discoverability but is inert.
+        if (ActiveFocusOwner() is Widget owner && owner.HandleEngineInput(input))
+            return true;
 
         // 2. Framework navigation and layer defaults.
         switch (input.Kind)
@@ -386,7 +435,7 @@ internal sealed class CoreUi
             case InputKind.Activate:
                 // A hidden or disabled primary does not activate; the
                 // input falls through unconsumed.
-                if (!_tree.Primary.IsNone && Reachable(_tree.Primary))
+                if (!_tree.Primary.IsNone && Activatable(_tree.Primary))
                 {
                     _events.Add(new CoreEvent.Activated(_tree.Primary));
                     return true;
@@ -395,7 +444,7 @@ internal sealed class CoreUi
             case InputKind.Dismiss:
                 // Same for the cancel widget: unconsumed Dismiss lets the
                 // host fall back (e.g. closing a dialog directly).
-                if (!_tree.Cancel.IsNone && Reachable(_tree.Cancel))
+                if (!_tree.Cancel.IsNone && Activatable(_tree.Cancel))
                 {
                     _events.Add(new CoreEvent.Activated(_tree.Cancel));
                     return true;

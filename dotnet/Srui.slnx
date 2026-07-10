@@ -4,4 +4,5 @@
   <Project Path="Srui.Net.Tests/Srui.Net.Tests.csproj" />
   <Project Path="Srui.Net/Srui.Net.csproj" />
   <Project Path="SruiDemo/SruiDemo.csproj" />
+  <Project Path="SruiTasks/SruiTasks.csproj" />
 </Solution>

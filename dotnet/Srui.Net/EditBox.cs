@@ -31,7 +31,7 @@ public class EditBox : Widget
     public bool Multiline => _editor.Multiline;
 
     /// <summary>The full text. Setting replaces the content (cursor
-    /// clamped, selection cleared) and re-announces when focused.</summary>
+    /// clamped, selection cleared) and speaks the new value when focused.</summary>
     public string Text
     {
         get => _editor.Text();
@@ -43,8 +43,8 @@ public class EditBox : Widget
     }
 
     /// <summary>A read-only editor swallows typing silently and lets
-    /// Enter fall through to the layer's primary. Toggling re-announces
-    /// when focused (the role text changes).</summary>
+    /// Enter fall through to the layer's primary. Toggling speaks the
+    /// new role text when focused.</summary>
     public bool ReadOnly
     {
         get => _editor.ReadOnly;
@@ -131,6 +131,21 @@ public class EditBox : Widget
             ? $"{length} characters"
             : _editor.Text();
         Emit(new AccessibilityEvent.Selection(this, delta, SelectionKind.All));
+    }
+
+    /// <summary>Replace the text without any announcement — the
+    /// counterpart of the <see cref="Text"/> setter for subclass input
+    /// handlers, which mutate state silently and then emit what the user
+    /// should hear (matching <see cref="Widget.SetValue"/>). The cursor
+    /// lands at the end of the new text and the selection is cleared —
+    /// positioned to continue typing.</summary>
+    protected void SetTextSilently(string text)
+    {
+        _editor.SetText(text);
+        _editor.Selection = null;
+        _editor.Cursor = _editor.Length;
+        _editor.PreferredColumn = null;
+        SetValue(EditBoxCore.LabelValue(_editor));
     }
 
     /// <summary>Clamp a position to the text and snap it off the middle

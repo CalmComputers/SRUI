@@ -123,6 +123,32 @@ public class SpeechRendererTests
     }
 
     [Fact]
+    public void RenderToggle()
+    {
+        var mute = new CheckBox(App, "Mute");
+        Assert.Equal("checked",
+            SpeechRenderer.RenderEvent(new AccessibilityEvent.Toggle(mute, true)));
+        Assert.Equal("not checked",
+            SpeechRenderer.RenderEvent(new AccessibilityEvent.Toggle(mute, false)));
+    }
+
+    [Fact]
+    public void RenderEditNoop()
+    {
+        var notes = new EditBox(App, "Notes");
+        Assert.Equal("No text", SpeechRenderer.RenderEvent(
+            new AccessibilityEvent.EditNoop(notes, EditNoopKind.NoText)));
+        Assert.Equal("Nothing to select", SpeechRenderer.RenderEvent(
+            new AccessibilityEvent.EditNoop(notes, EditNoopKind.NothingToSelect)));
+        Assert.Equal("Nothing to delete", SpeechRenderer.RenderEvent(
+            new AccessibilityEvent.EditNoop(notes, EditNoopKind.NothingToDelete)));
+        Assert.Equal("Already selected to bottom, word", SpeechRenderer.RenderEvent(
+            new AccessibilityEvent.EditNoop(notes, EditNoopKind.SelectedToBottom, "word")));
+        Assert.Equal("Already selected to top, word", SpeechRenderer.RenderEvent(
+            new AccessibilityEvent.EditNoop(notes, EditNoopKind.SelectedToTop, "word")));
+    }
+
+    [Fact]
     public void RenderClipboard()
     {
         var notes = new EditBox(App, "Notes");
@@ -176,6 +202,16 @@ public class CoalesceTests
         var two = new CoreEvent.Acc(new AccessibilityEvent.Announce("two"));
         var output = Coalesce.Apply([one, two]);
         Assert.Equal(new CoreEvent[] { one, two }, output);
+    }
+
+    [Fact]
+    public void CoalesceKeepsLastToggle()
+    {
+        var mute = new CheckBox(App, "Mute");
+        var on = new CoreEvent.Acc(new AccessibilityEvent.Toggle(mute, true));
+        var off = new CoreEvent.Acc(new AccessibilityEvent.Toggle(mute, false));
+        var output = Coalesce.Apply([on, off]);
+        Assert.Equal(new[] { off }, output);
     }
 
     [Fact]

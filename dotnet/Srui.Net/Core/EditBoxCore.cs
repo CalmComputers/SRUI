@@ -22,10 +22,13 @@ internal static class EditBoxCore
 
         public static Result JustConsumed() => new() { Consumed = true };
 
-        public static Result Announce(string text)
+        /// <summary>Consumed, but there was nothing to act on — a
+        /// structured EditNoop the renderer turns into "No text",
+        /// "Nothing to delete", and kin.</summary>
+        public static Result Noop(Widget widget, EditNoopKind kind, string? context = null)
         {
             var result = JustConsumed();
-            result.Events.Add(new AccessibilityEvent.Announce(text));
+            result.Events.Add(new AccessibilityEvent.EditNoop(widget, kind, context));
             return result;
         }
     }
@@ -241,7 +244,7 @@ internal static class EditBoxCore
                 || (hadSelection && !editor.HasSelection);
 
             if (wasEmpty)
-                return Result.Announce("No text");
+                return Result.Noop(widget, EditNoopKind.NoText);
 
             var result = Result.JustConsumed();
             if (cursorMoved)
@@ -278,7 +281,7 @@ internal static class EditBoxCore
             var cursorMoved = editor.Cursor != prevCursor;
 
             if (wasEmpty)
-                return Result.Announce("Nothing to select");
+                return Result.Noop(widget, EditNoopKind.NothingToSelect);
 
             if (cursorMoved)
             {
@@ -311,9 +314,10 @@ internal static class EditBoxCore
                 return result;
             }
 
-            var context = NavContext(editor, selKind);
-            var prefix = selForward ? "Already selected to bottom" : "Already selected to top";
-            return Result.Announce($"{prefix}, {context}");
+            return Result.Noop(
+                widget,
+                selForward ? EditNoopKind.SelectedToBottom : EditNoopKind.SelectedToTop,
+                NavContext(editor, selKind));
         }
 
         // ── Select All ──
@@ -321,7 +325,7 @@ internal static class EditBoxCore
         {
             editor.SelectAll();
             if (wasEmpty)
-                return Result.Announce("Nothing to select");
+                return Result.Noop(widget, EditNoopKind.NothingToSelect);
             var length = editor.Length;
             var delta = length > SpeechRenderer.SpeakLimit
                 ? $"{length} characters"
@@ -396,7 +400,7 @@ internal static class EditBoxCore
             }
             var canDelete = backward ? editor.Cursor > 0 : editor.Cursor < editor.Length;
             if (!canDelete)
-                return Result.Announce("Nothing to delete");
+                return Result.Noop(widget, EditNoopKind.NothingToDelete);
 
             var deleted = (word, backward) switch
             {

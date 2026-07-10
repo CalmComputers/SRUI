@@ -91,16 +91,17 @@ internal static class Nav
         }
     }
 
-    /// <summary>Find the first reachable (focusable, outside hidden
-    /// subtrees) widget with a shortcut bound to the combo, and the action
-    /// of its first matching binding. Depth-first from the roots, so match
-    /// order follows insertion order.</summary>
+    /// <summary>Find the first interactive (focusable, enabled, outside
+    /// hidden subtrees) widget with a shortcut bound to the combo, and the
+    /// action of its first matching binding. Depth-first from the roots,
+    /// so match order follows insertion order. A disabled widget is
+    /// tabbable but its shortcuts are inert.</summary>
     public static (NodeId Node, ShortcutAction Action)? FindShortcut(Tree tree, KeyCombo combo)
     {
         foreach (var id in CollectFocusableDfs(tree))
         {
             var node = tree.Get(id);
-            if (node is null)
+            if (node is null || !node.Label.IsInteractiveNow)
                 continue;
             foreach (var shortcut in node.Label.Shortcuts)
                 if (shortcut.Combo == combo)
@@ -124,7 +125,8 @@ internal static class Nav
     }
 
     /// <summary>All focusable nodes in depth-first order, skipping entire
-    /// hidden subtrees.</summary>
+    /// hidden subtrees. Disabled widgets are included: only hiding takes a
+    /// widget out of navigation.</summary>
     public static List<NodeId> CollectFocusableDfs(Tree tree)
     {
         var result = new List<NodeId>();

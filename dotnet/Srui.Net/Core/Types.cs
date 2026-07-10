@@ -78,23 +78,17 @@ internal sealed class WidgetLabel
         return copy;
     }
 
-    /// <summary>Field-by-field equality; drives the "re-announce only when
-    /// the label actually changed" rule.</summary>
-    public bool ContentEquals(WidgetLabel other)
-    {
-        if (Name != other.Name || RoleText != other.RoleText || Value != other.Value
-            || States != other.States || StateText != other.StateText
-            || Description != other.Description
-            || Shortcuts.Count != other.Shortcuts.Count)
-            return false;
-        for (var i = 0; i < Shortcuts.Count; i++)
-            if (Shortcuts[i] != other.Shortcuts[i])
-                return false;
-        return true;
-    }
-
     /// <summary>Whether the widget can currently receive tab-ring focus:
-    /// a focusable kind, not disabled, not hidden.</summary>
+    /// a focusable kind, not hidden. Disabled widgets stay tabbable — a
+    /// keyboard-only, screen-reader-first UI keeps them discoverable
+    /// ("unavailable") rather than skipping them; they are inert, not
+    /// invisible.</summary>
     public bool IsFocusableNow =>
-        Focusable && (States & (WidgetStates.Disabled | WidgetStates.Hidden)) == 0;
+        Focusable && (States & WidgetStates.Hidden) == 0;
+
+    /// <summary>Whether the widget can currently act: focusable now and
+    /// not disabled. Gates input dispatch, key bindings, shortcuts, and
+    /// primary/cancel activation.</summary>
+    public bool IsInteractiveNow =>
+        IsFocusableNow && (States & WidgetStates.Disabled) == 0;
 }

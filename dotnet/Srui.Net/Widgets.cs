@@ -96,7 +96,7 @@ public class CheckBox : Widget
             _checked = value;
             SetValue(ValueText(value));
             if (IsFocused)
-                Announce(ValueText(value));
+                Emit(new AccessibilityEvent.Toggle(this, value));
         }
     }
 
@@ -117,7 +117,7 @@ public class CheckBox : Widget
             var isChecked = _checked;
             SetValue(ValueText(isChecked));
             Post(() => OnToggled(isChecked));
-            Announce(ValueText(isChecked));
+            Emit(new AccessibilityEvent.Toggle(this, isChecked));
             return true;
         }
         return false;

@@ -55,7 +55,7 @@ public class SoundListBox : ListBox
         _count = items.Count;
     }
 
-    public override void SetItems(IReadOnlyList<string> items)
+    public override void SetItems(IReadOnlyList<IListItem> items)
     {
         _count = items.Count;
         base.SetItems(items);

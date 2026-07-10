@@ -6,14 +6,22 @@ namespace Srui;
 /// boundary announcements, Home/End jump, printable characters do
 /// first-letter cycling and multi-letter prefix search. Enter is
 /// deliberately not claimed: it falls through to the layer's primary
-/// widget (Windows dialog convention), which reads the selection.</summary>
+/// widget (Windows dialog convention), which reads the selection.
+///
+/// Items are <see cref="IListItem"/> values — application types
+/// implement the interface, plain strings arrive through the string
+/// overloads. The item operations (<see cref="RemoveAt"/>,
+/// <see cref="Insert"/>, <see cref="SetItem"/>, <see cref="RefreshItem"/>)
+/// own the structural consequences — selection clamping and what the
+/// user hears about where the selection landed; editorial feedback
+/// ("Deleted X.") stays with the caller, as an attributed Announce.</summary>
 public class ListBox : Widget
 {
     /// <summary>Timeout for resetting the typeahead buffer (milliseconds
     /// of host time).</summary>
     private const ulong TypeAheadTimeoutMs = 400;
 
-    private List<string> _items;
+    private List<IListItem> _items;
     private int _selected;
     /// <summary>When true, announcements and focus state text carry "N of M".</summary>
     private readonly bool _numbered;
@@ -21,18 +29,35 @@ public class ListBox : Widget
     private ulong? _lastKeystrokeMs;
 
     public ListBox(
-        IWidgetContainer parent, string name, IReadOnlyList<string> items, bool numbered = false)
+        IWidgetContainer parent, string name, IReadOnlyList<IListItem> items,
+        bool numbered = false)
         : base(parent, name, "list")
     {
-        _items = new List<string>(items);
+        _items = new List<IListItem>(items);
         _numbered = numbered;
-        SetValue(_selected < _items.Count ? _items[_selected] : "empty");
+        SetValue(_selected < _items.Count ? _items[_selected].Text : "empty");
         SyncStateText();
     }
 
+    public ListBox(
+        IWidgetContainer parent, string name, IReadOnlyList<string> items,
+        bool numbered = false)
+        : this(parent, name, Wrap(items), numbered)
+    {
+    }
+
+    private static List<IListItem> Wrap(IReadOnlyList<string> items)
+    {
+        var wrapped = new List<IListItem>(items.Count);
+        foreach (var item in items)
+            wrapped.Add(new ListItem(item));
+        return wrapped;
+    }
+
     /// <summary>The items. Setting replaces the list (selection clamped)
-    /// and re-announces the widget when focused and audibly changed.</summary>
-    public IReadOnlyList<string> Items
+    /// and speaks the newly selected item when focused and audibly
+    /// changed.</summary>
+    public IReadOnlyList<IListItem> Items
     {
         get => _items;
         set => SetItems(value);
@@ -40,9 +65,9 @@ public class ListBox : Widget
 
     /// <summary>Replace the item list (selection clamped); equivalent to
     /// setting <see cref="Items"/>.</summary>
-    public virtual void SetItems(IReadOnlyList<string> items)
+    public virtual void SetItems(IReadOnlyList<IListItem> items)
     {
-        var copy = new List<string>(items);
+        var copy = new List<IListItem>(items);
         Engine.UpdateLabel(Node, label =>
         {
             _items = copy;
@@ -51,6 +76,94 @@ public class ListBox : Widget
             SyncInto(label);
         });
     }
+
+    /// <summary>Replace the item list with plain strings.</summary>
+    public void SetItems(IReadOnlyList<string> items) => SetItems(Wrap(items));
+
+    /// <summary>Replace the items without any announcement — the
+    /// counterpart of <see cref="SetItems(IReadOnlyList{IListItem})"/>
+    /// for subclass input handlers, which mutate state silently and then
+    /// emit what the user should hear (matching <see cref="Widget.SetValue"/>).
+    /// The selection is clamped; focus announcements pick the new items
+    /// up automatically.</summary>
+    protected void SetItemsSilently(IReadOnlyList<IListItem> items)
+    {
+        _items = new List<IListItem>(items);
+        if (_items.Count > 0 && _selected >= _items.Count)
+            _selected = _items.Count - 1;
+        SyncLabel();
+    }
+
+    /// <summary>Replace the items with plain strings, silently.</summary>
+    protected void SetItemsSilently(IReadOnlyList<string> items) =>
+        SetItemsSilently(Wrap(items));
+
+    /// <summary>Remove the item at the index. Removing the selected item
+    /// while focused speaks the survivor the selection lands on exactly
+    /// as an arrow move would — or "empty" when the last item went;
+    /// removing any other item is silent (the selection kept its item,
+    /// only its position shifted). Editorial feedback ("Deleted X.") is
+    /// the caller's, spoken before the call.</summary>
+    public void RemoveAt(int index)
+    {
+        if ((uint)index >= (uint)_items.Count)
+            throw new ArgumentOutOfRangeException(nameof(index));
+        var wasSelected = index == _selected;
+        _items.RemoveAt(index);
+        if (index < _selected)
+            _selected--;
+        else if (_selected >= _items.Count && _selected > 0)
+            _selected = _items.Count - 1;
+        SyncLabel();
+        if (!wasSelected || !IsFocused)
+            return;
+        if (_items.Count == 0)
+            EmitEmpty();
+        else
+            EmitSelected(null);
+    }
+
+    /// <summary>Insert an item at the index. Silent — the selection stays
+    /// on the same item (its index shifts when inserting at or above it)
+    /// and focus announcements pick the new count up automatically —
+    /// except into an empty list while focused: there the selection lands
+    /// on the new item, and it speaks exactly as an arrow move would.</summary>
+    public void Insert(int index, IListItem item)
+    {
+        if ((uint)index > (uint)_items.Count)
+            throw new ArgumentOutOfRangeException(nameof(index));
+        var wasEmpty = _items.Count == 0;
+        _items.Insert(index, item);
+        if (!wasEmpty && index <= _selected)
+            _selected++;
+        SyncLabel();
+        if (wasEmpty && IsFocused)
+            EmitSelected(null);
+    }
+
+    /// <summary>Insert a plain-text item at the index.</summary>
+    public void Insert(int index, string item) => Insert(index, new ListItem(item));
+
+    /// <summary>Append an item. Silent, like <see cref="Insert(int, IListItem)"/>.</summary>
+    public void Add(IListItem item) => Insert(_items.Count, item);
+
+    /// <summary>Append a plain-text item.</summary>
+    public void Add(string item) => Add(new ListItem(item));
+
+    /// <summary>Replace the item at the index with a different one.
+    /// Silent: the caller speaks the delta when the user should hear one.
+    /// Mutating an existing item's state needs no call at all — its Text
+    /// is read live wherever the framework needs the line.</summary>
+    public void SetItem(int index, IListItem item)
+    {
+        if ((uint)index >= (uint)_items.Count)
+            throw new ArgumentOutOfRangeException(nameof(index));
+        _items[index] = item;
+        SyncLabel();
+    }
+
+    /// <summary>Replace the item at the index with plain text.</summary>
+    public void SetItem(int index, string item) => SetItem(index, new ListItem(item));
 
     /// <summary>The selected index, or -1 when the list is empty. A
     /// programmatic move (clamped) while focused speaks the item exactly
@@ -73,14 +186,19 @@ public class ListBox : Widget
         }
     }
 
-    public string? SelectedItem => _selected < _items.Count ? _items[_selected] : null;
+    public IListItem? SelectedItem => _selected < _items.Count ? _items[_selected] : null;
+
+    /// <summary>Focus announcements pull the label fresh, so an item
+    /// whose Text is computed from mutated application state reads
+    /// correctly with no sync call.</summary>
+    protected internal override void RefreshLabel() => SyncLabel();
 
     /// <summary>Keep the golden six in step with the widget state: value
     /// is the selected item (or "empty"), state text is "N of M" when
     /// numbered.</summary>
     private void SyncLabel()
     {
-        SetValue(_selected < _items.Count ? _items[_selected] : "empty");
+        SetValue(_selected < _items.Count ? _items[_selected].Text : "empty");
         SyncStateText();
     }
 
@@ -94,7 +212,7 @@ public class ListBox : Widget
     {
         if (_selected < _items.Count)
         {
-            label.Value = _items[_selected];
+            label.Value = _items[_selected].Text;
             if (_numbered)
                 label.StateText = $"{_selected + 1} of {_items.Count}";
         }
@@ -113,8 +231,12 @@ public class ListBox : Widget
         if (_selected >= _items.Count)
             return;
         (int, int)? position = _numbered ? (_selected, _items.Count) : null;
-        EmitItem(_items[_selected], position, boundary);
+        EmitItem(_items[_selected].Text, position, boundary);
     }
+
+    /// <summary>What an empty list says — the same word its label value
+    /// and focus announcement carry.</summary>
+    private void EmitEmpty() => EmitItem("empty", null, null);
 
     /// <summary>Selection moved by input: sync label, announce, notify
     /// the program.</summary>
@@ -148,7 +270,7 @@ public class ListBox : Widget
             for (var offset = 1; offset <= count; offset++)
             {
                 var idx = (_selected + offset) % count;
-                if (StartsWithAsciiLower(_items[idx], runeLower))
+                if (StartsWithAsciiLower(_items[idx].Text, runeLower))
                 {
                     SelectAndAnnounce(idx);
                     break;
@@ -163,7 +285,7 @@ public class ListBox : Widget
             for (var offset = 0; offset < count; offset++)
             {
                 var idx = (_selected + offset) % count;
-                if (StartsWithAsciiLower(_items[idx], needle))
+                if (StartsWithAsciiLower(_items[idx].Text, needle))
                 {
                     if (idx != _selected)
                         SelectAndAnnounce(idx);
@@ -221,7 +343,20 @@ public class ListBox : Widget
     protected override bool OnInput(in InputEvent input)
     {
         if (_items.Count == 0)
-            return false;
+        {
+            // An empty list still answers navigation — with what the
+            // focus announcement already calls it.
+            switch (input.Kind)
+            {
+                case InputKind.MoveDown or InputKind.MoveUp
+                    or InputKind.MoveToDocStart or InputKind.MoveToLineStart
+                    or InputKind.MoveToDocEnd or InputKind.MoveToLineEnd:
+                    EmitEmpty();
+                    return true;
+                default:
+                    return false;
+            }
+        }
         switch (input.Kind)
         {
             case InputKind.MoveDown:

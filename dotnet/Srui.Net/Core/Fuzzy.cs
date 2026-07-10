@@ -146,4 +146,28 @@ internal static class Fuzzy
             result.Add(item);
         return result;
     }
+
+    /// <summary>Score the items against the query through each item's own
+    /// <see cref="IListItem.FilterScore"/> (null excludes) and return the
+    /// matching ones sorted by descending score, ties broken by ordinal
+    /// Text order. An empty query returns all items in their original
+    /// order without consulting scores.</summary>
+    public static List<IListItem> FilterItems(string query, IReadOnlyList<IListItem> items)
+    {
+        if (query.Length == 0)
+            return new List<IListItem>(items);
+        var scored = new List<(int Score, IListItem Item)>(items.Count);
+        foreach (var item in items)
+            if (item.FilterScore(query) is int score)
+                scored.Add((score, item));
+        scored.Sort(static (a, b) =>
+        {
+            var byScore = b.Score.CompareTo(a.Score);
+            return byScore != 0 ? byScore : string.CompareOrdinal(a.Item.Text, b.Item.Text);
+        });
+        var result = new List<IListItem>(scored.Count);
+        foreach (var (_, item) in scored)
+            result.Add(item);
+        return result;
+    }
 }

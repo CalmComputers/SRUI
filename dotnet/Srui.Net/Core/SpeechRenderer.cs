@@ -81,6 +81,10 @@ public static class SpeechRenderer
             case AccessibilityEvent.SliderChange(_, var value, var unit):
                 return $"{value}{unit}";
 
+            // The same words the focus announcement's value field uses.
+            case AccessibilityEvent.Toggle(_, var isChecked):
+                return isChecked ? "checked" : "not checked";
+
             case AccessibilityEvent.Filter(_, _, var firstResult, var resultCount):
                 return firstResult is not null
                     ? $"{firstResult} 1 of {resultCount}"
@@ -94,7 +98,33 @@ public static class SpeechRenderer
                     _ => "Paste",
                 };
 
-            case AccessibilityEvent.Announce(var text):
+            // The delta alone: a renamed widget speaks its new name, a
+            // replaced value the new value. Empty text (a cleared name
+            // or description) has nothing to speak.
+            case AccessibilityEvent.LabelChange(_, _, var newText):
+                return newText.Length == 0 ? null : newText;
+
+            case AccessibilityEvent.StateChange(_, var state, var on):
+                return state switch
+                {
+                    // The same word the focus announcement uses.
+                    WidgetStates.Disabled => on ? "unavailable" : "available",
+                    WidgetStates.Required => on ? "required" : "not required",
+                    WidgetStates.Warning => on ? "warning" : "warning cleared",
+                    _ => null,
+                };
+
+            case AccessibilityEvent.EditNoop(_, var kind, var context):
+                return kind switch
+                {
+                    EditNoopKind.NoText => "No text",
+                    EditNoopKind.NothingToSelect => "Nothing to select",
+                    EditNoopKind.NothingToDelete => "Nothing to delete",
+                    EditNoopKind.SelectedToTop => $"Already selected to top, {context}",
+                    _ => $"Already selected to bottom, {context}",
+                };
+
+            case AccessibilityEvent.Announce(var text, _):
                 return text;
 
             default:

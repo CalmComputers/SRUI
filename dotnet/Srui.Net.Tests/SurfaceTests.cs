@@ -173,14 +173,69 @@ public class FocusAndNavigationTests
     }
 
     [Fact]
-    public void DisablingFocusedWidgetRecoversFocus()
+    public void DisablingFocusedWidgetKeepsFocus()
     {
-        var (ui, save, _, wrap) = DemoUi();
+        var (ui, _, _, wrap) = DemoUi();
         wrap.Focus();
         ui.Drain();
 
         wrap.Disabled = true;
-        Assert.True(save.IsFocused);
+        Assert.True(wrap.IsFocused);
+        Assert.Equal(new[] { "unavailable" }, ui.Spoken());
+
+        wrap.Disabled = false;
+        Assert.True(wrap.IsFocused);
+        Assert.Equal(new[] { "available" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void TabReachesDisabledWidgets()
+    {
+        var (ui, save, _, wrap) = DemoUi();
+        wrap.Disabled = true;
+        save.Focus();
+        ui.Drain();
+
+        ui.Input(InputKind.NavigateNext);
+        Assert.True(wrap.IsFocused);
+        var spoken = Assert.Single(ui.Spoken());
+        Assert.Contains("unavailable", spoken);
+    }
+
+    [Fact]
+    public void DisabledFocusedWidgetIsInert()
+    {
+        var (ui, _, _, wrap) = DemoUi();
+        var toggles = 0;
+        wrap.Toggled += _ => toggles++;
+        wrap.Disabled = true;
+        wrap.Focus();
+        ui.Drain();
+
+        // Space would toggle an enabled checkbox; here it falls through
+        // the whole claim order unconsumed.
+        Assert.False(ui.Type(' '));
+        ui.Drain();
+        Assert.Equal(0, toggles);
+        Assert.False(wrap.Checked);
+    }
+
+    [Fact]
+    public void DisabledFocusedWidgetKeyBindingsAreInert()
+    {
+        var (ui, _, _, wrap) = DemoUi();
+        var fired = 0;
+        wrap.BindKey(KeyCombo.Plain(Key.Char('d')), KeyPhase.Press, () => fired++);
+        wrap.Focus();
+        ui.Drain();
+
+        Assert.True(ui.App.HandleKey(new KeyInput(Keys.Char('d'), Mods.None, KeyPhase.Press)));
+        Assert.Equal(1, fired);
+
+        wrap.Disabled = true;
+        ui.Drain();
+        Assert.False(ui.App.HandleKey(new KeyInput(Keys.Char('d'), Mods.None, KeyPhase.Press)));
+        Assert.Equal(1, fired);
     }
 
     [Fact]
@@ -210,19 +265,19 @@ public class FocusAndNavigationTests
     }
 
     [Fact]
-    public void RenameReannouncesFocusedWidget()
+    public void RenameSpeaksNewNameWhenFocused()
     {
         var (ui, save, _, _) = DemoUi();
         save.Focus();
         ui.Drain();
 
         save.Name = "Save All";
-        Assert.Equal(new[] { "Save All button" }, ui.Spoken());
+        Assert.Equal(new[] { "Save All" }, ui.Spoken());
         Assert.Equal("Save All", save.Name);
     }
 
     [Fact]
-    public void DescriptionReannouncesFocusedWidgetOnly()
+    public void DescriptionSpeaksDeltaWhenFocusedOnly()
     {
         var (ui, save, _, wrap) = DemoUi();
         save.Focus();
@@ -232,12 +287,57 @@ public class FocusAndNavigationTests
         wrap.Description = "wraps long lines";
         Assert.Empty(ui.Spoken());
 
-        // Focused widget: re-announced.
+        // Focused widget: the new description alone.
         save.Description = "saves the file";
-        Assert.Equal(new[] { "Save button saves the file" }, ui.Spoken());
+        Assert.Equal(new[] { "saves the file" }, ui.Spoken());
 
         // No-op mutation: silent.
         save.Description = "saves the file";
+        Assert.Empty(ui.Spoken());
+    }
+
+    [Fact]
+    public void LabelDeltasForDistinctPartsAllSurviveOneBatch()
+    {
+        var (ui, save, _, _) = DemoUi();
+        save.Focus();
+        ui.Drain();
+
+        // Rename twice and describe once before draining: the settled
+        // name and the description both speak; the intermediate name is
+        // coalesced away.
+        save.Name = "Save All";
+        save.Name = "Save Everything";
+        save.Description = "saves the file";
+        Assert.Equal(new[] { "Save Everything", "saves the file" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void StateFlagsSpeakTransitionsWhenFocused()
+    {
+        var ui = new TestUi();
+        var name = new EditBox(ui.App, "Name");
+        name.Focus();
+        ui.Drain();
+
+        name.Required = true;
+        Assert.Equal(new[] { "required" }, ui.Spoken());
+        name.Warning = true;
+        Assert.Equal(new[] { "warning" }, ui.Spoken());
+        name.Required = false;
+        Assert.Equal(new[] { "not required" }, ui.Spoken());
+        name.Warning = false;
+        Assert.Equal(new[] { "warning cleared" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void ShortcutChangesAreSilentWhenFocused()
+    {
+        var (ui, save, _, _) = DemoUi();
+        save.Focus();
+        ui.Drain();
+
+        save.AddShortcut(KeyCombo.WithCtrl(Key.Char('s')));
         Assert.Empty(ui.Spoken());
     }
 
@@ -922,7 +1022,7 @@ public class ListBoxTests
         Assert.Equal(new[] { "bravo.txt 2 of 3" }, ui.Spoken());
         Assert.Equal(1, changes);
         Assert.Equal(1, files.SelectedIndex);
-        Assert.Equal("bravo.txt", files.SelectedItem);
+        Assert.Equal("bravo.txt", files.SelectedItem?.Text);
     }
 
     [Fact]
@@ -967,7 +1067,7 @@ public class ListBoxTests
         var (ui, files) = ListUi(true);
         var open = new Button(ui.App, "Open");
         string? chosen = null;
-        open.Activated += () => chosen = files.SelectedItem;
+        open.Activated += () => chosen = files.SelectedItem?.Text;
         ui.App.SetPrimary(open);
         ui.Input(InputKind.MoveDown);
         ui.Drain();
@@ -996,13 +1096,13 @@ public class ListBoxTests
         // 'a' from apple → next item starting with 'a' (wraps past banana).
         ui.App.SetNow(1000);
         ui.Type('a');
-        Assert.Equal("avocado", files.SelectedItem);
+        Assert.Equal("avocado", files.SelectedItem?.Text);
         Assert.Equal(new[] { "avocado" }, ui.Spoken());
 
         // Repeated 'a' cycles onward: avocado → apple.
         ui.App.SetNow(1100);
         ui.Type('a');
-        Assert.Equal("apple", files.SelectedItem);
+        Assert.Equal("apple", files.SelectedItem?.Text);
     }
 
     [Fact]
@@ -1016,11 +1116,11 @@ public class ListBoxTests
         ui.App.SetNow(1000);
         ui.Type('b');
         // From banana, 'b' cycles to the NEXT b-item: berry.
-        Assert.Equal("berry", files.SelectedItem);
+        Assert.Equal("berry", files.SelectedItem?.Text);
         ui.App.SetNow(1100);
         ui.Type('e');
         // Buffer "be" → prefix search keeps berry.
-        Assert.Equal("berry", files.SelectedItem);
+        Assert.Equal("berry", files.SelectedItem?.Text);
     }
 
     [Fact]
@@ -1033,30 +1133,34 @@ public class ListBoxTests
 
         ui.App.SetNow(1000);
         ui.Type('b');
-        Assert.Equal("berry", files.SelectedItem);
+        Assert.Equal("berry", files.SelectedItem?.Text);
 
         // 500ms later the buffer has expired: 'c' is a fresh first letter.
         ui.App.SetNow(1500);
         ui.Type('c');
-        Assert.Equal("cat", files.SelectedItem);
+        Assert.Equal("cat", files.SelectedItem?.Text);
     }
 
     [Fact]
-    public void EmptyListConsumesNothing()
+    public void EmptyListAnswersArrowsAndConsumesNothingElse()
     {
         var ui = new TestUi();
-        var files = new ListBox(ui.App, "Files", [], numbered: true);
+        var files = new ListBox(ui.App, "Files", Array.Empty<string>(), numbered: true);
         files.Focus();
         Assert.Equal(new[] { "Files list empty" }, ui.Spoken());
         Assert.Equal(-1, files.SelectedIndex);
         Assert.Null(files.SelectedItem);
+
+        // Arrows answer with what the label already says.
+        Assert.True(ui.Input(InputKind.MoveDown));
+        Assert.Equal(new[] { "empty" }, ui.Spoken());
 
         Assert.False(ui.Input(InputKind.Activate));
         Assert.Empty(ui.Spoken());
     }
 
     [Fact]
-    public void SetItemsClampsAndReannouncesWhenFocused()
+    public void SetItemsClampsAndSpeaksNewItemWhenFocused()
     {
         var (ui, files) = ListUi(true);
         ui.Input(InputKind.MoveToDocEnd);
@@ -1064,8 +1168,8 @@ public class ListBoxTests
 
         files.SetItems(["only.txt"]);
         Assert.Equal(0, files.SelectedIndex);
-        Assert.Equal(new[] { "Files list only.txt 1 of 1" }, ui.Spoken());
-        Assert.Equal(new[] { "only.txt" }, files.Items);
+        Assert.Equal(new[] { "only.txt" }, ui.Spoken());
+        Assert.Equal(new[] { "only.txt" }, files.Items.Select(i => i.Text));
     }
 
     [Fact]
@@ -1077,7 +1181,7 @@ public class ListBoxTests
         other.Focus();
         ui.Drain();
 
-        files.Items = ["b"];
+        files.SetItems(["b"]);
         Assert.Empty(ui.Spoken());
     }
 
@@ -1229,7 +1333,7 @@ public class EditBoxTests
     }
 
     [Fact]
-    public void SetTextReannouncesWhenFocused()
+    public void SetTextSpeaksNewValueWhenFocused()
     {
         var ui = new TestUi();
         var notes = new EditBox(ui.App, "Notes", "old");
@@ -1237,8 +1341,22 @@ public class EditBoxTests
         ui.Drain();
 
         notes.Text = "new text";
-        Assert.Equal(new[] { "Notes edit new text" }, ui.Spoken());
+        Assert.Equal(new[] { "new text" }, ui.Spoken());
         Assert.Equal("new text", notes.Text);
+    }
+
+    [Fact]
+    public void ReadOnlyToggleSpeaksNewRoleTextWhenFocused()
+    {
+        var ui = new TestUi();
+        var notes = new EditBox(ui.App, "Notes", "body");
+        notes.Focus();
+        ui.Drain();
+
+        notes.ReadOnly = true;
+        Assert.Equal(new[] { "edit read only" }, ui.Spoken());
+        notes.ReadOnly = false;
+        Assert.Equal(new[] { "edit" }, ui.Spoken());
     }
 
     [Fact]
@@ -1417,6 +1535,40 @@ public class TabControlTests
         tabs.ActiveIndex = 1;
         Assert.Empty(ui.Spoken());
     }
+
+    [Fact]
+    public void AttachedPanelsFollowTheActiveTab()
+    {
+        var ui = new TestUi();
+        var tabs = new TabControl(ui.App, "Views", ["One", "Two"]);
+        var one = new Group(ui.App, "One");
+        var two = new Group(ui.App, "Two");
+        tabs.AttachPanels(one, two);
+        // Attaching hides everything but the active panel.
+        Assert.False(one.Hidden);
+        Assert.True(two.Hidden);
+
+        tabs.Focus();
+        ui.Drain();
+        ui.Input(InputKind.MoveRight);
+        ui.App.DispatchEvents(); // user-driven switches sync at drain
+        Assert.True(one.Hidden);
+        Assert.False(two.Hidden);
+
+        // Programmatic switches sync immediately.
+        tabs.ActiveIndex = 0;
+        Assert.False(one.Hidden);
+        Assert.True(two.Hidden);
+    }
+
+    [Fact]
+    public void AttachPanelsRequiresOnePerTab()
+    {
+        var ui = new TestUi();
+        var tabs = new TabControl(ui.App, "Views", ["One", "Two"]);
+        var only = new Group(ui.App, "One");
+        Assert.Throws<ArgumentException>(() => tabs.AttachPanels(only));
+    }
 }
 
 public class ShortcutFieldTests
@@ -1510,7 +1662,7 @@ public class ShortcutFieldTests
     }
 
     [Fact]
-    public void ComboSetterReannouncesWhenFocused()
+    public void ComboSetterSpeaksNewValueWhenFocused()
     {
         var ui = new TestUi();
         var field = new ShortcutField(ui.App, "Play shortcut");
@@ -1518,10 +1670,10 @@ public class ShortcutFieldTests
         ui.Drain();
 
         field.Combo = KeyCombo.WithCtrl(Key.Char('p'));
-        Assert.Equal(new[] { "Play shortcut shortcut field control p" }, ui.Spoken());
+        Assert.Equal(new[] { "control p" }, ui.Spoken());
 
         field.Combo = null;
-        Assert.Equal(new[] { "Play shortcut shortcut field blank" }, ui.Spoken());
+        Assert.Equal(new[] { "blank" }, ui.Spoken());
     }
 }
 
@@ -1598,7 +1750,7 @@ public class FilterListBoxTests
         var (ui, list) = FilterUi();
         var open = new Button(ui.App, "Open");
         string? chosen = null;
-        open.Activated += () => chosen = list.SelectedItem;
+        open.Activated += () => chosen = list.SelectedItem?.Text;
         ui.App.SetPrimary(open);
         ui.Type('q');
         ui.Drain();
@@ -1609,7 +1761,7 @@ public class FilterListBoxTests
     }
 
     [Fact]
-    public void ClearFilterResetsQueryAndReannounces()
+    public void ClearFilterResetsQueryAndSpeaksNewSelection()
     {
         var (ui, list) = FilterUi();
         ui.Type('q');
@@ -1618,7 +1770,7 @@ public class FilterListBoxTests
 
         list.ClearFilter();
         Assert.Equal("", list.Filter);
-        Assert.Equal(new[] { "Commands list Save File no filter" }, ui.Spoken());
+        Assert.Equal(new[] { "Save File" }, ui.Spoken());
     }
 }
 
@@ -1776,13 +1928,52 @@ public class ReaderTests
     }
 
     [Fact]
-    public void AnnounceNowInterruptsReaders()
+    public void InterruptReachesReaders()
     {
         var ui = new TestUi();
-        _ = new Button(ui.App, "Save");
-        ui.App.AnnounceNow("Loosed!");
+        ui.App.Interrupt();
         Assert.Equal(1, ui.Reader.Interrupts);
-        Assert.Equal(new[] { "Loosed!" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void AppAnnouncesCarryNoSource()
+    {
+        var ui = new TestUi();
+        ui.App.Announce("hello");
+        ui.App.DispatchEvents();
+        var announce = Assert.IsType<AccessibilityEvent.Announce>(ui.Reader.Events.Single());
+        Assert.Null(announce.Source);
+    }
+
+    [Fact]
+    public void CheckBoxTogglesAreStructured()
+    {
+        var ui = new TestUi();
+        var mute = new CheckBox(ui.App, "Mute");
+        mute.Focus();
+        ui.Drain();
+
+        ui.Type(' ');
+        ui.App.DispatchEvents();
+        var toggle = Assert.IsType<AccessibilityEvent.Toggle>(
+            ui.Reader.Events.Single(e => e is AccessibilityEvent.Toggle));
+        Assert.Same(mute, toggle.Widget);
+        Assert.True(toggle.Checked);
+    }
+
+    [Fact]
+    public void EmptyEditorFeedbackIsStructured()
+    {
+        var ui = new TestUi();
+        var notes = new EditBox(ui.App, "Notes");
+        notes.Focus();
+        ui.Drain();
+
+        ui.Input(InputKind.DeleteBackward);
+        ui.App.DispatchEvents();
+        var noop = Assert.IsType<AccessibilityEvent.EditNoop>(ui.Reader.Events.Single());
+        Assert.Same(notes, noop.Widget);
+        Assert.Equal(EditNoopKind.NothingToDelete, noop.Kind);
     }
 
     [Fact]
