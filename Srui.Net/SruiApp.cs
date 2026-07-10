@@ -30,24 +30,37 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     private SoundManager? _audio;
     private uint _audioPeriodFrames;
 
-    /// <summary>Requested audio device period in frames for the
-    /// app-owned <see cref="Audio"/> manager; 0 (the default) selects
-    /// the 128-frame low-latency period. Heavy scenes (hundreds of
-    /// voices, many HRTF positions) should request more headroom, e.g.
-    /// 512. The period is fixed when the manager is created, so set
-    /// this before first touching <see cref="Audio"/>; setting it
-    /// afterwards throws.</summary>
+    /// <summary>The audio device period in frames. The getter returns
+    /// the period the device actually granted, creating the app-owned
+    /// manager on first use exactly like <see cref="Audio"/>. The
+    /// setter requests a new period: 0 selects the 128-frame
+    /// low-latency default (~2.7ms at 48kHz); heavy scenes (hundreds
+    /// of voices, many HRTF positions) buy mixing headroom with e.g.
+    /// 512. Because the device and the HRTF convolvers are built
+    /// around the period, setting it while the manager exists disposes
+    /// the manager — and with it every Sound and SoundGroup — and the
+    /// next <see cref="Audio"/> touch rebuilds at the new size; the
+    /// application reloads its sounds exactly as at startup. Change it
+    /// only at moments that tolerate a brief silence (startup, menus,
+    /// an options apply). Re-assigning the current request is a
+    /// no-op.</summary>
     public uint AudioPeriodFrames
     {
-        get => _audioPeriodFrames;
+        get => Audio.DevicePeriodFrames;
         set
         {
-            if (_audio != null)
-                throw new InvalidOperationException(
-                    "Audio already created; set AudioPeriodFrames before first use of Audio.");
+            if (value == _audioPeriodFrames)
+                return;
             _audioPeriodFrames = value;
+            _audio?.Dispose();
+            _audio = null;
         }
     }
+
+    /// <summary>The audio device sample rate in Hz, creating the
+    /// app-owned manager on first use exactly like
+    /// <see cref="Audio"/>.</summary>
+    public uint AudioSampleRate => Audio.SampleRate;
 
     /// <summary>Game audio, created on first use and owned by the app.
     /// The event loop advances its automation (pitch tweens,

@@ -39,8 +39,20 @@ public sealed class SoundManager : IDisposable
     /// share one, so this is usually far below the HRTF sound count.</summary>
     public int ActiveHrtfConvolvers => BinauralPool.ActiveConvolvers;
 
+    /// <summary>Dispose every live sound and group this manager created,
+    /// then the engine itself. Sounds and groups disposed here become
+    /// disposed objects exactly as if the caller had disposed them, so
+    /// teardown order is never the caller's problem.</summary>
     public void Dispose()
     {
+        foreach (var weak in _sounds)
+            if (weak.TryGetTarget(out var sound))
+                sound.Dispose();
+        _sounds.Clear();
+        foreach (var weak in _groups)
+            if (weak.TryGetTarget(out var group))
+                group.Dispose();
+        _groups.Clear();
         BinauralPool.Clear();
         Engine.Dispose();
     }
