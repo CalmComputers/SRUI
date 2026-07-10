@@ -51,6 +51,20 @@ public sealed class SoundGroup : IDisposable
     private IntPtr _reverb;
     private float _reverbDecay = float.NaN;
 
+    // Last-applied effect parameters, captured by the Set methods so an
+    // engine rebuild (SoundManager.Reconfigure) can replay the chain.
+    private FilterState? _filterState;
+    private EqState? _eqState;
+    private DistortionState? _distortionState;
+    private VocoderState? _vocoderState;
+    private DisperserState? _disperserState;
+    private DelayState? _delayState;
+    private ReverbState? _reverbState;
+    private string? _reverbIrPath;
+
+    // Native-only state snapshotted by ReleaseNative for RecreateNative.
+    private bool _rebuildStopped;
+
     public bool IsDisposed { get; private set; }
 
     internal SoundGroup(SoundManager manager, SoundGroup? parent)
@@ -209,6 +223,8 @@ public sealed class SoundGroup : IDisposable
         if (_reverb == IntPtr.Zero) return;
         NativeMethods.cosmos_reverb_destroy(_reverb);
         _reverb = IntPtr.Zero;
+        _reverbState = null;
+        _reverbIrPath = null;
         RebuildEffectChain();
     }
 
@@ -217,6 +233,7 @@ public sealed class SoundGroup : IDisposable
         float decay, float lowcutHz, float highcutHz, float diffuse)
     {
         if (_reverb == IntPtr.Zero) return;
+        _reverbState = new ReverbState(wet, dry, predelayMs, irGain, width, decay, lowcutHz, highcutHz, diffuse);
         NativeMethods.ma_convreverb_node_set_wet(_reverb, wet);
         NativeMethods.ma_convreverb_node_set_dry(_reverb, dry);
         NativeMethods.ma_convreverb_node_set_predelay(_reverb, predelayMs);
@@ -236,12 +253,22 @@ public sealed class SoundGroup : IDisposable
 
     /// <summary>Load a custom impulse response; false if reverb is off or
     /// the file failed to load.</summary>
-    public bool SetReverbIr(string path) =>
-        _reverb != IntPtr.Zero && NativeMethods.ma_convreverb_node_load_ir_file(_reverb, path) == 0;
+    public bool SetReverbIr(string path)
+    {
+        if (_reverb == IntPtr.Zero || NativeMethods.ma_convreverb_node_load_ir_file(_reverb, path) != 0)
+            return false;
+        _reverbIrPath = path;
+        return true;
+    }
 
     /// <summary>Restore the built-in synthetic IR.</summary>
-    public bool ResetReverbIr() =>
-        _reverb != IntPtr.Zero && NativeMethods.ma_convreverb_node_load_default_ir(_reverb) == 0;
+    public bool ResetReverbIr()
+    {
+        if (_reverb == IntPtr.Zero || NativeMethods.ma_convreverb_node_load_default_ir(_reverb) != 0)
+            return false;
+        _reverbIrPath = null;
+        return true;
+    }
 
     // ── EQ (3-band) ──
 
@@ -264,6 +291,7 @@ public sealed class SoundGroup : IDisposable
         if (_eq == IntPtr.Zero) return;
         NativeMethods.cosmos_eq_destroy(_eq);
         _eq = IntPtr.Zero;
+        _eqState = null;
         RebuildEffectChain();
     }
 
@@ -272,6 +300,7 @@ public sealed class SoundGroup : IDisposable
         float lowFreq, float midFreq, float highFreq, float midQ)
     {
         if (_eq == IntPtr.Zero) return;
+        _eqState = new EqState(lowGainDb, midGainDb, highGainDb, lowFreq, midFreq, highFreq, midQ);
         NativeMethods.ma_eq_node_set_low_freq(_eq, lowFreq);
         NativeMethods.ma_eq_node_set_mid_freq(_eq, midFreq);
         NativeMethods.ma_eq_node_set_high_freq(_eq, highFreq);
@@ -300,12 +329,14 @@ public sealed class SoundGroup : IDisposable
         if (_filter == IntPtr.Zero) return;
         NativeMethods.cosmos_filter_destroy(_filter);
         _filter = IntPtr.Zero;
+        _filterState = null;
         RebuildEffectChain();
     }
 
     public void SetFilterParams(FilterMode mode, float freq, float q, float gainDb)
     {
         if (_filter == IntPtr.Zero) return;
+        _filterState = new FilterState(mode, freq, q, gainDb);
         NativeMethods.ma_filter_node_set_mode(_filter, (int)mode);
         NativeMethods.ma_filter_node_set_freq(_filter, freq);
         NativeMethods.ma_filter_node_set_q(_filter, q);
@@ -331,12 +362,14 @@ public sealed class SoundGroup : IDisposable
         if (_distortion == IntPtr.Zero) return;
         NativeMethods.cosmos_distortion_destroy(_distortion);
         _distortion = IntPtr.Zero;
+        _distortionState = null;
         RebuildEffectChain();
     }
 
     public void SetDistortionParams(float drive, float toneHz, float wet, float dry)
     {
         if (_distortion == IntPtr.Zero) return;
+        _distortionState = new DistortionState(drive, toneHz, wet, dry);
         NativeMethods.ma_distortion_node_set_drive(_distortion, drive);
         NativeMethods.ma_distortion_node_set_tone(_distortion, toneHz);
         NativeMethods.ma_distortion_node_set_wet(_distortion, wet);
@@ -367,6 +400,7 @@ public sealed class SoundGroup : IDisposable
         if (_vocoder == IntPtr.Zero) return;
         NativeMethods.cosmos_vocoder_destroy(_vocoder);
         _vocoder = IntPtr.Zero;
+        _vocoderState = null;
         RebuildEffectChain();
     }
 
@@ -377,6 +411,8 @@ public sealed class SoundGroup : IDisposable
         float formant = 1.0f, float spread = 0.0f, float sibilance = 0.0f)
     {
         if (_vocoder == IntPtr.Zero) return;
+        _vocoderState = new VocoderState(bands, carrier, carrierFreq, attackMs, releaseMs,
+            wet, dry, randOn, randRate, randDepth, formant, spread, sibilance);
         NativeMethods.ma_vocoder_node_set_bands(_vocoder, bands);
         NativeMethods.ma_vocoder_node_set_carrier(_vocoder, (int)carrier);
         NativeMethods.ma_vocoder_node_set_carrier_freq(_vocoder, carrierFreq);
@@ -411,12 +447,14 @@ public sealed class SoundGroup : IDisposable
         if (_disperser == IntPtr.Zero) return;
         NativeMethods.cosmos_disperser_destroy(_disperser);
         _disperser = IntPtr.Zero;
+        _disperserState = null;
         RebuildEffectChain();
     }
 
     public void SetDisperserParams(float freq, float q, int stages)
     {
         if (_disperser == IntPtr.Zero) return;
+        _disperserState = new DisperserState(freq, q, stages);
         NativeMethods.ma_disperser_node_set_freq(_disperser, freq);
         NativeMethods.ma_disperser_node_set_q(_disperser, q);
         NativeMethods.ma_disperser_node_set_stages(_disperser, stages);
@@ -441,16 +479,84 @@ public sealed class SoundGroup : IDisposable
         if (_delay == IntPtr.Zero) return;
         NativeMethods.cosmos_delay_destroy(_delay);
         _delay = IntPtr.Zero;
+        _delayState = null;
         RebuildEffectChain();
     }
 
     public void SetDelayParams(float delayMs, float feedback, float wet, float dry)
     {
         if (_delay == IntPtr.Zero) return;
+        _delayState = new DelayState(delayMs, feedback, wet, dry);
         NativeMethods.ma_delay_fx_set_delay_ms(_delay, delayMs);
         NativeMethods.ma_delay_fx_set_feedback(_delay, feedback);
         NativeMethods.ma_delay_fx_set_wet(_delay, wet);
         NativeMethods.ma_delay_fx_set_dry(_delay, dry);
+    }
+
+    // ── Engine rebuild (SoundManager.Reconfigure) ──
+
+    /// <summary>Release every native resource ahead of an engine swap,
+    /// keeping the managed state (volume, pitch, tween, effect
+    /// parameters) that <see cref="RecreateNative"/> replays. Children
+    /// release before parents; sounds have already released.</summary>
+    internal void ReleaseNative()
+    {
+        _rebuildStopped = NativeMethods.ma_sound_is_playing(_group) == 0;
+        DestroyEffects();
+        NativeMethods.ma_sound_group_uninit(_group);
+    }
+
+    /// <summary>Re-init against the manager's current engine and replay
+    /// volume, pitch, transport, and the effect chain. Parents recreate
+    /// before children.</summary>
+    internal void RecreateNative()
+    {
+        var result = NativeMethods.ma_sound_group_init(
+            Engine.Handle, 0, _parent?._group ?? IntPtr.Zero, _group);
+        if (result != 0)
+            throw new AudioException("group re-initialization failed");
+        NativeMethods.ma_sound_set_volume(_group, _baseVolume);
+        NativeMethods.ma_sound_set_pitch(_group, _basePitch);
+        if (_rebuildStopped)
+            NativeMethods.ma_sound_stop(_group);
+
+        // Recreate enabled effects in chain order; Enable re-stores the
+        // same parameter state it replays.
+        if (_filterState is { } filter)
+            EnableFilter(filter.Mode, filter.Freq, filter.Q, filter.GainDb);
+        if (_eqState is { } eq)
+            EnableEq(eq.LowGainDb, eq.MidGainDb, eq.HighGainDb, eq.LowFreq, eq.MidFreq, eq.HighFreq, eq.MidQ);
+        if (_distortionState is { } distortion)
+            EnableDistortion(distortion.Drive, distortion.ToneHz, distortion.Wet, distortion.Dry);
+        if (_vocoderState is { } vocoder)
+            EnableVocoder(vocoder.Bands, vocoder.Carrier, vocoder.CarrierFreq,
+                vocoder.AttackMs, vocoder.ReleaseMs, vocoder.Wet, vocoder.Dry,
+                vocoder.RandOn, vocoder.RandRate, vocoder.RandDepth,
+                vocoder.Formant, vocoder.Spread, vocoder.Sibilance);
+        if (_disperserState is { } disperser)
+            EnableDisperser(disperser.Freq, disperser.Q, disperser.Stages);
+        if (_delayState is { } delay)
+            EnableDelay(delay.DelayMs, delay.Feedback, delay.Wet, delay.Dry);
+        if (_reverbState is { } reverb)
+        {
+            EnableReverb(reverb.Wet, reverb.Dry, reverb.PredelayMs, reverb.IrGain, reverb.Width,
+                reverb.Decay, reverb.LowcutHz, reverb.HighcutHz, reverb.Diffuse);
+            // A vanished IR file falls back to the built-in default.
+            if (_reverbIrPath is { } irPath && !SetReverbIr(irPath))
+                _reverbIrPath = null;
+        }
+    }
+
+    private void DestroyEffects()
+    {
+        if (_filter != IntPtr.Zero) NativeMethods.cosmos_filter_destroy(_filter);
+        if (_eq != IntPtr.Zero) NativeMethods.cosmos_eq_destroy(_eq);
+        if (_distortion != IntPtr.Zero) NativeMethods.cosmos_distortion_destroy(_distortion);
+        if (_vocoder != IntPtr.Zero) NativeMethods.cosmos_vocoder_destroy(_vocoder);
+        if (_disperser != IntPtr.Zero) NativeMethods.cosmos_disperser_destroy(_disperser);
+        if (_delay != IntPtr.Zero) NativeMethods.cosmos_delay_destroy(_delay);
+        if (_reverb != IntPtr.Zero) NativeMethods.cosmos_reverb_destroy(_reverb);
+        _filter = _eq = _distortion = _vocoder = _disperser = _delay = _reverb = IntPtr.Zero;
     }
 
     public void Dispose()
@@ -464,18 +570,9 @@ public sealed class SoundGroup : IDisposable
             || _distortion != IntPtr.Zero || _vocoder != IntPtr.Zero
             || _disperser != IntPtr.Zero || _delay != IntPtr.Zero
             || _reverb != IntPtr.Zero;
+        DestroyEffects();
         if (hadEffects)
-        {
-            if (_filter != IntPtr.Zero) NativeMethods.cosmos_filter_destroy(_filter);
-            if (_eq != IntPtr.Zero) NativeMethods.cosmos_eq_destroy(_eq);
-            if (_distortion != IntPtr.Zero) NativeMethods.cosmos_distortion_destroy(_distortion);
-            if (_vocoder != IntPtr.Zero) NativeMethods.cosmos_vocoder_destroy(_vocoder);
-            if (_disperser != IntPtr.Zero) NativeMethods.cosmos_disperser_destroy(_disperser);
-            if (_delay != IntPtr.Zero) NativeMethods.cosmos_delay_destroy(_delay);
-            if (_reverb != IntPtr.Zero) NativeMethods.cosmos_reverb_destroy(_reverb);
-            _filter = _eq = _distortion = _vocoder = _disperser = _delay = _reverb = IntPtr.Zero;
             RebuildEffectChain();
-        }
 
         if (_group != IntPtr.Zero)
         {
@@ -484,4 +581,27 @@ public sealed class SoundGroup : IDisposable
             _group = IntPtr.Zero;
         }
     }
+
+    // Effect parameter snapshots, one per chain slot.
+    private readonly record struct FilterState(FilterMode Mode, float Freq, float Q, float GainDb);
+
+    private readonly record struct EqState(
+        float LowGainDb, float MidGainDb, float HighGainDb,
+        float LowFreq, float MidFreq, float HighFreq, float MidQ);
+
+    private readonly record struct DistortionState(float Drive, float ToneHz, float Wet, float Dry);
+
+    private readonly record struct VocoderState(
+        int Bands, VocoderCarrier Carrier, float CarrierFreq,
+        float AttackMs, float ReleaseMs, float Wet, float Dry,
+        bool RandOn, float RandRate, float RandDepth,
+        float Formant, float Spread, float Sibilance);
+
+    private readonly record struct DisperserState(float Freq, float Q, int Stages);
+
+    private readonly record struct DelayState(float DelayMs, float Feedback, float Wet, float Dry);
+
+    private readonly record struct ReverbState(
+        float Wet, float Dry, float PredelayMs, float IrGain, float Width,
+        float Decay, float LowcutHz, float HighcutHz, float Diffuse);
 }

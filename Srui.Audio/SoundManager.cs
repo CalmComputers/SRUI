@@ -14,8 +14,8 @@ namespace Srui.Audio;
 /// </summary>
 public sealed class SoundManager : IDisposable
 {
-    internal AudioEngine Engine { get; }
-    internal BinauralPool BinauralPool { get; }
+    internal AudioEngine Engine { get; private set; }
+    internal BinauralPool BinauralPool { get; private set; }
 
     private readonly List<WeakReference<Sound>> _sounds = new();
     private readonly List<WeakReference<SoundGroup>> _groups = new();
@@ -38,6 +38,49 @@ public sealed class SoundManager : IDisposable
     /// <summary>Live HRTF convolvers. Sounds sharing a position (and bus)
     /// share one, so this is usually far below the HRTF sound count.</summary>
     public int ActiveHrtfConvolvers => BinauralPool.ActiveConvolvers;
+
+    /// <summary>Rebuild the engine at a new device period, preserving
+    /// the soundscape: every live Sound and SoundGroup keeps its object
+    /// and state — source, position, effect chain, transport, playback
+    /// cursor, running tweens — replayed against the new device, and
+    /// the decode cache survives so nothing re-decodes. Output gaps
+    /// briefly while the device restarts; call at silence-tolerant
+    /// moments (startup, menus, an options apply). A sound whose source
+    /// file no longer loads is left unloaded; the rest proceed. The
+    /// device may align or clamp the request — read
+    /// <see cref="DevicePeriodFrames"/> for the grant; 0 selects the
+    /// 128-frame default.</summary>
+    public void Reconfigure(uint periodFrames)
+    {
+        var listenerX = Engine.ListenerX;
+        var listenerY = Engine.ListenerY;
+        var listenerZ = Engine.ListenerZ;
+        var listenerAngle = Engine.ListenerAngle;
+
+        // Sounds release first (they detach from groups and return
+        // their convolver leases), then groups children-before-parents.
+        foreach (var weak in _sounds)
+            if (weak.TryGetTarget(out var sound) && !sound.IsDisposed)
+                sound.ReleaseNative();
+        for (var i = _groups.Count - 1; i >= 0; i--)
+            if (_groups[i].TryGetTarget(out var group) && !group.IsDisposed)
+                group.ReleaseNative();
+
+        BinauralPool.Clear();
+        Engine.DisposeKeepCache();
+        Engine = new AudioEngine(periodFrames);
+        BinauralPool = new BinauralPool(Engine);
+        Engine.SetListenerPosition(listenerX, listenerY, listenerZ);
+        Engine.SetListenerAngle(listenerAngle);
+
+        // Rebuild parents-before-children (creation order), then sounds.
+        foreach (var weak in _groups)
+            if (weak.TryGetTarget(out var group) && !group.IsDisposed)
+                group.RecreateNative();
+        foreach (var weak in _sounds)
+            if (weak.TryGetTarget(out var sound) && !sound.IsDisposed)
+                sound.RecreateNative();
+    }
 
     /// <summary>Dispose every live sound and group this manager created,
     /// then the engine itself. Sounds and groups disposed here become

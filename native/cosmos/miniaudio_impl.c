@@ -34,30 +34,37 @@ MA_API void ma_sound_free(ma_sound* sound) {
     free(sound);
 }
 
-// Resource manager for sound caching
+// SRUI: the resource manager (the decode cache) is process-global and
+// refcounted so it can outlive any single engine: an engine rebuild (a
+// period change) or a second engine reuses already-decoded files
+// instead of re-decoding them.
 static ma_resource_manager* g_resource_manager = NULL;
+static int g_resource_manager_refs = 0;
 
 MA_API ma_result ma_engine_init_with_caching(ma_engine* pEngine, ma_uint32 periodSizeInFrames) {
     ma_result result;
+    int createdCacheHere = 0;
 
-    // Create resource manager for caching decoded audio
-    g_resource_manager = (ma_resource_manager*)malloc(sizeof(ma_resource_manager));
     if (g_resource_manager == NULL) {
-        return MA_OUT_OF_MEMORY;
-    }
+        g_resource_manager = (ma_resource_manager*)malloc(sizeof(ma_resource_manager));
+        if (g_resource_manager == NULL) {
+            return MA_OUT_OF_MEMORY;
+        }
 
-    ma_resource_manager_config rmConfig = ma_resource_manager_config_init();
-    // SRUI: register the opus decoding backend (stock decoders handle
-    // wav/flac/mp3, stb_vorbis handles ogg vorbis).
-    static ma_decoding_backend_vtable* customBackends[1];
-    customBackends[0] = ma_decoding_backend_libopus;
-    rmConfig.ppCustomDecodingBackendVTables = customBackends;
-    rmConfig.customDecodingBackendCount = 1;
-    result = ma_resource_manager_init(&rmConfig, g_resource_manager);
-    if (result != MA_SUCCESS) {
-        free(g_resource_manager);
-        g_resource_manager = NULL;
-        return result;
+        ma_resource_manager_config rmConfig = ma_resource_manager_config_init();
+        // SRUI: register the opus decoding backend (stock decoders handle
+        // wav/flac/mp3, stb_vorbis handles ogg vorbis).
+        static ma_decoding_backend_vtable* customBackends[1];
+        customBackends[0] = ma_decoding_backend_libopus;
+        rmConfig.ppCustomDecodingBackendVTables = customBackends;
+        rmConfig.customDecodingBackendCount = 1;
+        result = ma_resource_manager_init(&rmConfig, g_resource_manager);
+        if (result != MA_SUCCESS) {
+            free(g_resource_manager);
+            g_resource_manager = NULL;
+            return result;
+        }
+        createdCacheHere = 1;
     }
 
     // Create engine with resource manager
@@ -74,19 +81,22 @@ MA_API ma_result ma_engine_init_with_caching(ma_engine* pEngine, ma_uint32 perio
 
     result = ma_engine_init(&engineConfig, pEngine);
     if (result != MA_SUCCESS) {
-        ma_resource_manager_uninit(g_resource_manager);
-        free(g_resource_manager);
-        g_resource_manager = NULL;
+        if (createdCacheHere) {
+            ma_resource_manager_uninit(g_resource_manager);
+            free(g_resource_manager);
+            g_resource_manager = NULL;
+        }
         return result;
     }
 
+    g_resource_manager_refs++;
     return MA_SUCCESS;
 }
 
 // SRUI: the period size the device actually granted (frames), which can
-// differ from the requested 256 — WASAPI aligns it, and IAudioClient3
-// clamps it to the driver's supported range. The C# side reads this to
-// size the phonon frame and to report latency diagnostics.
+// differ from the request — WASAPI aligns it, and IAudioClient3 clamps
+// it to the driver's supported range. The C# side reads this to size
+// the phonon frame and to report latency diagnostics.
 MA_API ma_uint32 ma_engine_get_actual_period_frames(ma_engine* pEngine) {
     ma_device* pDevice = ma_engine_get_device(pEngine);
     if (pDevice == NULL) {
@@ -95,10 +105,16 @@ MA_API ma_uint32 ma_engine_get_actual_period_frames(ma_engine* pEngine) {
     return pDevice->playback.internalPeriodSizeInFrames;
 }
 
-MA_API void ma_engine_uninit_with_caching(ma_engine* pEngine) {
+// SRUI: keepCache nonzero preserves the decode cache past the last
+// engine — the engine-rebuild path (period change) sets it so the
+// immediately following init reuses every decoded file.
+MA_API void ma_engine_uninit_with_caching(ma_engine* pEngine, ma_uint32 keepCache) {
     ma_engine_uninit(pEngine);
 
-    if (g_resource_manager != NULL) {
+    if (g_resource_manager_refs > 0) {
+        g_resource_manager_refs--;
+    }
+    if (g_resource_manager != NULL && g_resource_manager_refs == 0 && !keepCache) {
         ma_resource_manager_uninit(g_resource_manager);
         free(g_resource_manager);
         g_resource_manager = NULL;

@@ -68,13 +68,20 @@ internal sealed class AudioEngine : IDisposable
         ListenerAngle = degrees;
     }
 
-    public void Dispose()
+    public void Dispose() => DisposeCore(keepCache: false);
+
+    /// <summary>Dispose but leave the process-wide decode cache alive
+    /// for an engine about to be built in its place (a period change),
+    /// so reloads skip re-decoding.</summary>
+    internal void DisposeKeepCache() => DisposeCore(keepCache: true);
+
+    private void DisposeCore(bool keepCache)
     {
         if (Handle == IntPtr.Zero)
             return;
         if (HrtfAvailable)
             NativeMethods.ma_phonon_uninit();
-        NativeMethods.ma_engine_uninit_with_caching(Handle);
+        NativeMethods.ma_engine_uninit_with_caching(Handle, keepCache ? 1u : 0u);
         NativeMethods.ma_engine_free(Handle);
         Handle = IntPtr.Zero;
     }

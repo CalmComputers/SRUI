@@ -60,7 +60,7 @@ configured, so every decode path accepts .opus:
 - ma_convreverb.c: ma_convreverb_node_load_ir_file sets
   ppCustomBackendVTables (covers impulse responses).
 
-# 6. miniaudio_impl.c: caller-chosen period, granted-period getter
+# 6. miniaudio_impl.c: caller-chosen period, granted-period getter, shared decode cache
 
 ma_engine_init_with_caching takes a periodSizeInFrames parameter (0
 selects the 128-frame default — low trigger-to-ear latency; larger
@@ -70,6 +70,13 @@ actually granted (WASAPI aligns the request; IAudioClient3 clamps it to
 the driver's range). The C# side sizes the Steam Audio frame from the
 granted value, so the phonon block and the device period cannot
 disagree regardless of what the driver decides.
+
+The resource manager (the decode cache) is process-global and
+refcounted rather than per-engine: init reuses a live cache, and
+ma_engine_uninit_with_caching takes a keepCache flag that preserves it
+past the last engine — the engine-rebuild path (a period change via
+SoundManager.Reconfigure) sets it so the rebuilt engine reuses every
+decoded file instead of re-decoding.
 
 # 7. miniaudio.h: UTF-8 paths open wide on Windows
 

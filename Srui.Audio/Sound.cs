@@ -49,6 +49,19 @@ public sealed unsafe class Sound : IDisposable
     private PitchTween _pitchTween;
     private bool _tweening;
 
+    // What Load*/… was last called with, so an engine rebuild
+    // (SoundManager.Reconfigure) can replay it.
+    private enum LoadKind : byte { None, Plain, Stretched, Reversed }
+    private LoadKind _loadKind;
+    private string? _loadPath;
+    private float _stretchFactor;
+
+    // Native-only state snapshotted by ReleaseNative for RecreateNative.
+    private bool _rebuildPlaying;
+    private ulong _rebuildCursorMs;
+    private bool _rebuildLooping;
+    private float _rebuildPan;
+
     public bool IsDisposed { get; private set; }
 
     internal Sound(SoundManager manager, SoundGroup? group)
@@ -75,6 +88,8 @@ public sealed unsafe class Sound : IDisposable
             Engine.Handle, filename, NativeMethods.SoundFlagDecode, GroupPtr, IntPtr.Zero, _sound);
         if (result != 0)
             throw new AudioException($"failed to load '{filename}'");
+        _loadKind = LoadKind.Plain;
+        _loadPath = filename;
         FinishLoad();
     }
 
@@ -89,6 +104,9 @@ public sealed unsafe class Sound : IDisposable
         if (stretched.Length == 0)
             throw new AudioException($"failed to stretch '{filename}'");
         InitFromPcm(stretched, channels, filename);
+        _loadKind = LoadKind.Stretched;
+        _loadPath = filename;
+        _stretchFactor = factor;
     }
 
     /// <summary>Load with the sample frames reversed in memory.</summary>
@@ -105,6 +123,8 @@ public sealed unsafe class Sound : IDisposable
                 (pcm[i * ch + c], pcm[j * ch + c]) = (pcm[j * ch + c], pcm[i * ch + c]);
         }
         InitFromPcm(pcm, channels, filename);
+        _loadKind = LoadKind.Reversed;
+        _loadPath = filename;
     }
 
     private float[] DecodeToManaged(string filename, out uint channels)
@@ -656,6 +676,55 @@ public sealed unsafe class Sound : IDisposable
     {
         if (!_loaded)
             throw new AudioException("sound not loaded");
+    }
+
+    // ── Engine rebuild (SoundManager.Reconfigure) ──
+
+    /// <summary>Release every native resource ahead of an engine swap,
+    /// snapshotting the native-only state (transport, cursor, looping,
+    /// pan) that <see cref="RecreateNative"/> replays. Managed state —
+    /// position, HRTF, mix parameters, tweens — survives in place.</summary>
+    internal void ReleaseNative()
+    {
+        _rebuildPlaying = IsPlaying;
+        _rebuildCursorMs = PlaybackPosition;
+        _rebuildLooping = Looping;
+        _rebuildPan = Pan;
+        UnloadCurrent();
+    }
+
+    /// <summary>Reload against the manager's current engine and replay
+    /// the snapshot. A sound whose source no longer loads is left
+    /// unloaded (IsLoaded false) rather than failing the rebuild.</summary>
+    internal void RecreateNative()
+    {
+        if (_loadKind == LoadKind.None)
+            return;
+        try
+        {
+            switch (_loadKind)
+            {
+                case LoadKind.Plain:
+                    Load(_loadPath!);
+                    break;
+                case LoadKind.Stretched:
+                    LoadStretched(_loadPath!, _stretchFactor);
+                    break;
+                case LoadKind.Reversed:
+                    LoadReversed(_loadPath!);
+                    break;
+            }
+        }
+        catch (AudioException)
+        {
+            return;
+        }
+        Looping = _rebuildLooping;
+        PlaybackPosition = _rebuildCursorMs;
+        Pan = _rebuildPan;
+        UpdateSpatialization();
+        if (_rebuildPlaying)
+            Play();
     }
 
     public void Dispose()

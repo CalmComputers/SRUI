@@ -36,14 +36,13 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     /// setter requests a new period: 0 selects the 128-frame
     /// low-latency default (~2.7ms at 48kHz); heavy scenes (hundreds
     /// of voices, many HRTF positions) buy mixing headroom with e.g.
-    /// 512. Because the device and the HRTF convolvers are built
-    /// around the period, setting it while the manager exists disposes
-    /// the manager — and with it every Sound and SoundGroup — and the
-    /// next <see cref="Audio"/> touch rebuilds at the new size; the
-    /// application reloads its sounds exactly as at startup. Change it
-    /// only at moments that tolerate a brief silence (startup, menus,
-    /// an options apply). Re-assigning the current request is a
-    /// no-op.</summary>
+    /// 512. Setting it while the manager exists reconfigures it in
+    /// place (<see cref="SoundManager.Reconfigure"/>): every sound and
+    /// group survives with its state — source, position, effects,
+    /// transport, playback cursor — replayed against the new device,
+    /// but output gaps briefly while the device restarts, so change it
+    /// at silence-tolerant moments (startup, menus, an options apply).
+    /// Re-assigning the current request is a no-op.</summary>
     public uint AudioPeriodFrames
     {
         get => Audio.DevicePeriodFrames;
@@ -52,8 +51,7 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
             if (value == _audioPeriodFrames)
                 return;
             _audioPeriodFrames = value;
-            _audio?.Dispose();
-            _audio = null;
+            _audio?.Reconfigure(value);
         }
     }
 
