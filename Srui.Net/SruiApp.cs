@@ -216,6 +216,23 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     /// call it yourself only when driving a headless app.</summary>
     public void SetNow(ulong milliseconds) => Engine.SetNow(milliseconds);
 
+    /// <summary>The engine clock, monotonic milliseconds — the value
+    /// the last <see cref="SetNow"/> supplied, which the windowed event
+    /// loop refreshes every iteration (~5ms). Frame-coherent: reads
+    /// between two loop iterations all see the same value, the one the
+    /// engine's tickers and typeahead saw; game logic usually wants
+    /// exactly that. For finer-than-loop timing use
+    /// <see cref="PreciseNow"/>.</summary>
+    public ulong Now => Engine.Now;
+
+    /// <summary>A live monotonic reading of the clock behind
+    /// <see cref="Now"/>, sub-microsecond, advancing between loop
+    /// iterations — for timing finer than the event-loop cadence. On a
+    /// headless app this returns the engine clock instead, so
+    /// SetNow-driven tests stay deterministic.</summary>
+    public TimeSpan PreciseNow =>
+        Host == null ? TimeSpan.FromMilliseconds(Engine.Now) : _clock.Elapsed;
+
     /// <summary>Dispatch one logical input through the claim order:
     /// focused widget, framework navigation and layer defaults, widget
     /// shortcuts, then dialog dismissal and the UnhandledInput hook.

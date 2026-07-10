@@ -87,7 +87,7 @@ Input events are pushed to the app one at a time (`SruiApp.HandleInput`); there 
 
 ## 6.3. Time
 
-The engine has no clock; the host feeds one through `SetNow` (monotonic milliseconds) — the event loop does this every iteration, and headless hosts do it themselves. Typeahead timeouts and tickers are both observed there. A ticker (`SruiApp.StartTicker`) raises its `Tick` event each time its interval elapses, at `SetNow` resolution, drift-tolerant: a late check fires once rather than bursting to catch up.
+The engine has no clock; the host feeds one through `SetNow` (monotonic milliseconds) — the event loop does this every iteration, and headless hosts do it themselves. Typeahead timeouts and tickers are both observed there. Applications read the same clock back through `SruiApp.Now` (the engine clock: frame-coherent, at loop resolution) and `SruiApp.PreciseNow` (a live sub-microsecond reading of the clock behind it; on headless apps it follows the engine clock so injected time stays deterministic). A ticker (`SruiApp.StartTicker`) raises its `Tick` event each time its interval elapses, at `SetNow` resolution, drift-tolerant: a late check fires once rather than bursting to catch up.
 
 ## 6.4. The physical key stream
 

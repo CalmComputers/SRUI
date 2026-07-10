@@ -1853,6 +1853,26 @@ public class CustomWidgetTests
     }
 }
 
+public class ClockTests
+{
+    [Fact]
+    public void NowReadsBackTheInjectedClock()
+    {
+        var ui = new TestUi();
+        Assert.Equal(0ul, ui.App.Now);
+        ui.App.SetNow(1234);
+        Assert.Equal(1234ul, ui.App.Now);
+    }
+
+    [Fact]
+    public void PreciseNowFollowsTheEngineClockWhenHeadless()
+    {
+        var ui = new TestUi();
+        ui.App.SetNow(2500);
+        Assert.Equal(TimeSpan.FromMilliseconds(2500), ui.App.PreciseNow);
+    }
+}
+
 public class TickerTests
 {
     [Fact]
