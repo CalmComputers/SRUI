@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>AudioBench</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Srui.Audio\Srui.Audio.csproj" />
+  </ItemGroup>
+
+  <!-- Native dependencies staged by native/build-native.ps1. -->
+  <PropertyGroup>
+    <SruiNativeDir>..\native\out\</SruiNativeDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(SruiNativeDir)cosmos.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(SruiNativeDir)phonon.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Local audio material; gitignored, so bring your own OGGs. -->
+  <ItemGroup>
+    <None Include="assets\**\*.ogg" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

@@ -4,6 +4,8 @@
 **/obj/
 # Personal, not for the repo: music player plus its audio assets.
 /samples/MusicPlayer/
+# Local benchmark material; bring your own.
+/AudioBench/assets/
 # Native build outputs (produced by native/build-native.ps1).
 /native/out/
 /native/build/
