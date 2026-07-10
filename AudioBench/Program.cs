@@ -6,7 +6,12 @@
 // includes the device-thread mixing that Tick itself never does.
 //
 //   dotnet run --project AudioBench [-c Release]
-//       [-- --sources 500 --positions 50 --seconds 10]
+//       [-- --sources 500 --positions 50 --seconds 10 --period 0]
+//
+// --period requests a device period in frames (0 = the 128-frame
+// default); bigger buys mixing headroom at the cost of latency.
+// --probe opens the device, prints what it granted, and exits without
+// playing anything.
 //
 // Assets are the OGG files in AudioBench/assets/ (gitignored — bring
 // your own); sources cycle through them.
@@ -17,6 +22,7 @@ using Srui.Audio;
 var sources = ArgInt("--sources", 500);
 var positions = ArgInt("--positions", 50);
 var seconds = ArgInt("--seconds", 10);
+var period = (uint)ArgInt("--period", 0);
 
 var assetDir = Path.Combine(AppContext.BaseDirectory, "assets");
 var files = Directory.Exists(assetDir)
@@ -29,12 +35,14 @@ if (files.Length == 0)
 }
 Array.Sort(files, StringComparer.OrdinalIgnoreCase);
 
-using var manager = new SoundManager();
+using var manager = new SoundManager(period);
 manager.SetListener(0.0f, 0.0f, 0.0f, 90.0f);
 Console.WriteLine(
     $"device: {manager.SampleRate} Hz, period {manager.DevicePeriodFrames} frames "
     + $"(~{manager.DevicePeriodFrames * 1000.0 / manager.SampleRate:F2}ms), "
     + $"hrtf {(manager.IsHrtfAvailable ? "available" : "unavailable")}");
+if (args.Contains("--probe"))
+    return 0;
 Console.WriteLine($"{sources} sources over {files.Length} files at {positions} positions, {seconds}s run");
 
 // Positions: a Fibonacci-lattice sphere of radius 10 around the

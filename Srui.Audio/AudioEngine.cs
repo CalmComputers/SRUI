@@ -14,13 +14,16 @@ internal sealed class AudioEngine : IDisposable
     /// <summary>Degrees, unit circle: 0 = +X (east), 90 = +Y (north/forward).</summary>
     public float ListenerAngle { get; private set; }
 
-    public AudioEngine()
+    /// <param name="periodFrames">Requested device period in frames;
+    /// 0 selects the 128-frame default. The device may align or clamp
+    /// the request — read <see cref="PeriodFrames"/> for the grant.</param>
+    public AudioEngine(uint periodFrames = 0)
     {
         Handle = NativeMethods.ma_engine_alloc();
         if (Handle == IntPtr.Zero)
             throw new AudioException("audio engine allocation failed");
 
-        if (NativeMethods.ma_engine_init_with_caching(Handle) != 0)
+        if (NativeMethods.ma_engine_init_with_caching(Handle, periodFrames) != 0)
         {
             NativeMethods.ma_engine_free(Handle);
             Handle = IntPtr.Zero;
@@ -28,8 +31,8 @@ internal sealed class AudioEngine : IDisposable
         }
 
         // Steam Audio's frame size must match the device period — so ask
-        // the engine what WASAPI actually granted (the requested 256 may
-        // be aligned or clamped by the driver) and size phonon to that.
+        // the engine what WASAPI actually granted (the request may be
+        // aligned or clamped by the driver) and size phonon to that.
         var sampleRate = NativeMethods.ma_engine_get_sample_rate(Handle);
         PeriodFrames = NativeMethods.ma_engine_get_actual_period_frames(Handle);
         if (PeriodFrames == 0)

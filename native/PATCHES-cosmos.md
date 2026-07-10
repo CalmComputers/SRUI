@@ -60,10 +60,11 @@ configured, so every decode path accepts .opus:
 - ma_convreverb.c: ma_convreverb_node_load_ir_file sets
   ppCustomBackendVTables (covers impulse responses).
 
-# 6. miniaudio_impl.c: 128-frame period, granted-period getter
+# 6. miniaudio_impl.c: caller-chosen period, granted-period getter
 
-ma_engine_init_with_caching requests periodSizeInFrames = 128 (was 512)
-for lower trigger-to-ear latency, and a new exported helper
+ma_engine_init_with_caching takes a periodSizeInFrames parameter (0
+selects the 128-frame default — low trigger-to-ear latency; larger
+values buy mixing headroom for heavy scenes), and a new exported helper
 ma_engine_get_actual_period_frames returns the period the device
 actually granted (WASAPI aligns the request; IAudioClient3 clamps it to
 the driver's range). The C# side sizes the Steam Audio frame from the

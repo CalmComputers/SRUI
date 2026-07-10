@@ -20,9 +20,18 @@ public sealed class SoundManager : IDisposable
     private readonly List<WeakReference<Sound>> _sounds = new();
     private readonly List<WeakReference<SoundGroup>> _groups = new();
 
-    public SoundManager()
+    /// <param name="periodFrames">Requested device period in frames; 0
+    /// selects the 128-frame default (~2.7ms at 48kHz — lowest
+    /// trigger-to-ear latency). Heavy scenes (hundreds of voices, many
+    /// HRTF positions) should request more headroom, e.g. 512. The
+    /// device may align or clamp the request; read
+    /// <see cref="DevicePeriodFrames"/> for the grant. The period is
+    /// fixed for the manager's lifetime — the device and the HRTF
+    /// convolvers are built around it — so changing it means creating
+    /// a new manager.</param>
+    public SoundManager(uint periodFrames = 0)
     {
-        Engine = new AudioEngine();
+        Engine = new AudioEngine(periodFrames);
         BinauralPool = new BinauralPool(Engine);
     }
 

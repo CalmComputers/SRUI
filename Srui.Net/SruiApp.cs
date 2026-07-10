@@ -28,6 +28,26 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     public Speech? Voice => _speechReader?.Voice;
 
     private SoundManager? _audio;
+    private uint _audioPeriodFrames;
+
+    /// <summary>Requested audio device period in frames for the
+    /// app-owned <see cref="Audio"/> manager; 0 (the default) selects
+    /// the 128-frame low-latency period. Heavy scenes (hundreds of
+    /// voices, many HRTF positions) should request more headroom, e.g.
+    /// 512. The period is fixed when the manager is created, so set
+    /// this before first touching <see cref="Audio"/>; setting it
+    /// afterwards throws.</summary>
+    public uint AudioPeriodFrames
+    {
+        get => _audioPeriodFrames;
+        set
+        {
+            if (_audio != null)
+                throw new InvalidOperationException(
+                    "Audio already created; set AudioPeriodFrames before first use of Audio.");
+            _audioPeriodFrames = value;
+        }
+    }
 
     /// <summary>Game audio, created on first use and owned by the app.
     /// The event loop advances its automation (pitch tweens,
@@ -35,7 +55,7 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     /// SoundManager.Tick never needs manual driving here. Consumers
     /// without an SruiApp use Srui.Audio standalone and tick their own
     /// loop.</summary>
-    public SoundManager Audio => _audio ??= new SoundManager();
+    public SoundManager Audio => _audio ??= new SoundManager(_audioPeriodFrames);
 
     /// <summary>Called with input nothing consumed — the place for
     /// host-side key bindings. Return true when handled.</summary>

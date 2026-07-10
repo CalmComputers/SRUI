@@ -37,7 +37,7 @@ MA_API void ma_sound_free(ma_sound* sound) {
 // Resource manager for sound caching
 static ma_resource_manager* g_resource_manager = NULL;
 
-MA_API ma_result ma_engine_init_with_caching(ma_engine* pEngine) {
+MA_API ma_result ma_engine_init_with_caching(ma_engine* pEngine, ma_uint32 periodSizeInFrames) {
     ma_result result;
 
     // Create resource manager for caching decoded audio
@@ -63,12 +63,14 @@ MA_API ma_result ma_engine_init_with_caching(ma_engine* pEngine) {
     // Create engine with resource manager
     ma_engine_config engineConfig = ma_engine_config_init();
     engineConfig.pResourceManager = g_resource_manager;
-    // SRUI: small fixed period for low trigger-to-ear latency (~2.7ms at
-    // 48kHz). WASAPI may grant a different size (IAudioClient3 clamps to
-    // the driver's supported range); callers read the granted value via
+    // SRUI: caller-chosen period; 0 selects the 128-frame default —
+    // small for low trigger-to-ear latency (~2.7ms at 48kHz), larger
+    // for headroom under heavy mixing loads. WASAPI may grant a
+    // different size (IAudioClient3 clamps to the driver's supported
+    // range); callers read the granted value via
     // ma_engine_get_actual_period_frames and size the phonon frame to
     // match, so the request and the Steam Audio block never disagree.
-    engineConfig.periodSizeInFrames = 128;
+    engineConfig.periodSizeInFrames = (periodSizeInFrames == 0) ? 128 : periodSizeInFrames;
 
     result = ma_engine_init(&engineConfig, pEngine);
     if (result != MA_SUCCESS) {
