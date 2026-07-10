@@ -15,6 +15,11 @@
 //
 // Assets are the OGG files in AudioBench/assets/ (gitignored — bring
 // your own); sources cycle through them.
+//
+// Reference points, measured by ear on an Intel i7-12700F at 48 kHz:
+//   - 128-frame period (2.67ms): ~400 sources over 200 HRTF positions
+//   - 512-frame period (10.67ms): 2000 sources over 200 HRTF positions;
+//     the same run clicks at any smaller period.
 
 using System.Diagnostics;
 using Srui.Audio;
