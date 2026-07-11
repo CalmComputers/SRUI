@@ -413,6 +413,48 @@ public class ActivationTests
     }
 
     [Fact]
+    public void ActivateItemsListClaimsEnterOverPrimary()
+    {
+        var ui = new TestUi();
+        var files = new ListBox(
+            ui.App, "Files", new[] { "Alpha", "Beta" }, activateItems: true);
+        var ok = new Button(ui.App, "OK");
+        var opens = 0;
+        var presses = 0;
+        files.Activated += () => opens++;
+        ok.Activated += () => presses++;
+        ui.App.SetPrimary(ok);
+        files.Focus();
+        ui.Drain();
+
+        Assert.True(ui.Input(InputKind.Activate));
+        ui.Drain();
+        Assert.Equal(1, opens);
+        Assert.Equal(0, presses);
+    }
+
+    [Fact]
+    public void EmptyActivateItemsListLetsEnterFallThrough()
+    {
+        var ui = new TestUi();
+        var files = new ListBox(
+            ui.App, "Files", Array.Empty<string>(), activateItems: true);
+        var ok = new Button(ui.App, "OK");
+        var opens = 0;
+        var presses = 0;
+        files.Activated += () => opens++;
+        ok.Activated += () => presses++;
+        ui.App.SetPrimary(ok);
+        files.Focus();
+        ui.Drain();
+
+        Assert.True(ui.Input(InputKind.Activate));
+        ui.Drain();
+        Assert.Equal(0, opens);
+        Assert.Equal(1, presses);
+    }
+
+    [Fact]
     public void EnterOnCheckboxFallsThroughToPrimary()
     {
         var ui = new TestUi();

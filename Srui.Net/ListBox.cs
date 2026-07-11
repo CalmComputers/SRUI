@@ -5,8 +5,12 @@ namespace Srui;
 /// <summary>Single-selection list over typed items. Arrows move the
 /// selection with boundary announcements, Home/End jump, printable
 /// characters do first-letter cycling and multi-letter prefix search.
-/// Enter is deliberately not claimed: it falls through to the layer's
-/// primary widget (Windows dialog convention), which reads the selection.
+/// By default Enter is deliberately not claimed: it falls through to the
+/// layer's primary widget (Windows dialog convention), which reads the
+/// selection. A list whose items are themselves the things to open —
+/// a file manager, a level select — opts into the Explorer convention
+/// with <c>activateItems: true</c>, claiming Enter and raising
+/// <see cref="Widget.Activated"/> for the selected item.
 ///
 /// Items are <typeparamref name="T"/> values implementing
 /// <see cref="IListItem"/> — state-bearing subclasses derive from the
@@ -28,16 +32,20 @@ public class ListBox<T> : Widget where T : class, IListItem
     private int _selected;
     /// <summary>When true, announcements and focus state text carry "N of M".</summary>
     private readonly bool _numbered;
+    /// <summary>When true, Enter is claimed and raises Activated for the
+    /// selected item instead of falling through to the layer's primary.</summary>
+    private readonly bool _activateItems;
     private string _typeAheadBuffer = "";
     private ulong? _lastKeystrokeMs;
 
     public ListBox(
         IWidgetContainer parent, string name, IReadOnlyList<T> items,
-        bool numbered = false)
+        bool numbered = false, bool activateItems = false)
         : base(parent, name, "list")
     {
         _items = new List<T>(items);
         _numbered = numbered;
+        _activateItems = activateItems;
     }
 
     /// <summary>The items. Setting replaces the list (selection clamped)
@@ -284,6 +292,9 @@ public class ListBox<T> : Widget where T : class, IListItem
                 if (_selected != _items.Count - 1)
                     SelectAndAnnounce(_items.Count - 1);
                 return true;
+            case InputKind.Activate when _activateItems:
+                PostActivated();
+                return true;
             case InputKind.TypeChar:
                 if (System.Text.Rune.IsValid((int)input.Ch))
                     HandleTypeAhead(char.ConvertFromUtf32((int)input.Ch));
@@ -301,15 +312,15 @@ public class ListBox : ListBox<IListItem>
 {
     public ListBox(
         IWidgetContainer parent, string name, IReadOnlyList<IListItem> items,
-        bool numbered = false)
-        : base(parent, name, items, numbered)
+        bool numbered = false, bool activateItems = false)
+        : base(parent, name, items, numbered, activateItems)
     {
     }
 
     public ListBox(
         IWidgetContainer parent, string name, IReadOnlyList<string> items,
-        bool numbered = false)
-        : this(parent, name, Wrap(items), numbered)
+        bool numbered = false, bool activateItems = false)
+        : this(parent, name, Wrap(items), numbered, activateItems)
     {
     }
 
