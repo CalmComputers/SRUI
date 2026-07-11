@@ -102,7 +102,8 @@ public class SpeechRendererTests
     public void RenderFocusedEvent()
     {
         var save = new Button(App, "Save");
-        var ev = new AccessibilityEvent.Focused(save, Info("Save", "button"), []);
+        var ev = new AccessibilityEvent.Focused(
+            save, Info("Save", "button"), [], FocusCause.Programmatic);
         Assert.Equal("Save button", SpeechRenderer.RenderEvent(ev));
     }
 
@@ -111,7 +112,7 @@ public class SpeechRendererTests
     {
         var ok = new Button(App, "OK");
         var ev = new AccessibilityEvent.Focused(
-            ok, Info("OK", "button"), ["Confirm delete?"]);
+            ok, Info("OK", "button"), ["Confirm delete?"], FocusCause.Reannounce);
         Assert.Equal("Confirm delete? OK button", SpeechRenderer.RenderEvent(ev));
     }
 
@@ -183,7 +184,7 @@ public class CoalesceTests
         return new CoreEvent.Acc(new AccessibilityEvent.Focused(
             widget,
             new WidgetInfo(name, "button", "", "", WidgetStates.None, "", []),
-            []));
+            [], FocusCause.UserNavigation));
     }
 
     [Fact]

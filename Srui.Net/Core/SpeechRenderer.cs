@@ -19,7 +19,7 @@ public static class SpeechRenderer
     {
         switch (ev)
         {
-            case AccessibilityEvent.Focused(_, var info, var contextLabels):
+            case AccessibilityEvent.Focused(_, var info, var contextLabels, _):
             {
                 var announcement = AnnounceFocus(info);
                 return contextLabels.Count == 0

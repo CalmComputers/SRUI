@@ -2138,3 +2138,104 @@ public class WidgetAuthoringTests
         Assert.Equal(new[] { "After button" }, ui.Spoken());
     }
 }
+
+/// <summary>Focused events carry why focus moved (FocusCause), so a
+/// reader can treat user movement differently from focus that came to
+/// the user — an earcon reader clicks on navigation but not on a dialog
+/// opening.</summary>
+public class FocusCauseTests
+{
+    /// <summary>Deliver queued output and return the causes of the
+    /// Focused events heard since the last call, in order.</summary>
+    private static List<FocusCause> Causes(TestUi ui)
+    {
+        ui.App.DispatchEvents();
+        var causes = ui.Reader.Events
+            .OfType<AccessibilityEvent.Focused>()
+            .Select(f => f.Cause)
+            .ToList();
+        ui.Reader.Events.Clear();
+        return causes;
+    }
+
+    [Fact]
+    public void UserNavigationIsAttributed()
+    {
+        var ui = new TestUi();
+        _ = new Button(ui.App, "Save");
+        var options = new Group(ui.App, "Options");
+        var wrap = new CheckBox(options, "Word Wrap");
+        ui.App.EnsureFocus();
+        Assert.Equal(new[] { FocusCause.Programmatic }, Causes(ui));
+
+        ui.Input(InputKind.NavigateNext);
+        Assert.True(wrap.IsFocused);
+        Assert.Equal(new[] { FocusCause.UserNavigation }, Causes(ui));
+
+        ui.Input(InputKind.TreeUp);
+        Assert.Equal(new[] { FocusCause.UserNavigation }, Causes(ui));
+    }
+
+    [Fact]
+    public void ShortcutJumpIsAttributed()
+    {
+        var ui = new TestUi();
+        var save = new Button(ui.App, "Save");
+        var target = new Button(ui.App, "Target");
+        target.AddShortcut(KeyCombo.WithCtrl(Key.Char('j')));
+        save.Focus();
+        ui.Drain();
+
+        ui.Raw(KeyCombo.WithCtrl(Key.Char('j')));
+        Assert.True(target.IsFocused);
+        Assert.Equal(new[] { FocusCause.Shortcut }, Causes(ui));
+    }
+
+    [Fact]
+    public void ProgrammaticFocusAndReannouncementAreAttributed()
+    {
+        var ui = new TestUi();
+        _ = new Button(ui.App, "Save");
+        var other = new Button(ui.App, "Other");
+        ui.Drain();
+
+        other.Focus();
+        Assert.Equal(new[] { FocusCause.Programmatic }, Causes(ui));
+
+        ui.Input(InputKind.SpeakFocus);
+        Assert.Equal(new[] { FocusCause.Reannounce }, Causes(ui));
+    }
+
+    [Fact]
+    public void RecoveryIsAttributed()
+    {
+        var ui = new TestUi();
+        _ = new Button(ui.App, "Save");
+        var doomed = new Button(ui.App, "Doomed");
+        doomed.Focus();
+        ui.Drain();
+
+        doomed.Remove();
+        Assert.Equal(new[] { FocusCause.Recovery }, Causes(ui));
+    }
+
+    [Fact]
+    public void DialogTransitionsNeverReadAsUserNavigation()
+    {
+        var ui = new TestUi();
+        var open = new Button(ui.App, "Open");
+        open.Focus();
+        ui.Drain();
+
+        var dialog = ui.App.OpenDialog();
+        _ = new Label(dialog, "Prompt");
+        _ = new Button(dialog, "OK");
+        dialog.AnnounceOpened();
+        var causes = Causes(ui);
+        Assert.NotEmpty(causes);
+        Assert.DoesNotContain(FocusCause.UserNavigation, causes);
+
+        dialog.Close();
+        Assert.Equal(new[] { FocusCause.LayerRestore }, Causes(ui));
+    }
+}

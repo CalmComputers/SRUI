@@ -101,7 +101,7 @@ internal sealed class CoreUi
             if (!next.IsNone)
             {
                 _tree.SetFocus(next);
-                EmitFocused(next);
+                EmitFocused(next, FocusCause.Recovery);
             }
         }
     }
@@ -241,7 +241,7 @@ internal sealed class CoreUi
         if (!next.IsNone && next != focused)
         {
             _tree.SetFocus(next);
-            EmitFocused(next);
+            EmitFocused(next, FocusCause.Recovery);
             return true;
         }
         return false;
@@ -286,7 +286,7 @@ internal sealed class CoreUi
     public void SetFocus(NodeId id)
     {
         if (_tree.Contains(id))
-            SetFocusInternal(id);
+            SetFocusInternal(id, FocusCause.Programmatic);
     }
 
     /// <summary>If nothing is focused, focus the first focusable node and
@@ -299,11 +299,11 @@ internal sealed class CoreUi
         if (first.IsNone)
             return false;
         _tree.SetFocus(first);
-        EmitFocused(first);
+        EmitFocused(first, FocusCause.Programmatic);
         return true;
     }
 
-    private void SetFocusInternal(NodeId next)
+    private void SetFocusInternal(NodeId next, FocusCause cause)
     {
         var old = _tree.Focus;
         if (!old.IsNone)
@@ -316,16 +316,16 @@ internal sealed class CoreUi
                 _focusMemory.Remember(parent, old);
         }
         _tree.SetFocus(next);
-        EmitFocused(next);
+        EmitFocused(next, cause);
     }
 
-    private void EmitFocused(NodeId id)
+    private void EmitFocused(NodeId id, FocusCause cause)
     {
         var node = _tree.Get(id);
         if (node?.Owner is Widget owner)
         {
             _events.Add(new CoreEvent.Acc(new AccessibilityEvent.Focused(
-                owner, node.Label.ToInfo(owner.ValueText, owner.StateText), EmptyContext)));
+                owner, node.Label.ToInfo(owner.ValueText, owner.StateText), EmptyContext, cause)));
         }
     }
 
@@ -344,7 +344,8 @@ internal sealed class CoreUi
         if (node?.Owner is not Widget owner)
             return;
         _events.Add(new CoreEvent.Acc(new AccessibilityEvent.Focused(
-            owner, node.Label.ToInfo(owner.ValueText, owner.StateText), ContextLabelsFor(id))));
+            owner, node.Label.ToInfo(owner.ValueText, owner.StateText), ContextLabelsFor(id),
+            FocusCause.Reannounce)));
     }
 
     private List<string> ContextLabelsFor(NodeId id)
@@ -384,7 +385,7 @@ internal sealed class CoreUi
         var restored = _tree.PopLayer();
         _focusMemory.Gc(_tree);
         if (!restored.IsNone)
-            EmitFocused(restored);
+            EmitFocused(restored, FocusCause.LayerRestore);
     }
 
     // ── Input dispatch ──
@@ -416,14 +417,14 @@ internal sealed class CoreUi
             {
                 var next = Nav.TabNext(_tree, _tree.Focus);
                 if (!next.IsNone)
-                    SetFocusInternal(next);
+                    SetFocusInternal(next, FocusCause.UserNavigation);
                 return true;
             }
             case InputKind.NavigatePrev:
             {
                 var prev = Nav.TabPrev(_tree, _tree.Focus);
                 if (!prev.IsNone)
-                    SetFocusInternal(prev);
+                    SetFocusInternal(prev, FocusCause.UserNavigation);
                 return true;
             }
             case InputKind.TreeUp:
@@ -440,7 +441,7 @@ internal sealed class CoreUi
                 return true;
             case InputKind.SpeakFocus:
                 if (!_tree.Focus.IsNone)
-                    EmitFocused(_tree.Focus);
+                    EmitFocused(_tree.Focus, FocusCause.Reannounce);
                 return true;
             case InputKind.Activate:
                 // A hidden or disabled primary does not activate; the
@@ -470,7 +471,7 @@ internal sealed class CoreUi
             && Nav.FindShortcut(_tree, combo) is { } shortcut)
         {
             if (shortcut.Action is ShortcutAction.Jump or ShortcutAction.JumpAndActivate)
-                SetFocusInternal(shortcut.Node);
+                SetFocusInternal(shortcut.Node, FocusCause.Shortcut);
             if (shortcut.Action is ShortcutAction.Activate or ShortcutAction.JumpAndActivate)
                 _events.Add(new CoreEvent.Activated(shortcut.Node));
             return true;
@@ -485,7 +486,7 @@ internal sealed class CoreUi
             return;
         var target = Nav.TreeNav(_tree, current, direction);
         if (!target.IsNone)
-            SetFocusInternal(target);
+            SetFocusInternal(target, FocusCause.UserNavigation);
     }
 
     /// <summary>Hierarchy-down with focus memory: re-entering a container
@@ -502,13 +503,13 @@ internal sealed class CoreUi
             var node = _tree.Get(remembered);
             if (node is not null && node.Label.IsFocusableNow)
             {
-                SetFocusInternal(remembered);
+                SetFocusInternal(remembered, FocusCause.UserNavigation);
                 return;
             }
         }
         var target = Nav.TreeNav(_tree, container, TreeDirection.Down);
         if (!target.IsNone)
-            SetFocusInternal(target);
+            SetFocusInternal(target, FocusCause.UserNavigation);
     }
 
     // ── Output ──

@@ -64,6 +64,29 @@ public enum LabelPart
     Description,
 }
 
+/// <summary>Why a Focused event was emitted — the provenance readers
+/// filter on (an earcon reader clicks on user movement but not on a
+/// dialog opening; a verbosity policy may say more on recovery).</summary>
+public enum FocusCause
+{
+    /// <summary>The user moved: the tab ring or hierarchy navigation.</summary>
+    UserNavigation,
+    /// <summary>A widget shortcut jumped focus (mnemonics included).</summary>
+    Shortcut,
+    /// <summary>The program moved focus: Widget.Focus() or EnsureFocus.</summary>
+    Programmatic,
+    /// <summary>Focus recovered after the focused node was removed or
+    /// became unreachable.</summary>
+    Recovery,
+    /// <summary>A layer was popped and the previous layer's focus
+    /// restored.</summary>
+    LayerRestore,
+    /// <summary>Focus did not move: a re-announcement of the focused
+    /// widget (speak-focus, or the with-context announcement after a
+    /// view transition).</summary>
+    Reannounce,
+}
+
 /// <summary>Granularity of a text-cursor move.</summary>
 public enum NavGranularity
 {
@@ -102,8 +125,12 @@ public abstract record AccessibilityEvent
     /// the golden-six snapshot at emission. ContextLabels holds the names
     /// of Label siblings preceding the widget in child order — empty on
     /// ordinary focus moves, populated for context re-announcements after
-    /// a view transition (dialog openings).</summary>
-    public sealed record Focused(Widget Widget, WidgetInfo Info, IReadOnlyList<string> ContextLabels)
+    /// a view transition (dialog openings). Cause is the provenance of
+    /// the move (user navigation, shortcut jump, programmatic, recovery,
+    /// layer restore, re-announcement), so readers can treat user
+    /// movement differently from focus that came to the user.</summary>
+    public sealed record Focused(
+        Widget Widget, WidgetInfo Info, IReadOnlyList<string> ContextLabels, FocusCause Cause)
         : AccessibilityEvent;
 
     /// <summary>Text was inserted or deleted in an editor. Carries only
