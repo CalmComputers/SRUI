@@ -1893,6 +1893,18 @@ public class CustomWidgetTests
         ui.Drain();
         Assert.Equal(1, presses);
     }
+
+    // Nameless and role-less, the announcement starts at the first
+    // present field — no leading space from the missing ones.
+    [Fact]
+    public void NamelessAnnouncementHasNoLeadingSpace()
+    {
+        var ui = new TestUi();
+        var arena = new CustomWidget(ui.App, "") { Description = "use arrow keys" };
+        arena.Disabled = true;
+        arena.Focus();
+        Assert.Equal(new[] { "unavailable use arrow keys" }, ui.Spoken());
+    }
 }
 
 public class ClockTests

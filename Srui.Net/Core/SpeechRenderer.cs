@@ -139,51 +139,42 @@ public static class SpeechRenderer
     {
         var result = new StringBuilder(64);
 
-        // Name (optional — nameless widgets announce as "role value ...").
-        if (!string.IsNullOrEmpty(info.Name))
-            result.Append(info.Name);
-
-        // Role (empty for role-less widgets — announces without a role word).
-        if (info.Role.Length != 0)
+        // Every present field separates itself from whatever preceded
+        // it, so the utterance never leads with a space regardless of
+        // which fields are empty.
+        void Append(string field)
         {
+            if (field.Length == 0)
+                return;
             if (result.Length != 0)
                 result.Append(' ');
-            result.Append(info.Role);
+            result.Append(field);
         }
+
+        // Name (optional — nameless widgets announce as "role value ...").
+        Append(info.Name ?? "");
+
+        // Role (empty for role-less widgets — announces without a role word).
+        Append(info.Role);
 
         // Value.
-        if (info.Value.Length != 0)
-        {
-            result.Append(' ');
-            result.Append(info.Value);
-        }
+        Append(info.Value);
 
         // States, dynamic state text first (e.g. "filter ed", "no filter").
-        if (info.StateText.Length != 0)
-        {
-            result.Append(' ');
-            result.Append(info.StateText);
-        }
+        Append(info.StateText);
         if ((info.States & WidgetStates.Disabled) != 0)
-            result.Append(" unavailable");
+            Append("unavailable");
         if ((info.States & WidgetStates.Required) != 0)
-            result.Append(" required");
+            Append("required");
         if ((info.States & WidgetStates.Warning) != 0)
-            result.Append(" warning");
+            Append("warning");
 
         // Description.
-        if (info.Description.Length != 0)
-        {
-            result.Append(' ');
-            result.Append(info.Description);
-        }
+        Append(info.Description);
 
         // Shortcut — the first one attached, in spoken form ("alt w").
         if (info.Shortcuts.Count != 0)
-        {
-            result.Append(' ');
-            result.Append(info.Shortcuts[0].DisplayName());
-        }
+            Append(info.Shortcuts[0].DisplayName());
 
         return result.ToString();
     }
