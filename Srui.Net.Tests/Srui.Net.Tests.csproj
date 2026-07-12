@@ -15,6 +15,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Srui.Net\Srui.Net.csproj" />
+    <!-- Managed-only pieces of the audio stack (chapter parsing); the
+         suite stays headless — nothing here touches a native DLL. -->
+    <ProjectReference Include="..\Srui.Audio\Srui.Audio.csproj" />
   </ItemGroup>
 
 </Project>
