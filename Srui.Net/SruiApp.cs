@@ -255,6 +255,11 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     /// <summary>Focus the first focusable widget if nothing is focused.</summary>
     public bool EnsureFocus() => Engine.EnsureFocus();
 
+    /// <summary>The widget owning focus, or null before any focus
+    /// exists — the seam for app-level surfaces (a command palette)
+    /// that gather from whatever the user is on.</summary>
+    public Widget? FocusedWidget => Engine.OwnerOf(Engine.Focus);
+
     // ── Driving the engine (Run does this; headless hosts do it themselves) ──
 
     /// <summary>Advance the engine clock (monotonic milliseconds):
