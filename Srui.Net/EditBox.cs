@@ -127,6 +127,58 @@ public class EditBox : Widget
         Promulgate(new AccessibilityEvent.Selection(this, delta, SelectionKind.All));
     }
 
+    // ── Announced movement ──
+    // Each method runs the same handling path as the key it names, so a
+    // programmatic move speaks exactly what the user-driven one would —
+    // when the widget is focused; unfocused, it moves silently.
+
+    /// <summary>Run a user-equivalent navigation input against the
+    /// editor, speaking its feedback when focused.</summary>
+    private void Nav(InputKind kind)
+    {
+        var result = EditBoxCore.Handle(this, InputEvent.Simple(kind), _editor, Engine.Clipboard);
+        if (!IsFocused)
+            return;
+        foreach (var ev in result.Events)
+            Promulgate(ev);
+    }
+
+    /// <summary>Move left one character, announcing like Left arrow (an
+    /// active selection collapses to its start).</summary>
+    public void MoveLeft() => Nav(InputKind.MoveLeft);
+
+    /// <summary>Move right one character, announcing like Right arrow (an
+    /// active selection collapses to its end).</summary>
+    public void MoveRight() => Nav(InputKind.MoveRight);
+
+    /// <summary>Move to the start of the current or previous word,
+    /// announcing like Ctrl+Left.</summary>
+    public void MoveWordLeft() => Nav(InputKind.MoveWordLeft);
+
+    /// <summary>Move to the start of the next word, announcing like
+    /// Ctrl+Right.</summary>
+    public void MoveWordRight() => Nav(InputKind.MoveWordRight);
+
+    /// <summary>Move to the line start, announcing like Home.</summary>
+    public void MoveToLineStart() => Nav(InputKind.MoveToLineStart);
+
+    /// <summary>Move to the line end, announcing like End.</summary>
+    public void MoveToLineEnd() => Nav(InputKind.MoveToLineEnd);
+
+    /// <summary>Move up one line, announcing the landed line like Up
+    /// arrow (multiline; a single-line editor reports the boundary).</summary>
+    public void MoveLineUp() => Nav(InputKind.MoveLineUp);
+
+    /// <summary>Move down one line, announcing the landed line like Down
+    /// arrow.</summary>
+    public void MoveLineDown() => Nav(InputKind.MoveLineDown);
+
+    /// <summary>Move to the text start, announcing like Ctrl+Home.</summary>
+    public void MoveToDocStart() => Nav(InputKind.MoveToDocStart);
+
+    /// <summary>Move to the text end, announcing like Ctrl+End.</summary>
+    public void MoveToDocEnd() => Nav(InputKind.MoveToDocEnd);
+
     /// <summary>Replace the text without any announcement — the
     /// counterpart of the <see cref="Text"/> setter for subclass input
     /// handlers, which mutate state silently and then emit what the user

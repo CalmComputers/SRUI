@@ -1467,6 +1467,60 @@ public class EditBoxTests
     }
 
     [Fact]
+    public void ProgrammaticMovementSpeaksLikeTheKeys()
+    {
+        var ui = new TestUi();
+        var notes = new EditBox(ui.App, "Notes", "hello world\nsecond line", multiline: true);
+        notes.Focus();
+        ui.Drain();
+
+        notes.MoveWordRight();
+        Assert.Equal(6, notes.CursorPosition);
+        Assert.Equal(new[] { "world" }, ui.Spoken());
+
+        notes.MoveToLineEnd();
+        Assert.Equal(11, notes.CursorPosition);
+        Assert.Equal(new[] { "d" }, ui.Spoken());
+
+        notes.MoveLineDown();
+        Assert.Equal(new[] { "second line" }, ui.Spoken());
+
+        notes.MoveToDocStart();
+        Assert.Equal(0, notes.CursorPosition);
+        Assert.Equal(new[] { "h" }, ui.Spoken());
+
+        // At the boundary already: the same edge report as the key.
+        notes.MoveToDocStart();
+        Assert.Equal(new[] { "Top, h" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void ProgrammaticMovementIsSilentWhenUnfocused()
+    {
+        var ui = new TestUi();
+        var notes = new EditBox(ui.App, "Notes", "hello world");
+
+        notes.MoveWordRight();
+        Assert.Equal(6, notes.CursorPosition);
+        Assert.Empty(ui.Spoken());
+    }
+
+    [Fact]
+    public void ProgrammaticArrowCollapsesSelectionLikeTheKey()
+    {
+        var ui = new TestUi();
+        var notes = new EditBox(ui.App, "Notes", "abcd");
+        notes.Focus();
+        notes.Selection = (1, 3);
+        ui.Drain();
+
+        notes.MoveRight();
+        Assert.Null(notes.Selection);
+        Assert.Equal(3, notes.CursorPosition);
+        Assert.Equal(new[] { "d" }, ui.Spoken());
+    }
+
+    [Fact]
     public void WordQueriesMirrorTheCtrlArrowFamily()
     {
         var ui = new TestUi();
