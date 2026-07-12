@@ -12,7 +12,8 @@ namespace Srui;
 /// app (<see cref="Headless"/>) has no window and no voice — the host (a
 /// test, or a platform embedding) pushes inputs through
 /// <see cref="HandleInput"/> and drives <see cref="DispatchEvents"/> and
-/// <see cref="SetNow"/> itself.
+/// <see cref="SetNow"/> itself, or lets <see cref="Tick"/> package the
+/// real-time iteration.
 /// </summary>
 public sealed class SruiApp : IWidgetContainer, IDisposable
 {
@@ -89,7 +90,7 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     private readonly Dictionary<ulong, Ticker> _tickers = new();
     private readonly Stack<Dialog> _dialogs = new();
     private readonly Stopwatch _clock = Stopwatch.StartNew();
-    private bool _running;
+    private bool _quit;
 
     SruiApp IWidgetContainer.App => this;
 
@@ -110,7 +111,9 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
 
     /// <summary>An app with no window, no clipboard, and no voice: the
     /// engine and widget layer only. For tests and custom hosts — attach
-    /// readers, push inputs, drive the clock and the drain yourself.</summary>
+    /// readers, push inputs, and drive the clock and the drain yourself
+    /// (deterministically via <see cref="SetNow"/>/<see cref="DispatchEvents"/>,
+    /// or on real time via <see cref="Tick"/>).</summary>
     public static SruiApp Headless() => new();
 
     /// <summary>Install a platform clipboard (headless hosts; a windowed
@@ -309,30 +312,39 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     /// iteration.</summary>
     public uint LoopWaitMs { get; set; } = 2;
 
-    /// <summary>Stop the event loop after the current iteration.</summary>
-    public void Quit() => _running = false;
+    /// <summary>Stop the event loop after the current iteration:
+    /// <see cref="Run"/> returns, and a host driving <see cref="Tick"/>
+    /// itself sees it return false.</summary>
+    public void Quit() => _quit = true;
 
-    /// <summary>Run until <see cref="Quit"/> or the window closes.
-    /// Requires a windowed app.</summary>
-    public void Run()
+    /// <summary>One event-loop iteration: advance the engine clock from
+    /// the app's own stopwatch, advance audio automation, pump and
+    /// dispatch window input (blocking up to <see cref="LoopWaitMs"/>;
+    /// a headless app has no pump and returns without waiting), then
+    /// drain queued events to the readers. Returns false once the
+    /// window has closed or <see cref="Quit"/> was called.
+    /// <see cref="Run"/> is exactly this in a loop; call Tick yourself
+    /// to interleave several apps in one host loop — call
+    /// <see cref="EnsureFocus"/> once per app when its tree is built,
+    /// and let at most one app own a window (SDL's event queue is
+    /// process-global): the rest run headless and take input the host
+    /// forwards through <see cref="HandleInput"/>/<see cref="HandleKey"/>.
+    /// A tick-driven app runs on real time — don't mix Tick with manual
+    /// <see cref="SetNow"/>, which it would overwrite.</summary>
+    public bool Tick()
     {
-        if (Host is not SdlHost host)
-            throw new InvalidOperationException(
-                "a headless app has no event loop; drive HandleInput/DispatchEvents/SetNow yourself");
-        Engine.EnsureFocus();
-        _running = true;
-        while (_running)
+        // Every iteration, not just on input: tickers fire from here,
+        // and audio automation advances at the tick cadence.
+        Engine.SetNow((ulong)_clock.ElapsedMilliseconds);
+        _audio?.Tick();
+        if (Host is SdlHost host)
         {
-            // Every iteration, not just on input: tickers fire from here,
-            // and audio automation advances at the loop cadence.
-            Engine.SetNow((ulong)_clock.ElapsedMilliseconds);
-            _audio?.Tick();
             foreach (var hostEvent in host.Pump(LoopWaitMs))
             {
                 switch (hostEvent)
                 {
                     case HostEvent.Quit:
-                        _running = false;
+                        _quit = true;
                         break;
                     case HostEvent.KeyDown:
                         Interrupt();
@@ -351,7 +363,24 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
                         break;
                 }
             }
-            DispatchEvents();
+        }
+        DispatchEvents();
+        return !_quit;
+    }
+
+    /// <summary>Run until <see cref="Quit"/> or the window closes.
+    /// Requires a windowed app; a headless app is driven by its host —
+    /// <see cref="Tick"/> per iteration, or HandleInput/DispatchEvents/
+    /// SetNow directly.</summary>
+    public void Run()
+    {
+        if (Host is null)
+            throw new InvalidOperationException(
+                "a headless app has no event loop; drive it yourself — Tick per iteration, or HandleInput/DispatchEvents/SetNow directly");
+        Engine.EnsureFocus();
+        _quit = false;
+        while (Tick())
+        {
         }
     }
 }

@@ -1976,6 +1976,54 @@ public class TickerTests
     }
 }
 
+public class TickTests
+{
+    [Fact]
+    public void TickDrainsQueuedEvents()
+    {
+        var ui = new TestUi();
+        ui.App.Announce("hello");
+        Assert.True(ui.App.Tick());
+        var announce = Assert.IsType<AccessibilityEvent.Announce>(ui.Reader.Events.Single());
+        Assert.Equal("hello", announce.Text);
+    }
+
+    [Fact]
+    public void QuitTurnsTickFalse()
+    {
+        var ui = new TestUi();
+        Assert.True(ui.App.Tick());
+        ui.App.Quit();
+        // The final tick still delivers what was queued before Quit.
+        ui.App.Announce("goodbye");
+        Assert.False(ui.App.Tick());
+        Assert.IsType<AccessibilityEvent.Announce>(ui.Reader.Events.Single());
+    }
+
+    [Fact]
+    public void TickFeedsTheEngineClockFromTheStopwatch()
+    {
+        var ui = new TestUi();
+        // An injected far-future clock is overwritten by real elapsed
+        // time, which is nowhere near an hour this early in the test.
+        ui.App.SetNow(3_600_000);
+        ui.App.Tick();
+        Assert.True(ui.App.Now < 3_600_000);
+    }
+
+    [Fact]
+    public void TickersFireFromTick()
+    {
+        var ui = new TestUi();
+        var ticker = ui.App.StartTicker(1);
+        var ticks = 0;
+        ticker.Tick += () => ticks++;
+        Thread.Sleep(20);
+        ui.App.Tick();
+        Assert.Equal(1, ticks);
+    }
+}
+
 public class ReaderTests
 {
     [Fact]
