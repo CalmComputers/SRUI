@@ -82,6 +82,16 @@ public class ListBox<T> : Widget where T : class, IListItem
             _selected = _items.Count - 1;
     }
 
+    /// <summary>Move the selection without any announcement — the
+    /// counterpart of <see cref="SelectedIndex"/>'s setter for subclass
+    /// input handlers that reposition as part of a larger state change
+    /// and then emit what the user should hear. Clamped.</summary>
+    protected void SelectSilently(int index)
+    {
+        if (_items.Count > 0)
+            _selected = Math.Clamp(index, 0, _items.Count - 1);
+    }
+
     /// <summary>Remove the item at the index. Removing the selected item
     /// while focused speaks the survivor the selection lands on exactly
     /// as an arrow move would — or "empty" when the last item went;

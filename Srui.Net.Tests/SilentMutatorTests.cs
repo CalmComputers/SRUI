@@ -24,6 +24,8 @@ public class SilentMutatorTests
 
         public void ShrinkTo(int count) => SetItemsSilently(_texts.GetRange(0, count));
 
+        public void JumpTo(int index) => SelectSilently(index);
+
         protected override bool OnInput(in InputEvent input)
         {
             if (input.IsChar(' '))
@@ -110,6 +112,25 @@ public class SilentMutatorTests
         Assert.Empty(ui.Spoken());
         Assert.Equal(0, list.SelectedIndex);
         Assert.Equal("alpha", list.SelectedItem?.Text);
+    }
+
+    [Fact]
+    public void SilentSelectionMovesWithoutSpeakingAndClamps()
+    {
+        using var ui = new TestUi();
+        var list = new ToggleList(ui.App, ["alpha", "beta", "gamma"]);
+        list.Focus();
+        ui.Drain();
+
+        list.JumpTo(2);
+        Assert.Empty(ui.Spoken());
+        Assert.Equal("gamma", list.SelectedItem?.Text);
+
+        list.JumpTo(99);
+        Assert.Equal(2, list.SelectedIndex);
+
+        ui.Input(InputKind.SpeakFocus);
+        Assert.Contains(ui.Spoken(), s => s.Contains("gamma"));
     }
 
     [Fact]
