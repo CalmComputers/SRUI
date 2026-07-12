@@ -132,7 +132,11 @@ public static class M4bChapters
             if (durations.Count == 0)
                 continue;
             var sizes = ReadStsz(file, stbl);
-            var offsets = ReadStco(file, stbl);
+            var chunkOffsets = ReadStco(file, stbl);
+            // Chunks may hold several samples (ffmpeg-authored files
+            // do); stsc + the sample sizes expand chunk offsets into
+            // one offset per sample.
+            var offsets = ExpandSampleOffsets(file, stbl, chunkOffsets, sizes);
 
             var sampleCount = Math.Min(sizes.Count, Math.Min(durations.Count, offsets.Count));
             if (sampleCount == 0)
@@ -230,6 +234,61 @@ public static class M4bChapters
             var count = (int)ReadU32(file);
             for (var i = 0; i < count; i++)
                 offsets.Add(ReadU64(file));
+        }
+        return offsets;
+    }
+
+    /// <summary>stsc entries: (firstChunk, samplesPerChunk), 1-based.</summary>
+    private static List<(uint FirstChunk, uint SamplesPerChunk)> ReadStsc(
+        FileStream file, BoxSpan stbl)
+    {
+        var entries = new List<(uint, uint)>();
+        if (FindBox(file, stbl.DataStart, stbl.DataSize, "stsc") is not { } stsc)
+            return entries;
+        file.Position = (long)stsc.DataStart;
+        _ = ReadExactly(file, 4);
+        var count = (int)ReadU32(file);
+        for (var i = 0; i < count; i++)
+        {
+            var firstChunk = ReadU32(file);
+            var samplesPerChunk = ReadU32(file);
+            _ = ReadU32(file); // sample description index
+            entries.Add((firstChunk, samplesPerChunk));
+        }
+        return entries;
+    }
+
+    /// <summary>One file offset per sample: each chunk's samples sit
+    /// back to back from the chunk offset, sized by stsz, distributed
+    /// per stsc (absent stsc means one sample per chunk).</summary>
+    private static List<ulong> ExpandSampleOffsets(
+        FileStream file, BoxSpan stbl, List<ulong> chunkOffsets, List<uint> sizes)
+    {
+        var stsc = ReadStsc(file, stbl);
+        if (stsc.Count == 0)
+            return chunkOffsets;
+
+        var offsets = new List<ulong>(sizes.Count);
+        var sample = 0;
+        for (var chunk = 0; chunk < chunkOffsets.Count && sample < sizes.Count; chunk++)
+        {
+            // The run in force for this chunk: the last stsc entry
+            // whose firstChunk is at or before it (chunks are 1-based).
+            var perChunk = stsc[0].SamplesPerChunk;
+            foreach (var (firstChunk, samplesPerChunk) in stsc)
+            {
+                if (firstChunk <= (uint)chunk + 1)
+                    perChunk = samplesPerChunk;
+                else
+                    break;
+            }
+            var offset = chunkOffsets[chunk];
+            for (var i = 0u; i < perChunk && sample < sizes.Count; i++)
+            {
+                offsets.Add(offset);
+                offset += sizes[sample];
+                sample++;
+            }
         }
         return offsets;
     }

@@ -148,6 +148,48 @@ public class M4bChapterTests : IDisposable
     }
 
     [Fact]
+    public void PackedChunksExpandThroughStsc()
+    {
+        // ffmpeg-style: both text samples in ONE chunk; stsc says so.
+        var title1 = Encoding.UTF8.GetBytes("One");
+        var title2 = Encoding.UTF8.GetBytes("Two");
+        var sample1 = U16((ushort)title1.Length).Concat(title1).ToArray();
+        var sample2 = U16((ushort)title2.Length).Concat(title2).ToArray();
+
+        byte[] BuildMoov(uint chunkOffset) => Box("moov",
+            Mvhd(timescale: 1000, duration: 9_000),
+            Box("trak", Box("mdia",
+                Box("hdlr", Bytes(0, 0, 0, 0), U32(0), Encoding.ASCII.GetBytes("text")),
+                Box("mdhd", Bytes(0, 0, 0, 0), U32(0), U32(0), U32(1000)),
+                Box("minf", Box("stbl",
+                    Box("stts",
+                        Bytes(0, 0, 0, 0),
+                        U32(1),
+                        U32(2), U32(4_000)), // 2 samples of 4 s
+                    Box("stsc",
+                        Bytes(0, 0, 0, 0),
+                        U32(1),
+                        U32(1), U32(2), U32(1)), // chunk 1: 2 samples
+                    Box("stsz",
+                        Bytes(0, 0, 0, 0),
+                        U32(0), U32(2),
+                        U32((uint)sample1.Length), U32((uint)sample2.Length)),
+                    Box("stco",
+                        Bytes(0, 0, 0, 0),
+                        U32(1),
+                        U32(chunkOffset)))))));
+
+        var offset = (uint)BuildMoov(0).Length;
+        File.WriteAllBytes(_path, BuildMoov(offset).Concat(sample1).Concat(sample2).ToArray());
+
+        var meta = M4bChapters.ExtractMetadata(_path);
+
+        Assert.Equal(2, meta.Chapters.Count);
+        Assert.Equal(new M4bChapter("One", 0, 4_000), meta.Chapters[0]);
+        Assert.Equal(new M4bChapter("Two", 4_000, 4_000), meta.Chapters[1]);
+    }
+
+    [Fact]
     public void NoMoovYieldsEmptyMetadata()
     {
         File.WriteAllBytes(_path, Box("ftyp", U32(0)));

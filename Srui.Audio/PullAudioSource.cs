@@ -35,11 +35,14 @@ public abstract class PullAudioSource : IDisposable
     public ulong LengthFrames { get; }
 
     /// <summary>Fill the buffer with up to frameCount interleaved f32
-    /// frames; return the frames produced. 0 means end of stream.</summary>
-    protected abstract ulong Read(Span<float> buffer, ulong frameCount);
+    /// frames; return the frames produced. 0 means end of stream. The
+    /// engine calls this through the native thunks; it is public so
+    /// offline consumers (tests, transcoders) can drive a source
+    /// directly.</summary>
+    public abstract ulong Read(Span<float> buffer, ulong frameCount);
 
     /// <summary>Reposition to the absolute frame. False refuses the seek.</summary>
-    protected abstract bool Seek(ulong frameIndex);
+    public abstract bool Seek(ulong frameIndex);
 
     internal unsafe IntPtr Handle
     {
