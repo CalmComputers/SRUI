@@ -540,6 +540,38 @@ internal static class TextNav
         return start >= end ? "" : rope.Substring(start, end);
     }
 
+    // ── Line/column conversion ──
+    // Lines and columns are 0-based; a column is the UTF-16 code-unit
+    // offset from the line start, matching every other position on the
+    // surface.
+
+    /// <summary>Number of lines: newlines + 1.</summary>
+    public static int LineCount(Rope rope) => rope.NewlinesBefore(rope.Length) + 1;
+
+    /// <summary>The line and column of <paramref name="pos"/> (clamped).</summary>
+    public static (int Line, int Column) LineColumnAt(Rope rope, int pos)
+    {
+        pos = Math.Clamp(pos, 0, rope.Length);
+        return (rope.NewlinesBefore(pos), pos - LineStart(rope, pos));
+    }
+
+    /// <summary>The position of (line, column), clamped: the line to the
+    /// text's last line, the column to the addressed line's end (before
+    /// its newline / CRLF).</summary>
+    public static int PositionOfLineColumn(Rope rope, int line, int column)
+    {
+        var start = 0;
+        for (var i = 0; i < line; i++)
+        {
+            var newline = rope.IndexOfNewline(start);
+            if (newline < 0)
+                break;
+            start = newline + 1;
+        }
+        var end = LineEnd(rope, start);
+        return start + Math.Clamp(column, 0, end - start);
+    }
+
     /// <summary>Skip whitespace forward, returning the index of the first
     /// non-whitespace character.</summary>
     public static int SkipWhitespaceForward(Rope rope, int pos)

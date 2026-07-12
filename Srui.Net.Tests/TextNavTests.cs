@@ -404,6 +404,48 @@ public class TextNavTests
             }
         }
     }
+
+    [Fact]
+    public void LineColumnConversionMatchesNaiveReference()
+    {
+        var rng = new Random(987654);
+        var pieces = new[] { "a", "bc", " ", "\n", "\r\n", "\U0001F600", "word" };
+        for (var round = 0; round < 100; round++)
+        {
+            var sb = new System.Text.StringBuilder();
+            var count = rng.Next(0, 300);
+            for (var i = 0; i < count; i++)
+                sb.Append(pieces[rng.Next(pieces.Length)]);
+            var text = sb.ToString();
+            var rope = R(text);
+
+            var newlines = text.Count(c => c == '\n');
+            Assert.Equal(newlines + 1, TextNav.LineCount(rope));
+
+            for (var probe = 0; probe <= 30; probe++)
+            {
+                var pos = probe == 0 ? 0 : probe == 1 ? text.Length : rng.Next(text.Length + 1);
+                var start = pos == 0 ? 0 : text.LastIndexOf('\n', pos - 1) + 1;
+                var expectedLine = 0;
+                for (var i = 0; i < pos; i++)
+                {
+                    if (text[i] == '\n')
+                        expectedLine++;
+                }
+                Assert.Equal((expectedLine, pos - start), TextNav.LineColumnAt(rope, pos));
+
+                // Round-trip holds whenever the column addresses the
+                // line's visible span (a position at the LF of a CRLF
+                // clamps back before the CR instead).
+                var newline = text.IndexOf('\n', Math.Min(pos, text.Length));
+                var end = newline < 0 ? text.Length
+                    : newline > start && text[newline - 1] == '\r' ? newline - 1
+                    : newline;
+                if (pos - start <= end - start)
+                    Assert.Equal(pos, TextNav.PositionOfLineColumn(rope, expectedLine, pos - start));
+            }
+        }
+    }
 }
 
 public class RopeTests
@@ -504,4 +546,5 @@ public class RopeTests
             Assert.Equal(expectedPrev, rope.LastNewlineBefore(probe));
         }
     }
+
 }

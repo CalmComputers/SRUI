@@ -140,6 +140,57 @@ public class EditBox : Widget
         _editor.PreferredColumn = null;
     }
 
+    // ── Position queries ──
+    // Pure reads over the text engine: no state changes, no announcements.
+    // Positions clamp to the text and snap off surrogate halves, like the
+    // position setters. Lines and columns are 0-based; a column is the
+    // UTF-16 code-unit offset from its line start.
+
+    /// <summary>The start of the word at or before the position — where
+    /// Ctrl+Left from there would land.</summary>
+    public int PreviousWordStart(int position) => TextNav.PrevWordStart(_editor.Rope, Snap(position));
+
+    /// <summary>The start of the next word — where Ctrl+Right would land
+    /// (the text end when no next word exists).</summary>
+    public int NextWordStart(int position) => TextNav.NextWordStart(_editor.Rope, Snap(position));
+
+    /// <summary>The start of the word extent (word plus trailing
+    /// separators) before the position — the range Ctrl+Backspace deletes
+    /// and Ctrl+Shift+Left selects.</summary>
+    public int PreviousWordExtent(int position) => TextNav.PrevWordExtent(_editor.Rope, Snap(position));
+
+    /// <summary>The end of the word extent after the position —
+    /// Ctrl+Delete and Ctrl+Shift+Right.</summary>
+    public int NextWordExtent(int position) => TextNav.NextWordExtent(_editor.Rope, Snap(position));
+
+    /// <summary>The word surrounding or starting at the position; a
+    /// non-word character yields just that character, the text end "".</summary>
+    public string WordAt(int position) => TextNav.WordAt(_editor.Rope, Snap(position));
+
+    /// <summary>The start of the line containing the position.</summary>
+    public int LineStartAt(int position) => TextNav.LineStart(_editor.Rope, Snap(position));
+
+    /// <summary>The end of the line containing the position (before its
+    /// newline / CRLF, or the text end).</summary>
+    public int LineEndAt(int position) => TextNav.LineEnd(_editor.Rope, Snap(position));
+
+    /// <summary>The text of the line containing the position, without its
+    /// terminator.</summary>
+    public string LineTextAt(int position) => TextNav.CurrentLineText(_editor.Rope, Snap(position));
+
+    /// <summary>Number of lines in the text (newlines + 1).</summary>
+    public int LineCount => TextNav.LineCount(_editor.Rope);
+
+    /// <summary>The 0-based line and column of a position.</summary>
+    public (int Line, int Column) LineColumnAt(int position) =>
+        TextNav.LineColumnAt(_editor.Rope, Snap(position));
+
+    /// <summary>The position of a 0-based (line, column): the line clamps
+    /// to the text's last line, the column to the addressed line's end,
+    /// and the result snaps off surrogate halves.</summary>
+    public int PositionAt(int line, int column) =>
+        Snap(TextNav.PositionOfLineColumn(_editor.Rope, Math.Max(line, 0), Math.Max(column, 0)));
+
     /// <summary>Clamp a position to the text and snap it off the middle
     /// of a surrogate pair.</summary>
     private int Snap(int position)

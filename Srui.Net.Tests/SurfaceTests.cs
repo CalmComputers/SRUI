@@ -1465,6 +1465,73 @@ public class EditBoxTests
         Assert.Equal(new[] { "abcd selected" }, ui.Spoken());
         Assert.Equal(4, notes.Length);
     }
+
+    [Fact]
+    public void WordQueriesMirrorTheCtrlArrowFamily()
+    {
+        var ui = new TestUi();
+        var notes = new EditBox(ui.App, "Notes", "hello world");
+
+        Assert.Equal(6, notes.NextWordStart(0));
+        Assert.Equal(0, notes.PreviousWordStart(6));
+        Assert.Equal("world", notes.WordAt(6));
+        Assert.Equal("hello", notes.WordAt(3));
+        Assert.Equal(6, notes.NextWordExtent(0));
+        Assert.Equal(6, notes.PreviousWordExtent(11));
+    }
+
+    [Fact]
+    public void WordStartsAndExtentsDivergeOnPunctuation()
+    {
+        var ui = new TestUi();
+        var notes = new EditBox(ui.App, "Notes", "foo.. bar");
+
+        // Ctrl+arrow stops on the punctuation run; the extent (what
+        // Ctrl+Backspace/Delete act on) swallows it with the word.
+        Assert.Equal(3, notes.NextWordStart(0));
+        Assert.Equal(6, notes.NextWordExtent(0));
+        Assert.Equal(3, notes.PreviousWordStart(6));
+        Assert.Equal(0, notes.PreviousWordExtent(6));
+    }
+
+    [Fact]
+    public void LineQueriesHandleCrlf()
+    {
+        var ui = new TestUi();
+        var notes = new EditBox(ui.App, "Notes", "one\r\ntwo\nthree", multiline: true);
+
+        Assert.Equal(5, notes.LineStartAt(6));
+        Assert.Equal(8, notes.LineEndAt(6));
+        Assert.Equal("two", notes.LineTextAt(6));
+        Assert.Equal(3, notes.LineEndAt(0)); // before the CR
+        Assert.Equal("three", notes.LineTextAt(notes.Length));
+        Assert.Equal(9, notes.LineStartAt(99)); // clamps to the text end
+    }
+
+    [Fact]
+    public void LineColumnConversionRoundTripsAndClamps()
+    {
+        var ui = new TestUi();
+        var notes = new EditBox(ui.App, "Notes", "one\r\ntwo\nthree", multiline: true);
+
+        Assert.Equal(3, notes.LineCount);
+        Assert.Equal((0, 0), notes.LineColumnAt(0));
+        Assert.Equal((1, 1), notes.LineColumnAt(6));
+        Assert.Equal((2, 5), notes.LineColumnAt(notes.Length));
+
+        Assert.Equal(6, notes.PositionAt(1, 1));
+        Assert.Equal(3, notes.PositionAt(0, 99)); // column clamps before the CRLF
+        Assert.Equal(11, notes.PositionAt(99, 2)); // line clamps to the last
+        Assert.Equal(0, notes.PositionAt(-1, -1));
+    }
+
+    [Fact]
+    public void PositionAtSnapsOffSurrogateHalves()
+    {
+        var ui = new TestUi();
+        var notes = new EditBox(ui.App, "Notes", "a\U00010437b");
+        Assert.Equal(1, notes.PositionAt(0, 2)); // middle of the pair
+    }
 }
 
 public class SliderTests

@@ -252,6 +252,25 @@ internal sealed class Rope
         return before > 0 ? LastNewlineRec(b.Left, before) : -1;
     }
 
+    /// <summary>Number of '\n' characters strictly before
+    /// <paramref name="pos"/> (clamped).</summary>
+    public int NewlinesBefore(int pos)
+    {
+        pos = Math.Clamp(pos, 0, Length);
+        return pos == 0 ? 0 : CountNewlinesRec(_root, pos);
+    }
+
+    private static int CountNewlinesRec(RopeNode node, int before)
+    {
+        if (node is Leaf leaf)
+            return leaf.Text.AsSpan(0, Math.Min(before, leaf.Length)).Count('\n');
+        var b = (Branch)node;
+        var leftLen = b.Left.Length;
+        if (before <= leftLen)
+            return CountNewlinesRec(b.Left, before);
+        return CountNewlinesRec(b.Left, leftLen) + CountNewlinesRec(b.Right, before - leftLen);
+    }
+
     private void MaybeRebalance()
     {
         if (_root.Depth > MaxDepth)
