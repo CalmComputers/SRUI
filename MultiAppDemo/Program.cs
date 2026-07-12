@@ -52,6 +52,12 @@ ticker.Tick += () =>
         stopwatch.App.Announce($"{ElapsedMs() / 1000} seconds");
 };
 
+// Closing: the neighbor app is activated and announced, and ctrl+tab
+// no longer visits the stopwatch. Activated handlers run at drain
+// time, so closing from one is the documented-safe path.
+var closeStopwatch = new Button(stopwatch.App, "Close Stopwatch");
+closeStopwatch.Activated += () => stopwatch.Close();
+
 // ── Inbox: receives messages from anywhere, heard from anywhere ──
 
 var inbox = host.Add("Inbox");

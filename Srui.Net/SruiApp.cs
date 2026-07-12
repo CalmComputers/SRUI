@@ -45,6 +45,22 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     /// backgrounded.</summary>
     public bool IsForeground { get; set; } = true;
 
+    /// <summary>Host-installed key reservations, consulted by
+    /// <see cref="ReservedReasonFor"/> after the framework's own. A
+    /// multi-app host claims its switching combos here; a standalone
+    /// app has none.</summary>
+    public Func<KeyCombo, string?>? HostReservations { get; set; }
+
+    /// <summary>The spoken reason a combo cannot be bound in this app,
+    /// or null when it is bindable: the framework's categorical
+    /// reservations (<see cref="KeyCombo.ReservedReason"/>) plus
+    /// whatever the host reserved (<see cref="HostReservations"/>).
+    /// Bind dialogs consult this, not KeyCombo.ReservedReason directly,
+    /// so an app refuses its host's combos too — evaluated live, so a
+    /// reconfigured host combo moves the refusal with it.</summary>
+    public string? ReservedReasonFor(KeyCombo combo) =>
+        combo.ReservedReason ?? HostReservations?.Invoke(combo);
+
     /// <summary>The audio device period in frames. The getter returns
     /// the period the device actually granted, creating the app-owned
     /// manager on first use exactly like <see cref="Audio"/>. The

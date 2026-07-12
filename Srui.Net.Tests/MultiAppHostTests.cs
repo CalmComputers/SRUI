@@ -270,3 +270,213 @@ public class MultiAppHostTests
         Assert.Equal(1, ui.Reader.Interrupts);
     }
 }
+
+public class HostedAppLifecycleTests
+{
+    private static (MultiTestUi Ui, HostedApp A, HostedApp B, HostedApp C) ThreeApps()
+    {
+        var ui = new MultiTestUi();
+        var a = ui.Host.Add("Alpha");
+        _ = new Button(a.App, "A");
+        var b = ui.Host.Add("Beta");
+        _ = new Button(b.App, "B");
+        var c = ui.Host.Add("Gamma");
+        _ = new Button(c.App, "C");
+        return (ui, a, b, c);
+    }
+
+    [Fact]
+    public void ClosingABackgroundAppIsSilentAndLeavesTheList()
+    {
+        var (ui, a, b, _) = ThreeApps();
+        ui.Host.Activate(a);
+        ui.Drain();
+
+        b.Close();
+        Assert.Empty(ui.Spoken());
+        Assert.True(b.IsClosed);
+        Assert.Equal(2, ui.Host.Apps.Count);
+        Assert.DoesNotContain(b, ui.Host.Apps);
+        Assert.True(a.IsActive);
+    }
+
+    [Fact]
+    public void ClosingTheActiveAppActivatesItsNeighbor()
+    {
+        var (ui, a, b, c) = ThreeApps();
+        ui.Host.Activate(b);
+        ui.Drain();
+
+        b.Close();
+        Assert.True(c.IsActive);
+        Assert.True(c.App.IsForeground);
+        Assert.False(b.App.IsForeground);
+        Assert.Equal(new[] { "Gamma", "C button" }, ui.Spoken());
+        _ = a;
+    }
+
+    [Fact]
+    public void ClosingTheLastAppLeavesNoActive()
+    {
+        var ui = new MultiTestUi();
+        var only = ui.Host.Add("Only");
+        _ = new Button(only.App, "O");
+        ui.Host.Activate(only);
+        ui.Drain();
+
+        only.Close();
+        Assert.Null(ui.Host.Active);
+        Assert.Empty(ui.Host.Apps);
+        Assert.False(ui.Host.HandleInput(InputEvent.TypeChar('x')));
+    }
+
+    [Fact]
+    public void CloseIsIdempotentAndDropsLaterSends()
+    {
+        var (ui, _, b, _) = ThreeApps();
+        var closedEvents = 0;
+        b.Closed += () => closedEvents++;
+        var received = 0;
+        b.MessageReceived += _ => received++;
+
+        b.Close();
+        b.Close();
+        Assert.Equal(1, closedEvents);
+
+        b.Send("late");
+        ui.Host.DispatchEvents();
+        Assert.Equal(0, received);
+    }
+
+    [Fact]
+    public void ActivatingAClosedAppThrows()
+    {
+        var (ui, _, b, _) = ThreeApps();
+        b.Close();
+        Assert.Throws<InvalidOperationException>(() => ui.Host.Activate(b));
+    }
+
+    [Fact]
+    public void SwitchingSkipsClosedApps()
+    {
+        var (ui, a, b, c) = ThreeApps();
+        ui.Host.Activate(a);
+        b.Close();
+        ui.Drain();
+
+        var (key, mods) = KeyCombo.WithCtrl(Key.Tab).ToFlat();
+        ui.Host.HandleInput(InputEvent.RawKey(key, mods));
+        Assert.True(c.IsActive);
+    }
+
+    [Fact]
+    public void AnAppCanCloseItselfFromItsOwnHandler()
+    {
+        var (ui, a, b, _) = ThreeApps();
+        var quitButton = new Button(a.App, "Exit Alpha");
+        quitButton.Activated += () => a.Close();
+        ui.Host.Activate(a);
+        quitButton.Focus();
+        ui.Drain();
+
+        // Enter presses the focused button; its handler runs at drain
+        // and closes the app that is dispatching.
+        ui.Host.HandleInput(InputEvent.Simple(InputKind.Activate));
+        ui.Host.DispatchEvents();
+        Assert.True(a.IsClosed);
+        Assert.True(b.IsActive);
+        Assert.Contains("Beta", ui.Spoken());
+    }
+
+    [Fact]
+    public void AHostedAppsQuitClosesItOnTheNextTick()
+    {
+        var (ui, a, b, _) = ThreeApps();
+        ui.Host.Activate(a);
+        ui.Drain();
+
+        a.App.Quit();
+        ui.Host.Tick();
+        Assert.True(a.IsClosed);
+        Assert.True(b.IsActive);
+    }
+
+    [Fact]
+    public void AppsCanBeAddedFromARunningHandler()
+    {
+        var (ui, a, _, _) = ThreeApps();
+        var spawn = new Button(a.App, "Spawn");
+        HostedApp? spawned = null;
+        spawn.Activated += () =>
+        {
+            spawned = ui.Host.Add("Delta");
+            _ = new Button(spawned.App, "D");
+        };
+        ui.Host.Activate(a);
+        spawn.Focus();
+        ui.Drain();
+
+        ui.Host.HandleInput(InputEvent.Simple(InputKind.Activate));
+        ui.Host.DispatchEvents();
+        Assert.NotNull(spawned);
+        Assert.Equal(4, ui.Host.Apps.Count);
+    }
+
+    [Fact]
+    public void AppsChangedFiresOnAddAndClose()
+    {
+        var ui = new MultiTestUi();
+        var changes = 0;
+        ui.Host.AppsChanged += () => changes++;
+        var app = ui.Host.Add("One");
+        Assert.Equal(1, changes);
+        app.Close();
+        Assert.Equal(2, changes);
+    }
+}
+
+public class HostReservationTests
+{
+    [Fact]
+    public void HostedAppsRefuseTheSwitchingCombos()
+    {
+        var ui = new MultiTestUi();
+        var app = ui.Host.Add("One").App;
+
+        Assert.Equal(
+            "control tab is reserved for switching apps",
+            app.ReservedReasonFor(KeyCombo.WithCtrl(Key.Tab)));
+        Assert.Equal(
+            "control shift tab is reserved for switching apps",
+            app.ReservedReasonFor(KeyCombo.CtrlShift(Key.Tab)));
+        Assert.Null(app.ReservedReasonFor(KeyCombo.WithCtrl(Key.Char('s'))));
+    }
+
+    [Fact]
+    public void ReservationFollowsReconfiguredCombos()
+    {
+        var ui = new MultiTestUi();
+        var app = ui.Host.Add("One").App;
+        ui.Host.NextAppCombo = KeyCombo.WithCtrl(Key.F(6));
+
+        Assert.Null(app.ReservedReasonFor(KeyCombo.WithCtrl(Key.Tab)));
+        Assert.NotNull(app.ReservedReasonFor(KeyCombo.WithCtrl(Key.F(6))));
+    }
+
+    [Fact]
+    public void FrameworkReservationsStillApply()
+    {
+        var ui = new MultiTestUi();
+        var app = ui.Host.Add("One").App;
+        Assert.Equal(
+            KeyCombo.Plain(Key.Tab).ReservedReason,
+            app.ReservedReasonFor(KeyCombo.Plain(Key.Tab)));
+    }
+
+    [Fact]
+    public void StandaloneAppsHaveNoHostReservations()
+    {
+        using var app = SruiApp.Headless();
+        Assert.Null(app.ReservedReasonFor(KeyCombo.WithCtrl(Key.Tab)));
+    }
+}

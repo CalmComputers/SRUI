@@ -70,22 +70,50 @@ public sealed class MultiAppHost : IDisposable
     /// first app if the host program has not chosen one).</summary>
     public HostedApp? Active => _active;
 
+    /// <summary>The set of hosted apps changed: one was added, or one
+    /// closed. A task-list UI refreshes from <see cref="Apps"/> here.</summary>
+    public event Action? AppsChanged;
+
     /// <summary>Create a hosted app: a headless <see cref="SruiApp"/>
     /// pre-wired to the shared window services — system clipboard, the
     /// shared speech reader (muted while the app is in the background),
-    /// and the shared sound manager (its <c>Audio</c> resolves to
-    /// <see cref="Audio"/>). Build widgets into <c>.App</c> as usual.
-    /// Adding does not activate: the app starts in the background.</summary>
+    /// the shared sound manager (its <c>Audio</c> resolves to
+    /// <see cref="Audio"/>), and the host's key reservations. Build
+    /// widgets into <c>.App</c> as usual; apps may be added at any
+    /// point, including from a running app's handlers. Adding does not
+    /// activate: the app starts in the background.</summary>
     public HostedApp Add(string name)
     {
         var app = SruiApp.Headless();
         app.IsForeground = false;
         app.AudioSource = () => Audio;
+        app.HostReservations = SwitchReservation;
         Host?.ProvideClipboard(app);
         var hosted = new HostedApp(this, name, app);
         app.AddReader(new Forwarder(hosted));
         _apps.Add(hosted);
+        AppsChanged?.Invoke();
         return hosted;
+    }
+
+    internal void CloseApp(HostedApp hosted)
+    {
+        var index = _apps.IndexOf(hosted);
+        if (index < 0)
+            return;
+        _apps.RemoveAt(index);
+        if (ReferenceEquals(_active, hosted))
+        {
+            _active = null;
+            hosted.App.IsForeground = false;
+            // Land on the neighbor that moved into the closed app's
+            // slot, or the new last app; announced like any switch.
+            if (_apps.Count > 0)
+                Activate(_apps[Math.Min(index, _apps.Count - 1)]);
+        }
+        hosted.App.Dispose();
+        hosted.RaiseClosed();
+        AppsChanged?.Invoke();
     }
 
     /// <summary>Make an app the active one: the previous app is
@@ -98,6 +126,8 @@ public sealed class MultiAppHost : IDisposable
     {
         if (!ReferenceEquals(hosted.Owner, this))
             throw new ArgumentException("the app belongs to a different host");
+        if (hosted.IsClosed)
+            throw new InvalidOperationException("the app is closed");
         if (!ReferenceEquals(_active, hosted))
         {
             if (_active is { } previous)
@@ -184,13 +214,21 @@ public sealed class MultiAppHost : IDisposable
 
     /// <summary>Cycle to the next app (default ctrl+tab). Checked
     /// before the active app sees the input, so no app can trap the
-    /// user; effectively reserved while hosted — a hosted bind dialog
-    /// should refuse it. Null disables.</summary>
+    /// user. Reserved in every hosted app: their
+    /// <see cref="SruiApp.ReservedReasonFor"/> refuses the current
+    /// value with a spoken reason. Null disables.</summary>
     public KeyCombo? NextAppCombo { get; set; } = KeyCombo.WithCtrl(Key.Tab);
 
     /// <summary>Cycle to the previous app (default ctrl+shift+tab).
     /// Null disables.</summary>
     public KeyCombo? PreviousAppCombo { get; set; } = KeyCombo.CtrlShift(Key.Tab);
+
+    private string? SwitchReservation(KeyCombo combo)
+    {
+        if (combo == NextAppCombo || combo == PreviousAppCombo)
+            return $"{combo.DisplayName()} is reserved for switching apps";
+        return null;
+    }
 
     private void Cycle(int direction)
     {
@@ -238,10 +276,13 @@ public sealed class MultiAppHost : IDisposable
     /// headless hosts; <see cref="Tick"/> does this every iteration.</summary>
     public void DispatchEvents()
     {
-        foreach (var hosted in _apps)
-            hosted.DeliverMessages();
-        foreach (var hosted in _apps)
-            hosted.App.DispatchEvents();
+        // By index, not foreach: a handler may Add or Close an app
+        // mid-drain. A shifted slot at worst skips one app until the
+        // next drain.
+        for (var i = 0; i < _apps.Count; i++)
+            _apps[i].DeliverMessages();
+        for (var i = 0; i < _apps.Count; i++)
+            _apps[i].App.DispatchEvents();
     }
 
     // ── The loop ──
@@ -257,7 +298,9 @@ public sealed class MultiAppHost : IDisposable
     /// advance the shared audio, deliver queued messages, then tick
     /// every hosted app (clock, tickers, drain). Returns false once
     /// the window has closed or <see cref="Quit"/> was called. A
-    /// hosted app's own Quit does not stop the host.</summary>
+    /// hosted app's own Quit closes that app
+    /// (<see cref="HostedApp.Close"/>) instead of stopping the host —
+    /// an app's exit path works the same standalone and hosted.</summary>
     public bool Tick()
     {
         if (Host is { } host)
@@ -292,10 +335,16 @@ public sealed class MultiAppHost : IDisposable
             }
         }
         _audio?.Tick();
-        foreach (var hosted in _apps)
-            hosted.DeliverMessages();
-        foreach (var hosted in _apps)
-            hosted.App.Tick();
+        // By index, not foreach: handlers may Add or Close apps
+        // mid-iteration (see DispatchEvents).
+        for (var i = 0; i < _apps.Count; i++)
+            _apps[i].DeliverMessages();
+        for (var i = 0; i < _apps.Count; i++)
+        {
+            var hosted = _apps[i];
+            if (!hosted.App.Tick())
+                hosted.Close();
+        }
         return !_quit;
     }
 
@@ -355,6 +404,7 @@ public sealed class HostedApp
     public SruiApp App { get; }
 
     private List<object> _mailbox = new();
+    private bool _closed;
 
     internal HostedApp(MultiAppHost owner, string name, SruiApp app)
     {
@@ -365,6 +415,32 @@ public sealed class HostedApp
 
     /// <summary>Whether this is the app the user is in.</summary>
     public bool IsActive => ReferenceEquals(Owner.Active, this);
+
+    /// <summary>Whether <see cref="Close"/> has run (directly, or via
+    /// the app's own Quit).</summary>
+    public bool IsClosed => _closed;
+
+    /// <summary>Close the app: it leaves the host's list (switching
+    /// skips it, messages to it drop), its <see cref="SruiApp"/> is
+    /// disposed, and — when it was the active app — its neighbor is
+    /// activated and announced. Closing a background app is silent.
+    /// Idempotent. Like any operation reaching beyond a widget's own
+    /// state, call it at drain time (an Activated handler, or Post);
+    /// an app closing itself may equivalently call its own Quit, which
+    /// the host turns into Close on the next tick.</summary>
+    public void Close()
+    {
+        if (_closed)
+            return;
+        _closed = true;
+        Owner.CloseApp(this);
+    }
+
+    /// <summary>The app closed and left the host. A task-list UI can
+    /// also watch <see cref="MultiAppHost.AppsChanged"/>.</summary>
+    public event Action? Closed;
+
+    internal void RaiseClosed() => Closed?.Invoke();
 
     /// <summary>Let this app's announcements (<see cref="SruiApp.Announce"/>
     /// and widget-emitted announce events — nothing else) through the
@@ -386,10 +462,14 @@ public sealed class HostedApp
     /// <summary>Queue a message for this app; any part of the program
     /// (typically another app's handler) may call it. Delivered on the
     /// host's next tick or <see cref="MultiAppHost.DispatchEvents"/>;
-    /// a message sent from a delivery handler waits for the next one.</summary>
+    /// a message sent from a delivery handler waits for the next one.
+    /// A message to a closed app is dropped silently, so senders need
+    /// no lifetime bookkeeping.</summary>
     public void Send(object message)
     {
         ArgumentNullException.ThrowIfNull(message);
+        if (_closed)
+            return;
         _mailbox.Add(message);
     }
 

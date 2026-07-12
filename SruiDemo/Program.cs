@@ -525,10 +525,11 @@ void OpenFormDialog()
 
 // A bind dialog assembled from the toolkit's three mechanisms: the
 // shortcut field captures the combo exactly as pressed,
-// KeyCombo.ReservedReason names hard conflicts (framework combos —
-// refused on save, with the spoken reason), and Widget.ReservesKey
-// names soft ones (widgets that would swallow the combo while focused —
-// warned on capture, not refused, since a host binding still fires
+// SruiApp.ReservedReasonFor names hard conflicts (framework combos,
+// plus a multi-app host's switching combos when hosted — refused on
+// save, with the spoken reason), and Widget.ReservesKey names soft
+// ones (widgets that would swallow the combo while focused — warned
+// on capture, not refused, since a host binding still fires
 // everywhere else). Enter is capturable, so it saves only once focus
 // has left the field; Tab out, then Enter or Alt+S.
 void OpenBindDialog()
@@ -554,7 +555,7 @@ void OpenBindDialog()
     {
         if (field.Combo is not KeyCombo combo)
             return;
-        if (combo.ReservedReason is string reason)
+        if (app.ReservedReasonFor(combo) is string reason)
         {
             app.Announce($"{reason}.");
             return;
@@ -576,7 +577,7 @@ void OpenBindDialog()
             app.Announce("Press a combination first, or cancel.");
             return;
         }
-        if (combo.ReservedReason is string reason)
+        if (app.ReservedReasonFor(combo) is string reason)
         {
             // Hard-reserved: refuse and stay in the dialog.
             app.Announce($"{reason}.");
