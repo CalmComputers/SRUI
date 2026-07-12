@@ -51,10 +51,16 @@ public sealed unsafe class Sound : IDisposable
 
     // What Load*/… was last called with, so an engine rebuild
     // (SoundManager.Reconfigure) can replay it.
-    private enum LoadKind : byte { None, Plain, Stretched, Reversed }
+    private enum LoadKind : byte { None, Plain, Stretched, Reversed, Streamed, Pull }
     private LoadKind _loadKind;
     private string? _loadPath;
     private float _stretchFactor;
+
+    // Media-playback state: a managed decoder feeding the sound, and
+    // the per-sound effect chain.
+    private PullAudioSource? _pullSource;
+    private FxChain? _fx;
+    private IReadOnlyList<SoundEffect>? _fxSpecs;
 
     // Native-only state snapshotted by ReleaseNative for RecreateNative.
     private bool _rebuildPlaying;
@@ -92,6 +98,48 @@ public sealed unsafe class Sound : IDisposable
         _loadPath = filename;
         FinishLoad();
     }
+
+    /// <summary>Load from a file, streamed: decoded incrementally off
+    /// disk instead of held whole in memory — the media-playback path
+    /// for hours-long files. Seeking works; the decode cache is not
+    /// involved.</summary>
+    public void LoadStreamed(string filename)
+    {
+        UnloadCurrent();
+        var result = NativeMethods.ma_sound_init_from_file(
+            Engine.Handle, filename, NativeMethods.SoundFlagStream, GroupPtr, IntPtr.Zero, _sound);
+        if (result != 0)
+            throw new AudioException($"failed to load '{filename}'");
+        _loadKind = LoadKind.Streamed;
+        _loadPath = filename;
+        FinishLoad();
+    }
+
+    /// <summary>Load from a managed decoder (<see cref="PullAudioSource"/>).
+    /// The sound takes ownership of the source and disposes it on
+    /// unload. Such a sound does not survive an engine rebuild
+    /// (SoundManager.Reconfigure) — the owner reloads.</summary>
+    public void LoadPull(PullAudioSource source)
+    {
+        UnloadCurrent();
+        var result = NativeMethods.ma_sound_init_from_data_source(
+            Engine.Handle, source.Handle, 0, GroupPtr, _sound);
+        if (result != 0)
+        {
+            source.Dispose();
+            throw new AudioException("failed to load from the pull source");
+        }
+        _pullSource = source;
+        _loadKind = LoadKind.Pull;
+        _loadPath = null;
+        FinishLoad();
+    }
+
+    /// <summary>Header-only duration read — no device, no full decode.
+    /// 0 when unknown or unreadable (or the format needs a managed
+    /// decoder). The playlist-metadata probe.</summary>
+    public static ulong ProbeDurationMs(string path) =>
+        NativeMethods.cosmos_probe_duration_ms(path);
 
     /// <summary>Load and time-stretch by `factor` with pitch preserved
     /// (0.5..3.0 reasonable; &gt;1 = longer/slower). The stretched PCM is
@@ -181,17 +229,49 @@ public sealed unsafe class Sound : IDisposable
     private void UnloadCurrent()
     {
         DestroyBinauralNode();
+        // The chain references this sound's node; tear it down first.
+        // The specs survive so a reload (engine rebuild) re-applies.
+        _fx?.Dispose();
+        _fx = null;
         if (_loaded)
         {
             NativeMethods.ma_sound_uninit(_sound);
             _loaded = false;
         }
+        // Only after the sound stopped pulling from it.
+        _pullSource?.Dispose();
+        _pullSource = null;
         if (_bufferRef != IntPtr.Zero)
         {
             NativeMethods.cosmos_buffer_ref_destroy(_bufferRef);
             _bufferRef = IntPtr.Zero;
         }
         FreePcm();
+    }
+
+    /// <summary>Apply an ordered per-sound effect chain (kinds
+    /// repeatable), replacing the previous one; parameter-only changes
+    /// swap coefficients glitch-free. Null or empty removes the chain.
+    /// Steam Audio effects degrade to passthrough when phonon is
+    /// unavailable. Re-applied automatically across engine rebuilds;
+    /// call again after any Load* (a load resets the wiring).</summary>
+    public void SetFxChain(IReadOnlyList<SoundEffect>? effects)
+    {
+        if (effects is null || effects.Count == 0)
+        {
+            _fx?.Dispose();
+            _fx = null;
+            _fxSpecs = null;
+            return;
+        }
+        if (!_loaded)
+            throw new AudioException("load a sound before applying an effect chain");
+        _fx ??= new FxChain(
+            Engine,
+            NativeMethods.ma_sound_get_node_ptr(_sound),
+            _group?.NodePtr ?? Engine.Endpoint);
+        _fx.Apply(effects);
+        _fxSpecs = new List<SoundEffect>(effects);
     }
 
     private void FreePcm()
@@ -713,12 +793,21 @@ public sealed unsafe class Sound : IDisposable
                 case LoadKind.Reversed:
                     LoadReversed(_loadPath!);
                     break;
+                case LoadKind.Streamed:
+                    LoadStreamed(_loadPath!);
+                    break;
+                case LoadKind.Pull:
+                    // A managed decoder cannot be replayed from here;
+                    // the owner reloads. The sound stays unloaded.
+                    return;
             }
         }
         catch (AudioException)
         {
             return;
         }
+        if (_fxSpecs is { } specs)
+            SetFxChain(specs);
         Looping = _rebuildLooping;
         PlaybackPosition = _rebuildCursorMs;
         Pan = _rebuildPan;

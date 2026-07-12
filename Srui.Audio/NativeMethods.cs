@@ -133,4 +133,40 @@ internal static class NativeMethods
     [DllImport(Lib)] internal static extern void ma_vocoder_node_set_formant(IntPtr node, float factor);
     [DllImport(Lib)] internal static extern void ma_vocoder_node_set_spread(IntPtr node, float spread);
     [DllImport(Lib)] internal static extern void ma_vocoder_node_set_sibilance(IntPtr node, float amt);
+
+    // ── Media additions (cosmos_media.c) ──
+
+    internal const uint SoundFlagStream = 0x00000001; // MA_SOUND_FLAG_STREAM
+
+    [DllImport(Lib)] internal static extern ulong cosmos_probe_duration_ms([MarshalAs(UnmanagedType.LPUTF8Str)] string path);
+
+    [DllImport(Lib)] internal static extern unsafe IntPtr cosmos_pull_ds_create(
+        uint channels, uint sampleRate, ulong lengthFrames,
+        delegate* unmanaged[Cdecl]<IntPtr, float*, ulong, ulong> onRead,
+        delegate* unmanaged[Cdecl]<IntPtr, ulong, uint> onSeek,
+        IntPtr user);
+    [DllImport(Lib)] internal static extern void cosmos_pull_ds_destroy(IntPtr ds);
+
+    [DllImport(Lib)] internal static extern IntPtr cosmos_lpf_node_create(IntPtr graph, uint sampleRate, double cutoff, uint order);
+    [DllImport(Lib)] internal static extern uint cosmos_lpf_node_reinit(IntPtr node, uint sampleRate, double cutoff, uint order);
+    [DllImport(Lib)] internal static extern void cosmos_lpf_node_destroy(IntPtr node);
+    [DllImport(Lib)] internal static extern IntPtr cosmos_hpf_node_create(IntPtr graph, uint sampleRate, double cutoff, uint order);
+    [DllImport(Lib)] internal static extern uint cosmos_hpf_node_reinit(IntPtr node, uint sampleRate, double cutoff, uint order);
+    [DllImport(Lib)] internal static extern void cosmos_hpf_node_destroy(IntPtr node);
+    [DllImport(Lib)] internal static extern IntPtr cosmos_bpf_node_create(IntPtr graph, uint sampleRate, double cutoff, uint order);
+    [DllImport(Lib)] internal static extern uint cosmos_bpf_node_reinit(IntPtr node, uint sampleRate, double cutoff, uint order);
+    [DllImport(Lib)] internal static extern void cosmos_bpf_node_destroy(IntPtr node);
+    [DllImport(Lib)] internal static extern IntPtr cosmos_loshelf_node_create(IntPtr graph, uint sampleRate, double gainDb, double slope, double frequency);
+    [DllImport(Lib)] internal static extern uint cosmos_loshelf_node_reinit(IntPtr node, uint sampleRate, double gainDb, double slope, double frequency);
+    [DllImport(Lib)] internal static extern void cosmos_loshelf_node_destroy(IntPtr node);
+    [DllImport(Lib)] internal static extern IntPtr cosmos_hishelf_node_create(IntPtr graph, uint sampleRate, double gainDb, double slope, double frequency);
+    [DllImport(Lib)] internal static extern uint cosmos_hishelf_node_reinit(IntPtr node, uint sampleRate, double gainDb, double slope, double frequency);
+    [DllImport(Lib)] internal static extern void cosmos_hishelf_node_destroy(IntPtr node);
+    [DllImport(Lib)] internal static extern IntPtr cosmos_peak_node_create(IntPtr graph, uint sampleRate, double gainDb, double q, double frequency);
+    [DllImport(Lib)] internal static extern uint cosmos_peak_node_reinit(IntPtr node, uint sampleRate, double gainDb, double q, double frequency);
+    [DllImport(Lib)] internal static extern void cosmos_peak_node_destroy(IntPtr node);
+
+    [DllImport(Lib)] internal static extern IntPtr cosmos_binauralizer_node_create(IntPtr graph);
+    [DllImport(Lib)] internal static extern void cosmos_binauralizer_node_destroy(IntPtr node);
+    [DllImport(Lib)] internal static extern int ma_phonon_binauralizer_node_set_directions(IntPtr node, float lx, float ly, float lz, float rx, float ry, float rz);
 }
