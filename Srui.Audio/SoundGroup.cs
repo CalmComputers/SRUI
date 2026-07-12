@@ -155,32 +155,90 @@ public sealed class SoundGroup : IDisposable
 
     // ── Effect chain ──
 
-    /// <summary>Rewire group → enabled effects (fixed order) → downstream.</summary>
+    // The ordered, kinds-repeatable chain (SetFxChain); wired ahead of
+    // the classic slots.
+    private readonly List<(SoundEffect Spec, IntPtr Node)> _custom = new();
+    private IReadOnlyList<SoundEffect>? _customSpecs;
+
+    /// <summary>An ordered effect chain with repeatable kinds — the
+    /// general form of the classic slot effects below, which remain as
+    /// the one-of-each convenience. Wiring: group → these (in order) →
+    /// enabled slots → downstream. Parameter-only changes swap in
+    /// place; shape changes rebuild. Null or empty removes the chain.
+    /// Survives engine rebuilds.</summary>
+    public void SetFxChain(IReadOnlyList<SoundEffect>? effects)
+    {
+        if (effects is null || effects.Count == 0)
+        {
+            DestroyCustomChain();
+            _customSpecs = null;
+            RebuildEffectChain();
+            return;
+        }
+        var sameShape = _custom.Count == effects.Count;
+        for (var i = 0; sameShape && i < effects.Count; i++)
+            sameShape = FxNodes.SameShape(effects[i], _custom[i].Spec);
+        if (sameShape)
+        {
+            for (var i = 0; i < effects.Count; i++)
+                if (!effects[i].Equals(_custom[i].Spec))
+                {
+                    FxNodes.Reinit(Engine, _custom[i].Node, effects[i]);
+                    _custom[i] = (effects[i], _custom[i].Node);
+                }
+        }
+        else
+        {
+            DestroyCustomChain();
+            foreach (var spec in effects)
+            {
+                var node = FxNodes.Create(Engine, spec);
+                if (node != IntPtr.Zero)
+                    _custom.Add((spec, node));
+            }
+            RebuildEffectChain();
+        }
+        _customSpecs = new List<SoundEffect>(effects);
+    }
+
+    private void DestroyCustomChain()
+    {
+        foreach (var (spec, node) in _custom)
+        {
+            NativeMethods.ma_node_detach_output_bus(node, 0);
+            FxNodes.Destroy(node, spec);
+        }
+        _custom.Clear();
+    }
+
+    /// <summary>Rewire group → custom chain (in order) → enabled slot
+    /// effects (fixed order) → downstream.</summary>
     private void RebuildEffectChain()
     {
         var groupNode = NodePtr;
         if (groupNode == IntPtr.Zero)
             return;
 
-        Span<IntPtr> chain = stackalloc IntPtr[7];
-        var count = 0;
-        if (_filter != IntPtr.Zero) chain[count++] = _filter;
-        if (_eq != IntPtr.Zero) chain[count++] = _eq;
-        if (_distortion != IntPtr.Zero) chain[count++] = _distortion;
-        if (_vocoder != IntPtr.Zero) chain[count++] = _vocoder;
-        if (_disperser != IntPtr.Zero) chain[count++] = _disperser;
-        if (_delay != IntPtr.Zero) chain[count++] = _delay;
-        if (_reverb != IntPtr.Zero) chain[count++] = _reverb;
+        var chain = new List<IntPtr>(_custom.Count + 7);
+        foreach (var (_, node) in _custom)
+            chain.Add(node);
+        if (_filter != IntPtr.Zero) chain.Add(_filter);
+        if (_eq != IntPtr.Zero) chain.Add(_eq);
+        if (_distortion != IntPtr.Zero) chain.Add(_distortion);
+        if (_vocoder != IntPtr.Zero) chain.Add(_vocoder);
+        if (_disperser != IntPtr.Zero) chain.Add(_disperser);
+        if (_delay != IntPtr.Zero) chain.Add(_delay);
+        if (_reverb != IntPtr.Zero) chain.Add(_reverb);
 
         NativeMethods.ma_node_detach_output_bus(groupNode, 0);
-        for (var i = 0; i < count; i++)
-            NativeMethods.ma_node_detach_output_bus(chain[i], 0);
+        foreach (var node in chain)
+            NativeMethods.ma_node_detach_output_bus(node, 0);
 
         var prev = groupNode;
-        for (var i = 0; i < count; i++)
+        foreach (var node in chain)
         {
-            NativeMethods.ma_node_attach_output_bus(prev, 0, chain[i], 0);
-            prev = chain[i];
+            NativeMethods.ma_node_attach_output_bus(prev, 0, node, 0);
+            prev = node;
         }
         NativeMethods.ma_node_attach_output_bus(prev, 0, DownstreamNodePtr, 0);
     }
@@ -545,10 +603,13 @@ public sealed class SoundGroup : IDisposable
             if (_reverbIrPath is { } irPath && !SetReverbIr(irPath))
                 _reverbIrPath = null;
         }
+        if (_customSpecs is { } customs)
+            SetFxChain(customs);
     }
 
     private void DestroyEffects()
     {
+        DestroyCustomChain();
         if (_filter != IntPtr.Zero) NativeMethods.cosmos_filter_destroy(_filter);
         if (_eq != IntPtr.Zero) NativeMethods.cosmos_eq_destroy(_eq);
         if (_distortion != IntPtr.Zero) NativeMethods.cosmos_distortion_destroy(_distortion);
@@ -566,11 +627,12 @@ public sealed class SoundGroup : IDisposable
         IsDisposed = true;
 
         // Tear the effects out of the graph before the group goes away.
-        var hadEffects = _filter != IntPtr.Zero || _eq != IntPtr.Zero
+        var hadEffects = _custom.Count > 0 || _filter != IntPtr.Zero || _eq != IntPtr.Zero
             || _distortion != IntPtr.Zero || _vocoder != IntPtr.Zero
             || _disperser != IntPtr.Zero || _delay != IntPtr.Zero
             || _reverb != IntPtr.Zero;
         DestroyEffects();
+        _customSpecs = null;
         if (hadEffects)
             RebuildEffectChain();
 
