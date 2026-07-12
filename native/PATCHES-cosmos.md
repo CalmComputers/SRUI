@@ -94,3 +94,19 @@ conversion fails:
 
 This is also why the libopus vtable keeps onInitFile disabled in
 entry 4: one consistent, VFS-mediated open path for everything.
+
+# 8. Media additions: cosmos_media.c (new file) and the binauralizer
+
+cosmos_media.c carries the media-playback surface: a device-free
+duration probe over the same decoder stack as cosmos_decode_file
+(cosmos_probe_duration_ms), a pull data source whose read/seek
+callbacks let managed decoders feed the engine (cosmos_pull_ds_*),
+struct-free wrappers over miniaudio's order-based filter nodes
+(lpf/hpf/bpf/loshelf/hishelf/peak: create/reinit/destroy, stereo f32),
+and cosmos_binauralizer_node_create/destroy with the global phonon
+context baked in.
+
+miniaudio_phonon.c/h additionally regained the binauralizer node
+(ma_phonon_binauralizer_node_*: stereo in, stereo out, two parallel
+HRTFs summed) — ported back from the Lightspeed rust-era glue this
+file descends from.

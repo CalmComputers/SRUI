@@ -44,6 +44,7 @@ target_compile_options(opusfile PRIVATE /w)
 add_library(cosmos SHARED
     miniaudio_impl.c
     cosmos_extra.c
+    cosmos_media.c
     miniaudio_libopus.c
     ma_convreverb.c
     ma_delay.c
