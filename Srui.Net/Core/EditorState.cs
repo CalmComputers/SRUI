@@ -525,15 +525,15 @@ internal sealed class EditorState
         return SelectedText() is string text ? $"{text} selected" : "blank";
     }
 
-    /// <summary>Replace the content (cursor clamped, selection cleared).
-    /// No-op when the text already matches — chunk compare, no rope
-    /// materialization.</summary>
+    /// <summary>Replace the content (cursor clamped onto a grapheme
+    /// boundary, selection cleared). No-op when the text already matches
+    /// — chunk compare, no rope materialization.</summary>
     public void SetText(string text)
     {
         if (!Rope.ContentEquals(text))
         {
             Rope = new Rope(text);
-            Cursor = Math.Min(Cursor, Rope.Length);
+            Cursor = TextNav.SnapToGraphemeBoundary(Rope, Cursor);
             Selection = null;
         }
     }

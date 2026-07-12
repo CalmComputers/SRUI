@@ -1435,11 +1435,45 @@ public class EditBoxTests
     }
 
     [Fact]
-    public void CursorPositionSnapsOffSurrogateHalves()
+    public void CursorPositionSnapsToGraphemeBoundaries()
     {
         var ui = new TestUi();
-        var notes = new EditBox(ui.App, "Notes", "a𐐷b"); // 𐐷 is astral: two UTF-16 units
-        notes.CursorPosition = 2; // middle of the surrogate pair
+
+        var astral = new EditBox(ui.App, "Astral", "a𐐷b"); // 𐐷 is astral: two UTF-16 units
+        astral.CursorPosition = 2; // middle of the surrogate pair
+        Assert.Equal(1, astral.CursorPosition);
+
+        var combining = new EditBox(ui.App, "Combining", "ae\u0301b"); // e + combining acute
+        combining.CursorPosition = 2; // between the base and its mark
+        Assert.Equal(1, combining.CursorPosition);
+
+        var crlf = new EditBox(ui.App, "Crlf", "a\r\nb", multiline: true);
+        crlf.CursorPosition = 2; // between CR and LF
+        Assert.Equal(1, crlf.CursorPosition);
+
+        var zwj = new EditBox(ui.App, "Zwj", "\U0001F468\u200D\U0001F469"); // man ZWJ woman
+        zwj.CursorPosition = 3; // after the ZWJ, inside the cluster
+        Assert.Equal(0, zwj.CursorPosition);
+    }
+
+    [Fact]
+    public void SelectionEndpointsSnapToGraphemeBoundaries()
+    {
+        var ui = new TestUi();
+        var notes = new EditBox(ui.App, "Notes", "a\r\nb", multiline: true);
+        notes.Selection = (2, 4); // anchor between CR and LF
+        Assert.Equal((1, 4), notes.Selection);
+        Assert.Equal("\r\nb", notes.SelectedText);
+    }
+
+    [Fact]
+    public void SetTextSnapsTheSurvivingCursorToAGraphemeBoundary()
+    {
+        var ui = new TestUi();
+        var notes = new EditBox(ui.App, "Notes", "hello");
+        notes.CursorPosition = 2;
+
+        notes.Text = "a\U0001F600"; // clamp would land mid-pair
         Assert.Equal(1, notes.CursorPosition);
     }
 

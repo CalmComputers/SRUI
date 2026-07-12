@@ -146,6 +146,27 @@ internal static class TextNav
         return PrevGrapheme(rope, pos) is int prev ? rope.Substring(prev, pos) : null;
     }
 
+    /// <summary>Clamp a position to the text and snap it backward onto a
+    /// grapheme cluster boundary, so it can never land inside a surrogate
+    /// pair, a combining sequence, a CRLF, or an emoji ZWJ sequence.
+    /// Walks clusters forward from the line start (the one nearby
+    /// boundary that is certain — segmenting backward from a mid-cluster
+    /// position is not reliable), so the cost is O(line length).</summary>
+    public static int SnapToGraphemeBoundary(Rope rope, int pos)
+    {
+        pos = Math.Clamp(pos, 0, rope.Length);
+        if (pos == 0 || pos >= rope.Length)
+            return pos;
+        var p = LineStart(rope, pos);
+        while (p < pos && NextGrapheme(rope, p) is int next)
+        {
+            if (next > pos)
+                return p;
+            p = next;
+        }
+        return pos;
+    }
+
     // ── Word boundary navigation (code-editor style) ──
 
     /// <summary>Move to the previous word boundary: consume one run of

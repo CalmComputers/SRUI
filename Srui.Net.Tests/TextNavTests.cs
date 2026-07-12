@@ -406,6 +406,37 @@ public class TextNavTests
     }
 
     [Fact]
+    public void SnapToGraphemeBoundaryNeverSplitsClusters()
+    {
+        // Surrogate pair, combining sequence, CRLF, emoji ZWJ sequence.
+        var r = R("a\U0001F600e\u0301\r\n\U0001F468\u200D\U0001F469z");
+
+        // Enumerate the true boundaries, then check every position snaps
+        // backward onto one, boundaries staying put.
+        var boundaries = new List<int> { 0 };
+        while (TextNav.NextGrapheme(r, boundaries[^1]) is int next)
+            boundaries.Add(next);
+        Assert.Equal(boundaries[^1], r.Length);
+
+        foreach (var pos in Enumerable.Range(0, r.Length + 1))
+        {
+            var snapped = TextNav.SnapToGraphemeBoundary(r, pos);
+            Assert.Contains(snapped, boundaries);
+            Assert.True(snapped <= pos);
+            if (boundaries.Contains(pos))
+                Assert.Equal(pos, snapped);
+            // The next boundary is past pos: snapping went to the
+            // cluster's own start, not an earlier one.
+            if (snapped != pos)
+                Assert.True(TextNav.NextGrapheme(r, snapped) > pos);
+        }
+
+        // Clamping.
+        Assert.Equal(0, TextNav.SnapToGraphemeBoundary(r, -5));
+        Assert.Equal(r.Length, TextNav.SnapToGraphemeBoundary(r, r.Length + 5));
+    }
+
+    [Fact]
     public void LineColumnConversionMatchesNaiveReference()
     {
         var rng = new Random(987654);

@@ -8,7 +8,8 @@ namespace Srui;
 /// widget in single-line (and read-only) ones. Positions on this surface
 /// (<see cref="CursorPosition"/>, <see cref="Selection"/>) are UTF-16
 /// code-unit offsets into <see cref="Text"/>; setters clamp to the text
-/// and snap out of the middle of a surrogate pair.</summary>
+/// and snap backward onto a grapheme cluster boundary, so a position can
+/// never land inside a surrogate pair, a combining sequence, or a CRLF.</summary>
 public class EditBox : Widget
 {
     private readonly EditorState _editor;
@@ -34,7 +35,8 @@ public class EditBox : Widget
     public bool Multiline => _editor.Multiline;
 
     /// <summary>The full text. Setting replaces the content (cursor
-    /// clamped, selection cleared) and speaks the new value when focused.</summary>
+    /// clamped onto a grapheme boundary, selection cleared) and speaks
+    /// the new value when focused.</summary>
     public string Text
     {
         get => _editor.Text();
@@ -259,9 +261,9 @@ public class EditBox : Widget
 
     // ── Position queries ──
     // Pure reads over the text engine: no state changes, no announcements.
-    // Positions clamp to the text and snap off surrogate halves, like the
-    // position setters. Lines and columns are 0-based; a column is the
-    // UTF-16 code-unit offset from its line start.
+    // Positions clamp to the text and snap onto grapheme boundaries, like
+    // the position setters. Lines and columns are 0-based; a column is
+    // the UTF-16 code-unit offset from its line start.
 
     /// <summary>The start of the word at or before the position — where
     /// Ctrl+Left from there would land.</summary>
@@ -304,19 +306,14 @@ public class EditBox : Widget
 
     /// <summary>The position of a 0-based (line, column): the line clamps
     /// to the text's last line, the column to the addressed line's end,
-    /// and the result snaps off surrogate halves.</summary>
+    /// and the result snaps onto a grapheme boundary.</summary>
     public int PositionAt(int line, int column) =>
         Snap(TextNav.PositionOfLineColumn(_editor.Rope, Math.Max(line, 0), Math.Max(column, 0)));
 
-    /// <summary>Clamp a position to the text and snap it off the middle
-    /// of a surrogate pair.</summary>
-    private int Snap(int position)
-    {
-        var pos = Math.Clamp(position, 0, _editor.Length);
-        if (pos > 0 && pos < _editor.Length && char.IsLowSurrogate(_editor.Rope.CharAt(pos)))
-            pos--;
-        return pos;
-    }
+    /// <summary>Clamp a position to the text and snap it backward onto a
+    /// grapheme cluster boundary — never inside a surrogate pair, a
+    /// combining sequence, a CRLF, or an emoji ZWJ sequence.</summary>
+    private int Snap(int position) => TextNav.SnapToGraphemeBoundary(_editor.Rope, position);
 
     public override bool ReservesKey(KeyCombo combo)
     {
