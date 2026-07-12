@@ -64,6 +64,28 @@ public class FilterListBox<T> : Widget where T : class, IListItem
             _selected = 0;
         });
 
+    /// <summary>Replace the item list without any announcement — for
+    /// subclass handlers that reshape base-owned state mid-dispatch,
+    /// where the enclosing input flow speaks (see
+    /// <see cref="ListBox{T}.SetItemsSilently"/>). The selection is
+    /// clamped, not reset.</summary>
+    protected void SetItemsSilently(IReadOnlyList<T> items)
+    {
+        _items = new List<T>(items);
+        var filtered = Results;
+        if (filtered.Count > 0 && _selected >= filtered.Count)
+            _selected = filtered.Count - 1;
+    }
+
+    /// <summary>The filter text changed, before the new results are
+    /// reported. Live-source subclasses override this to reshape
+    /// <see cref="Items"/> for the new filter (via
+    /// <see cref="SetItemsSilently"/>) so the report reads the fresh
+    /// results; the base does nothing.</summary>
+    protected virtual void OnFilterChanged(string filter)
+    {
+    }
+
     /// <summary>The selected result's line (or "empty"), pulled fresh at
     /// announcement time — item lines computed from mutated application
     /// state read correctly with no sync call.</summary>
@@ -94,6 +116,7 @@ public class FilterListBox<T> : Widget where T : class, IListItem
     /// new results.</summary>
     private void FilterChanged()
     {
+        OnFilterChanged(_filter);
         _selected = 0;
         var filtered = Results;
         Promulgate(new AccessibilityEvent.Filter(
