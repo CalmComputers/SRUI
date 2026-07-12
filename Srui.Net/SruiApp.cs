@@ -29,7 +29,21 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     public Speech? Voice => _speechReader?.Voice;
 
     private SoundManager? _audio;
+    private bool _sharedAudio;
     private uint _audioPeriodFrames;
+
+    /// <summary>Where <see cref="Audio"/> comes from when a host shares
+    /// one manager across several apps (MultiAppHost). A manager from
+    /// here is host-owned: the app neither ticks nor disposes it.</summary>
+    internal Func<SoundManager>? AudioSource { get; set; }
+
+    /// <summary>Whether this app is the one the user is currently in.
+    /// A standalone app is always foreground; a host running several
+    /// apps (MultiAppHost) maintains the flag on every switch. The
+    /// engine ignores it — it exists for app code to branch on, e.g.
+    /// routing a notification to an earcon instead of speech while
+    /// backgrounded.</summary>
+    public bool IsForeground { get; set; } = true;
 
     /// <summary>The audio device period in frames. The getter returns
     /// the period the device actually granted, creating the app-owned
@@ -43,7 +57,9 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     /// transport, playback cursor — replayed against the new device,
     /// but output gaps briefly while the device restarts, so change it
     /// at silence-tolerant moments (startup, menus, an options apply).
-    /// Re-assigning the current request is a no-op.</summary>
+    /// Re-assigning the current request is a no-op. Under a multi-app
+    /// host there is one shared device: setting this reconfigures it
+    /// for every app.</summary>
     public uint AudioPeriodFrames
     {
         get => Audio.DevicePeriodFrames;
@@ -66,8 +82,19 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     /// spatialization) every iteration — <see cref="LoopWaitMs"/> at
     /// idle — so SoundManager.Tick never needs manual driving here.
     /// Consumers without an SruiApp use Srui.Audio standalone and tick
-    /// their own loop.</summary>
-    public SoundManager Audio => _audio ??= new SoundManager(_audioPeriodFrames);
+    /// their own loop. Under a multi-app host the manager is the host's
+    /// shared one, ticked and disposed by the host.</summary>
+    public SoundManager Audio => _audio ??= CreateAudio();
+
+    private SoundManager CreateAudio()
+    {
+        if (AudioSource is { } source)
+        {
+            _sharedAudio = true;
+            return source();
+        }
+        return new SoundManager(_audioPeriodFrames);
+    }
 
     /// <summary>Called with input nothing consumed — the place for
     /// host-side key bindings. Return true when handled.</summary>
@@ -122,7 +149,8 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
 
     public void Dispose()
     {
-        _audio?.Dispose();
+        if (!_sharedAudio)
+            _audio?.Dispose();
         _speechReader?.Dispose();
         Host?.Dispose();
     }
@@ -334,9 +362,11 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     public bool Tick()
     {
         // Every iteration, not just on input: tickers fire from here,
-        // and audio automation advances at the tick cadence.
+        // and audio automation advances at the tick cadence. A shared
+        // manager is the host's to tick, once for all apps.
         Engine.SetNow((ulong)_clock.ElapsedMilliseconds);
-        _audio?.Tick();
+        if (!_sharedAudio)
+            _audio?.Tick();
         if (Host is SdlHost host)
         {
             foreach (var hostEvent in host.Pump(LoopWaitMs))
