@@ -269,6 +269,47 @@ public class MultiAppHostTests
         ui.Host.Interrupt();
         Assert.Equal(1, ui.Reader.Interrupts);
     }
+
+    [Fact]
+    public void FocusOnlyActivationSkipsTheName()
+    {
+        var (ui, notes, inbox, _, _) = TwoApps();
+        ui.Host.Activate(notes);
+        ui.Drain();
+
+        ui.Host.Activate(inbox, SwitchAnnouncement.FocusOnly);
+        var spoken = ui.Spoken();
+        var utterance = Assert.Single(spoken);
+        Assert.DoesNotContain("Inbox", utterance);
+        Assert.StartsWith("Messages", utterance);
+        Assert.True(inbox.IsActive);
+    }
+
+    [Fact]
+    public void SilentActivationOfAVisitedAppSpeaksNothing()
+    {
+        var (ui, notes, inbox, _, _) = TwoApps();
+        ui.Host.Activate(inbox);
+        ui.Drain();
+        ui.Host.Activate(notes);
+        ui.Drain();
+
+        ui.Host.Activate(inbox, SwitchAnnouncement.Silent);
+        Assert.Empty(ui.Spoken());
+        Assert.True(inbox.IsActive);
+    }
+
+    [Fact]
+    public void ARenamedAppSpeaksItsNewNameFromTheNextSwitch()
+    {
+        var (ui, notes, inbox, _, _) = TwoApps();
+        ui.Host.Activate(inbox);
+        notes.Name = "Notes — draft.txt";
+        ui.Drain();
+
+        ui.Host.Activate(notes);
+        Assert.Equal("Notes — draft.txt", ui.Spoken()[0]);
+    }
 }
 
 public class HostedAppLifecycleTests

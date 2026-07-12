@@ -2,6 +2,28 @@ using Srui.Audio;
 
 namespace Srui;
 
+/// <summary>How much an app switch says. The grades map to how the
+/// user got there: a cycle combo needs the destination named, a pick
+/// from a task list already named it, and a programmatic restore may
+/// want to say something else entirely.</summary>
+public enum SwitchAnnouncement
+{
+    /// <summary>The app's name, then its focused widget with context —
+    /// the window-switch announcement. What the switching combos use.</summary>
+    NameAndFocus,
+
+    /// <summary>Only the focused widget with context. For activations
+    /// where the user just chose the app by name — a task list, a
+    /// launcher — and repeating it would be noise.</summary>
+    FocusOnly,
+
+    /// <summary>Nothing is queued; the caller speaks, or nothing does.
+    /// The first time an app ever gains focus, establishing that focus
+    /// still announces the focused widget — truly silent switches are
+    /// to apps already visited.</summary>
+    Silent,
+}
+
 /// <summary>
 /// One window, several apps: owns the single SDL window, a shared
 /// speech reader, and a shared sound manager, and multiplexes them
@@ -119,10 +141,13 @@ public sealed class MultiAppHost : IDisposable
     /// <summary>Make an app the active one: the previous app is
     /// backgrounded (its <see cref="SruiApp.FocusLost"/> runs, so
     /// held-key state zeroes), and the new one takes over input and
-    /// speech, announcing its name and then its focused widget with
-    /// context — the window-switch announcement. Activating the active
-    /// app just re-announces it.</summary>
-    public void Activate(HostedApp hosted)
+    /// speech. What the switch says is the caller's choice
+    /// (<see cref="SwitchAnnouncement"/>): the full name-then-focus
+    /// announcement by default, focus alone for a task-list pick,
+    /// or nothing. Activating the active app just re-announces it
+    /// at the same grade.</summary>
+    public void Activate(
+        HostedApp hosted, SwitchAnnouncement announcement = SwitchAnnouncement.NameAndFocus)
     {
         if (!ReferenceEquals(hosted.Owner, this))
             throw new ArgumentException("the app belongs to a different host");
@@ -140,8 +165,10 @@ public sealed class MultiAppHost : IDisposable
             hosted.App.IsForeground = true;
         }
         hosted.App.EnsureFocus();
-        hosted.App.Announce(hosted.Name);
-        hosted.App.ReannounceWithContext();
+        if (announcement == SwitchAnnouncement.NameAndFocus)
+            hosted.App.Announce(hosted.Name);
+        if (announcement != SwitchAnnouncement.Silent)
+            hosted.App.ReannounceWithContext();
         hosted.RaiseActivated();
     }
 
@@ -397,8 +424,12 @@ public sealed class HostedApp
 {
     internal MultiAppHost Owner { get; }
 
-    /// <summary>The name switching announces.</summary>
-    public string Name { get; }
+    /// <summary>The name switching announces. Read at announcement
+    /// time, so a rename (an editor adopting its document's name, a
+    /// player showing its track) speaks from the next switch on; the
+    /// change itself is silent. Task lists reading it live via
+    /// <see cref="IListItem.Text"/> need no sync call either.</summary>
+    public string Name { get; set; }
 
     /// <summary>The app: build widgets into it as usual.</summary>
     public SruiApp App { get; }

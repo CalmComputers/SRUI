@@ -1,13 +1,27 @@
-// Three apps in one window under a MultiAppHost: ctrl+tab and
-// ctrl+shift+tab switch between them. Notes sends messages to Inbox
-// (the messaging path); Inbox announces arrivals from any app
-// (AnnouncesInBackground); Stopwatch keeps running while backgrounded
-// but its periodic announcements stay private to it (no flag).
+// Four apps in one window under a MultiAppHost: ctrl+tab and
+// ctrl+shift+tab cycle (speaking the app name), and Home's task list
+// switches directly (FocusOnly — you just chose the name, so it isn't
+// repeated). Notes sends messages to Inbox (the messaging path); Inbox
+// announces arrivals from any app (AnnouncesInBackground); Stopwatch
+// keeps running while backgrounded but its periodic announcements stay
+// private to it (no flag), and it can close itself.
 
 using MultiAppDemo;
 using Srui;
 
 using var host = new MultiAppHost("SRUI Multi-App Demo");
+
+// ── Home: the hub — a live task list; Enter switches to the picked
+// app without re-announcing its name ──
+
+var home = host.Add("Home");
+var taskList = new ListBox<AppTask>(
+    home.App, "Tasks", Array.Empty<AppTask>(), numbered: true, activateItems: true);
+taskList.Activated += () =>
+{
+    if (taskList.SelectedItem is { } task)
+        host.Activate(task.Hosted, SwitchAnnouncement.FocusOnly);
+};
 
 // ── Notes: compose a note, send it to Inbox ──
 
@@ -85,12 +99,33 @@ send.Activated += () =>
     notes.App.Announce("Sent");
 };
 
+// The task list tracks the app set live: names are read at
+// announcement time, and AppsChanged covers closes (the stopwatch)
+// and any future additions.
+void RefreshTasks() => taskList.Items = host.Apps
+    .Where(hosted => !ReferenceEquals(hosted, home))
+    .Select(hosted => new AppTask(hosted))
+    .ToList();
+host.AppsChanged += RefreshTasks;
+RefreshTasks();
+
 host.Run();
 
 namespace MultiAppDemo
 {
     /// <summary>What Notes sends and Inbox receives.</summary>
     public sealed record NoteMessage(string Text);
+
+    /// <summary>A task-list entry: the line is the hosted app's name,
+    /// read live, so a renamed app needs no list refresh.</summary>
+    public sealed class AppTask : IListItem
+    {
+        public HostedApp Hosted { get; }
+
+        public AppTask(HostedApp hosted) => Hosted = hosted;
+
+        public string Text => Hosted.Name;
+    }
 
     /// <summary>Read-only elapsed display: the value is computed when an
     /// announcement needs it, never stored.</summary>
