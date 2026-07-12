@@ -86,6 +86,16 @@ public class FilterListBox<T> : Widget where T : class, IListItem
     {
     }
 
+    /// <summary>The selected position within <see cref="Results"/> —
+    /// for subclasses restoring selection identity after a silent item
+    /// swap reordered the results. The setter clamps and says nothing;
+    /// user-driven selection speaks through navigation as always.</summary>
+    protected int SelectedResultIndex
+    {
+        get => _selected;
+        set => _selected = Math.Clamp(value, 0, Math.Max(0, Results.Count - 1));
+    }
+
     /// <summary>The selected result's line (or "empty"), pulled fresh at
     /// announcement time — item lines computed from mutated application
     /// state read correctly with no sync call.</summary>

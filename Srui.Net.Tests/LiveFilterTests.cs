@@ -39,8 +39,22 @@ public class LiveFilterTests
             SetItemsSilently(Source(filter));
 
         /// <summary>A poll-driven swap, as a session draining async
-        /// results would do.</summary>
-        public void Refresh() => SetItemsSilently(Source(Filter));
+        /// results would do — keeping the selection on its item when
+        /// the item survived the swap.</summary>
+        public void Refresh()
+        {
+            var kept = SelectedItem?.Text;
+            SetItemsSilently(Source(Filter));
+            if (kept is null)
+                return;
+            var results = Results;
+            for (var i = 0; i < results.Count; i++)
+                if (results[i].Text == kept)
+                {
+                    SelectedResultIndex = i;
+                    return;
+                }
+        }
     }
 
     [Fact]
@@ -101,5 +115,31 @@ public class LiveFilterTests
         // The swapped items are live for focus and navigation.
         ui.Input(InputKind.SpeakFocus);
         Assert.Contains(ui.Spoken(), s => s.Contains("late arrival"));
+    }
+
+    [Fact]
+    public void SelectionIdentitySurvivesAReorderingSwap()
+    {
+        using var ui = new TestUi();
+        var list = new LiveList(ui.App)
+        {
+            Source = _ => new[] { new Item("alpha", 3), new Item("beta", 2) },
+        };
+        list.Focus();
+        ui.Type('x');
+        ui.Input(InputKind.MoveDown); // onto beta
+        ui.Drain();
+
+        // New arrivals outrank beta; the cursor stays on beta anyway.
+        list.Source = _ => new[]
+        {
+            new Item("newcomer", 9), new Item("alpha", 3), new Item("beta", 2),
+        };
+        list.Refresh();
+        Assert.Empty(ui.Spoken());
+        // Had the swap kept the raw position instead of the item, the
+        // cursor would sit on alpha (index 1 of the new order).
+        ui.Input(InputKind.SpeakFocus);
+        Assert.Contains(ui.Spoken(), s => s.Contains("beta"));
     }
 }
