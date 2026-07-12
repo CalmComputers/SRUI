@@ -45,7 +45,10 @@ using (var echoBus = manager.CreateGroup())
 using (var sound = manager.CreateSound(echoBus))
 {
     Console.WriteLine("through a delay bus...");
-    echoBus.EnableDelay(delayMs: 250.0f, feedback: 0.45f, wet: 0.5f, dry: 0.8f);
+    echoBus.SetFxChain(new SoundEffect[]
+    {
+        new SoundEffect.Delay(DelayMs: 250, Feedback: 0.45, Wet: 0.5, Dry: 0.8),
+    });
     sound.Load(wav);
     sound.Play();
     Thread.Sleep(2500);

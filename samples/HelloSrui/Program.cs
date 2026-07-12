@@ -56,12 +56,14 @@ position.Changed += () =>
 
 reverb.Toggled += on =>
 {
-    if (on)
-        bus.EnableReverb(
-            wet: 0.5f, dry: 0.9f, predelayMs: 20.0f, irGain: 1.0f, width: 1.0f,
-            decay: 0.6f, lowcutHz: 120.0f, highcutHz: 9000.0f, diffuse: 0.5f);
-    else
-        bus.DisableReverb();
+    bus.SetFxChain(on
+        ? new SoundEffect[]
+        {
+            new SoundEffect.Reverb(
+                Wet: 0.5, Dry: 0.9, PredelayMs: 20, IrGain: 1, Width: 1,
+                Decay: 0.6, LowcutHz: 120, HighcutHz: 9000, Diffuse: 0.5),
+        }
+        : null);
 };
 
 greet.Activated += () =>

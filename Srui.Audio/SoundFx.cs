@@ -7,9 +7,7 @@ namespace Srui.Audio;
 /// order-based family (order N = N*6 dB/oct); Binauralizer and
 /// Positional are Steam Audio HRTFs and degrade to passthrough when
 /// phonon is unavailable; the heavy kinds (reverb, delay, distortion,
-/// vocoder, three-band EQ) are cosmos's DSP nodes — the same ones
-/// behind <see cref="SoundGroup"/>'s classic fixed-slot bus effects,
-/// which remain as the one-of-each convenience API.
+/// vocoder, three-band EQ) are cosmos's DSP nodes.
 /// </summary>
 public abstract record SoundEffect
 {
@@ -33,6 +31,12 @@ public abstract record SoundEffect
         : SoundEffect;
 
     public sealed record Disperser(double Frequency, int Count, double Q) : SoundEffect;
+
+    /// <summary>The multimode biquad (cosmos's ma_filter node) — the
+    /// only home of notch and allpass; the order-based kinds above
+    /// cover the rest with steeper slopes.</summary>
+    public sealed record Filter(FilterMode Mode, double Frequency, double Q, double GainDb)
+        : SoundEffect;
 
     /// <summary>Convolution reverb. Null IrPath uses the built-in
     /// impulse response.</summary>
@@ -100,6 +104,13 @@ internal static class FxNodes
             case SoundEffect.Disperser:
             {
                 var node = NativeMethods.cosmos_disperser_create(graph, rate);
+                if (node != IntPtr.Zero)
+                    Reinit(engine, node, spec);
+                return node;
+            }
+            case SoundEffect.Filter:
+            {
+                var node = NativeMethods.cosmos_filter_create(graph, rate);
                 if (node != IntPtr.Zero)
                     Reinit(engine, node, spec);
                 return node;
@@ -188,6 +199,12 @@ internal static class FxNodes
                 NativeMethods.ma_disperser_node_set_q(node, (float)q);
                 NativeMethods.ma_disperser_node_set_stages(node, count);
                 break;
+            case SoundEffect.Filter(var mode, var frequency2, var q2, var gain2):
+                NativeMethods.ma_filter_node_set_mode(node, (int)mode);
+                NativeMethods.ma_filter_node_set_freq(node, (float)frequency2);
+                NativeMethods.ma_filter_node_set_q(node, (float)q2);
+                NativeMethods.ma_filter_node_set_gain(node, (float)gain2);
+                break;
             case SoundEffect.Reverb reverb:
                 NativeMethods.ma_convreverb_node_set_wet(node, (float)reverb.Wet);
                 NativeMethods.ma_convreverb_node_set_dry(node, (float)reverb.Dry);
@@ -273,6 +290,9 @@ internal static class FxNodes
                 break;
             case SoundEffect.Disperser:
                 NativeMethods.cosmos_disperser_destroy(node);
+                break;
+            case SoundEffect.Filter:
+                NativeMethods.cosmos_filter_destroy(node);
                 break;
             case SoundEffect.Reverb:
                 NativeMethods.cosmos_reverb_destroy(node);

@@ -629,23 +629,20 @@ void OpenNestedDialog()
 // Switch the SFX bus effect chain: dry, echo, or reverb.
 void ApplyEffect(int index)
 {
-    switch (index)
+    sfxBus.SetFxChain(index switch
     {
-        case 0: // dry
-            sfxBus.DisableDelay();
-            sfxBus.DisableReverb();
-            break;
-        case 1: // echo
-            sfxBus.DisableReverb();
-            sfxBus.EnableDelay(delayMs: 220.0f, feedback: 0.4f, wet: 0.5f, dry: 0.9f);
-            break;
-        case 2: // reverb
-            sfxBus.DisableDelay();
-            sfxBus.EnableReverb(
-                wet: 0.5f, dry: 0.9f, predelayMs: 20.0f, irGain: 1.0f, width: 1.0f,
-                decay: 0.6f, lowcutHz: 120.0f, highcutHz: 9000.0f, diffuse: 0.5f);
-            break;
-    }
+        1 => new SoundEffect[]
+        {
+            new SoundEffect.Delay(DelayMs: 220, Feedback: 0.4, Wet: 0.5, Dry: 0.9),
+        },
+        2 => new SoundEffect[]
+        {
+            new SoundEffect.Reverb(
+                Wet: 0.5, Dry: 0.9, PredelayMs: 20, IrGain: 1, Width: 1,
+                Decay: 0.6, LowcutHz: 120, HighcutHz: 9000, Diffuse: 0.5),
+        },
+        _ => null, // dry
+    });
 }
 
 // A 300ms 880Hz ping with exponential decay, 16-bit mono WAV.
