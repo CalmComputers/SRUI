@@ -113,6 +113,13 @@ public abstract class Widget : IWidgetContainer
         set => Engine.UpdateLabel(Node, label => label.Name = value);
     }
 
+    /// <summary>Rename without the focused-delta announcement — for
+    /// subclass handlers whose flow speaks the transition itself (a
+    /// directory pane adopting the folder it navigated into). The new
+    /// name still reads on every later announcement.</summary>
+    protected void SetNameSilently(string? name) =>
+        Engine.UpdateLabelSilently(Node, label => label.Name = name);
+
     /// <summary>The widget's spoken description; setting speaks the new
     /// description when focused.</summary>
     public string Description

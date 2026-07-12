@@ -26,6 +26,8 @@ public class SilentMutatorTests
 
         public void JumpTo(int index) => SelectSilently(index);
 
+        public void Rename(string name) => SetNameSilently(name);
+
         protected override bool OnInput(in InputEvent input)
         {
             if (input.IsChar(' '))
@@ -131,6 +133,21 @@ public class SilentMutatorTests
 
         ui.Input(InputKind.SpeakFocus);
         Assert.Contains(ui.Spoken(), s => s.Contains("gamma"));
+    }
+
+    [Fact]
+    public void SilentRenameSaysNothingButReadsOnTheNextAnnouncement()
+    {
+        using var ui = new TestUi();
+        var list = new ToggleList(ui.App, ["alpha"]);
+        list.Focus();
+        ui.Drain();
+
+        list.Rename("Documents");
+        Assert.Empty(ui.Spoken());
+
+        ui.Input(InputKind.SpeakFocus);
+        Assert.Contains(ui.Spoken(), s => s.Contains("Documents"));
     }
 
     [Fact]

@@ -169,6 +169,18 @@ internal sealed class CoreUi
         RecoverUnreachableFocus();
     }
 
+    /// <summary>Mutate the label with no focused-delta announcement —
+    /// the engine half of the widget-side silent mutators, for
+    /// subclass flows that speak the transition themselves.</summary>
+    public void UpdateLabelSilently(NodeId id, Action<WidgetLabel> mutate)
+    {
+        var node = _tree.Get(id);
+        if (node is null)
+            return;
+        mutate(node.Label);
+        RecoverUnreachableFocus();
+    }
+
     /// <summary>Speak what changed on the focused widget, property by
     /// property. StateText, shortcuts, and Hidden are structural and stay
     /// silent: state text and shortcuts ride the next focus announcement,
