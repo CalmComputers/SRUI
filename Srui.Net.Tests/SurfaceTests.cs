@@ -1467,6 +1467,126 @@ public class EditBoxTests
     }
 
     [Fact]
+    public void InsertTextSpeaksLikeTypingWhenFocused()
+    {
+        var ui = new TestUi();
+        var notes = new EditBox(ui.App, "Notes", "hello");
+        notes.Focus();
+        notes.CursorPosition = 5;
+        ui.Drain();
+
+        notes.InsertText(" world");
+        Assert.Equal("hello world", notes.Text);
+        Assert.Equal(11, notes.CursorPosition);
+        Assert.Equal(new[] { " world" }, ui.Spoken());
+
+        // Single characters get the typing echo's expansion.
+        notes.InsertText("A");
+        Assert.Equal(new[] { "cap A" }, ui.Spoken());
+        Assert.Equal("hello worldA", notes.Text);
+    }
+
+    [Fact]
+    public void InsertTextReplacesSelectionLikeTyping()
+    {
+        var ui = new TestUi();
+        var notes = new EditBox(ui.App, "Notes", "hello world");
+        notes.Focus();
+        notes.Selection = (0, 5);
+        ui.Drain();
+
+        notes.InsertText("bye");
+        Assert.Equal("bye world", notes.Text);
+        Assert.Equal(3, notes.CursorPosition);
+        Assert.Null(notes.Selection);
+        Assert.Equal(new[] { "Selection removed", "bye" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void InsertTextIsSilentUnfocusedAndIgnoresReadOnly()
+    {
+        var ui = new TestUi();
+        var notes = new EditBox(ui.App, "Notes", "ab") { ReadOnly = true };
+        notes.CursorPosition = 2;
+
+        notes.InsertText("cd");
+        Assert.Equal("abcd", notes.Text);
+        Assert.Empty(ui.Spoken());
+    }
+
+    [Fact]
+    public void InsertTextFlattensNewlinesInSingleLineEditors()
+    {
+        var ui = new TestUi();
+        var single = new EditBox(ui.App, "Single", "");
+        single.InsertText("a\r\nb");
+        Assert.Equal("a b", single.Text);
+
+        var multi = new EditBox(ui.App, "Multi", "", multiline: true);
+        multi.InsertText("a\r\nb");
+        Assert.Equal("a\r\nb", multi.Text);
+    }
+
+    [Fact]
+    public void ReplaceRangeSplicesSilentlyAndMapsTheCursor()
+    {
+        var ui = new TestUi();
+        var notes = new EditBox(ui.App, "Notes", "one two three", multiline: true);
+        notes.Focus();
+        ui.Drain();
+
+        // Cursor before the range keeps its place.
+        notes.ReplaceRange(4, 7, "2");
+        Assert.Equal("one 2 three", notes.Text);
+        Assert.Equal(0, notes.CursorPosition);
+        Assert.Empty(ui.Spoken());
+
+        // Cursor after the range shifts with the length change.
+        notes.CursorPosition = notes.Length;
+        ui.Drain();
+        notes.ReplaceRange(0, 3, "1");
+        Assert.Equal("1 2 three", notes.Text);
+        Assert.Equal(notes.Length, notes.CursorPosition);
+
+        // Cursor inside the range lands at the end of the new text;
+        // reversed bounds are fine.
+        notes.CursorPosition = 6;
+        ui.Drain();
+        notes.ReplaceRange(9, 4, "3");
+        Assert.Equal("1 2 3", notes.Text);
+        Assert.Equal(5, notes.CursorPosition);
+        Assert.Empty(ui.Spoken());
+    }
+
+    [Fact]
+    public void ReplaceRangeMapsSelectionEndpoints()
+    {
+        var ui = new TestUi();
+        var notes = new EditBox(ui.App, "Notes", "abcdef");
+        notes.Focus();
+        notes.Selection = (1, 3);
+        ui.Drain();
+
+        // A splice past the selection leaves it alone.
+        notes.ReplaceRange(4, 6, "XY");
+        Assert.Equal("abcdXY", notes.Text);
+        Assert.Equal((1, 3), notes.Selection);
+        Assert.Equal("bc", notes.SelectedText);
+
+        // A splice across an endpoint remaps it; a swallowed selection
+        // collapses to null.
+        notes.ReplaceRange(0, 2, "Z");
+        Assert.Equal("ZcdXY", notes.Text);
+        Assert.Equal((1, 2), notes.Selection);
+        Assert.Equal("c", notes.SelectedText);
+
+        notes.ReplaceRange(0, 3, "Q");
+        Assert.Null(notes.Selection);
+        Assert.Equal(1, notes.CursorPosition);
+        Assert.Empty(ui.Spoken());
+    }
+
+    [Fact]
     public void ProgrammaticMovementSpeaksLikeTheKeys()
     {
         var ui = new TestUi();

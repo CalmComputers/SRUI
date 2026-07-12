@@ -127,6 +127,71 @@ public class EditBox : Widget
         Promulgate(new AccessibilityEvent.Selection(this, delta, SelectionKind.All));
     }
 
+    // ── Programmatic editing ──
+    // Like the Text setter, these ignore ReadOnly, which guards user
+    // input, not the program.
+
+    /// <summary>Insert text at the cursor, replacing an active selection
+    /// — the programmatic form of typing it, and announced the same way
+    /// when focused: the inserted text (after "Selection removed" when
+    /// one was replaced). The cursor lands after the insertion.
+    /// Single-line editors flatten newlines to spaces, like paste.</summary>
+    public void InsertText(string text)
+    {
+        if (!Multiline)
+            text = text.Replace('\n', ' ').Replace("\r", "");
+        var hadSelection = _editor.DeleteSelectionSilent();
+        if (!hadSelection && text.Length == 0)
+            return;
+        _editor.Rope.Insert(_editor.Cursor, text);
+        _editor.Cursor += text.Length;
+        _editor.PreferredColumn = null;
+        if (!IsFocused)
+            return;
+        if (hadSelection)
+            Promulgate(new AccessibilityEvent.Selection(this, "", SelectionKind.Cleared));
+        if (text.Length != 0)
+            Promulgate(new AccessibilityEvent.Typing(this, text, null, TypingKind.Insert));
+    }
+
+    /// <summary>Replace the range between two positions (either order;
+    /// clamped and snapped) with new text — the silent structural splice
+    /// under find-and-replace and its kin. The caller owns any
+    /// announcement, like a list's SetItem. The cursor and the selection
+    /// endpoints follow the splice: positions before it keep their place,
+    /// positions after it shift with the length change, and positions
+    /// inside it land at the end of the new text. Single-line editors
+    /// flatten newlines to spaces.</summary>
+    public void ReplaceRange(int start, int end, string text)
+    {
+        var from = Snap(start);
+        var to = Snap(end);
+        if (from > to)
+            (from, to) = (to, from);
+        if (!Multiline)
+            text = text.Replace('\n', ' ').Replace("\r", "");
+        if (from == to && text.Length == 0)
+            return;
+        _editor.Rope.Remove(from, to);
+        _editor.Rope.Insert(from, text);
+
+        int Map(int position) => position <= from ? position
+            : position >= to ? position + text.Length - (to - from)
+            : from + text.Length;
+        if (_editor.Selection is (var anchor, var cursor))
+        {
+            var mappedAnchor = Map(anchor);
+            var mappedCursor = Map(cursor);
+            _editor.Selection = mappedAnchor == mappedCursor ? null : (mappedAnchor, mappedCursor);
+            _editor.Cursor = mappedCursor;
+        }
+        else
+        {
+            _editor.Cursor = Map(_editor.Cursor);
+        }
+        _editor.PreferredColumn = null;
+    }
+
     // ── Announced movement ──
     // Each method runs the same handling path as the key it names, so a
     // programmatic move speaks exactly what the user-driven one would —
