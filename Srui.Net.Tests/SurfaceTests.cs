@@ -2014,6 +2014,42 @@ public class FilterListBoxTests
         Assert.Equal(new[] { "Commands list Save File no filter" }, ui.Spoken());
     }
 
+    private sealed class PendingFilterList : FilterListBox
+    {
+        public PendingFilterList(IWidgetContainer parent, string name, IReadOnlyList<string> items)
+            : base(parent, name, items)
+        {
+        }
+
+        public bool Pending { get; set; }
+
+        protected override bool ReportEmptyResults => !Pending;
+    }
+
+    [Fact]
+    public void AnEmptyResultSetStaysSilentWhileThePoolIsFilling()
+    {
+        var ui = new TestUi();
+        var list = new PendingFilterList(ui.App, "Commands", ["Save File"]) { Pending = true };
+        list.Focus();
+        ui.Drain();
+
+        // No verdict yet: an async source may still deliver.
+        ui.Type('x');
+        Assert.Empty(ui.Spoken());
+
+        // A match still reports normally while pending.
+        ui.Input(InputKind.DeleteBackward);
+        ui.Drain();
+        ui.Type('s');
+        Assert.Equal(new[] { "Save File 1 of 1" }, ui.Spoken());
+
+        // With nothing pending, the verdict is back.
+        list.Pending = false;
+        ui.Type('x');
+        Assert.Equal(new[] { "no results" }, ui.Spoken());
+    }
+
     [Fact]
     public void TypingFiltersAndReports()
     {

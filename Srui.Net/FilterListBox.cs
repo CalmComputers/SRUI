@@ -86,6 +86,13 @@ public class FilterListBox<T> : Widget where T : class, IListItem
     {
     }
 
+    /// <summary>Whether a filter change that matches nothing is
+    /// reported ("no results"). A live-source subclass whose pool is
+    /// still filling returns false — an empty set is not yet a
+    /// verdict, and its completion path speaks instead. The base
+    /// always reports.</summary>
+    protected virtual bool ReportEmptyResults => true;
+
     /// <summary>The selected position within <see cref="Results"/> —
     /// for subclasses restoring selection identity after a silent item
     /// swap reordered the results. The setter clamps and says nothing;
@@ -129,8 +136,9 @@ public class FilterListBox<T> : Widget where T : class, IListItem
         OnFilterChanged(_filter);
         _selected = 0;
         var filtered = Results;
-        Promulgate(new AccessibilityEvent.Filter(
-            this, _filter, filtered.Count > 0 ? filtered[0].Text : null, filtered.Count));
+        if (filtered.Count > 0 || ReportEmptyResults)
+            Promulgate(new AccessibilityEvent.Filter(
+                this, _filter, filtered.Count > 0 ? filtered[0].Text : null, filtered.Count));
         PostChanged();
     }
 
