@@ -19,6 +19,7 @@ public sealed class SoundManager : IDisposable
 
     private readonly List<WeakReference<Sound>> _sounds = new();
     private readonly List<WeakReference<SoundGroup>> _groups = new();
+    private readonly List<Sound> _oneshots = new();
 
     /// <param name="periodFrames">Requested device period in frames; 0
     /// selects the 128-frame default (~2.7ms at 48kHz — lowest
@@ -92,6 +93,7 @@ public sealed class SoundManager : IDisposable
             if (weak.TryGetTarget(out var sound))
                 sound.Dispose();
         _sounds.Clear();
+        _oneshots.Clear();
         foreach (var weak in _groups)
             if (weak.TryGetTarget(out var group))
                 group.Dispose();
@@ -101,11 +103,20 @@ public sealed class SoundManager : IDisposable
     }
 
     /// <summary>Create a sound routed to the engine endpoint (or through
-    /// `group` when given). Load it, position it, play it.</summary>
-    public Sound CreateSound(SoundGroup? group = null)
+    /// `group` when given). Load it, position it, play it.
+    ///
+    /// A oneshot sound is owned by the manager: the caller may drop the
+    /// returned reference immediately, and the manager disposes the sound
+    /// on the first <see cref="Tick"/> after it finishes playing (fire and
+    /// forget). Don't make a oneshot loop or pause it indefinitely — a
+    /// oneshot that never reaches its end (or is never played) is held
+    /// until the caller disposes it or the manager is disposed.</summary>
+    public Sound CreateSound(SoundGroup? group = null, bool oneshot = false)
     {
         var sound = new Sound(this, group);
         _sounds.Add(new WeakReference<Sound>(sound));
+        if (oneshot)
+            _oneshots.Add(sound);
         return sound;
     }
 
@@ -118,12 +129,13 @@ public sealed class SoundManager : IDisposable
         return group;
     }
 
-    /// <summary>Advance per-sound and per-group automation and refresh
-    /// spatialization. Equivalent to nudging the listener.</summary>
+    /// <summary>Advance per-sound and per-group automation, refresh
+    /// spatialization, and reap finished oneshot sounds.</summary>
     public void Tick()
     {
         TickGroups();
         UpdateAllSounds();
+        ReapOneshots();
     }
 
     public void SetListenerPosition(float x, float y, float z)
@@ -174,6 +186,19 @@ public sealed class SoundManager : IDisposable
                 _sounds[i] = _sounds[^1];
                 _sounds.RemoveAt(_sounds.Count - 1);
             }
+        }
+    }
+
+    private void ReapOneshots()
+    {
+        for (var i = _oneshots.Count - 1; i >= 0; i--)
+        {
+            var sound = _oneshots[i];
+            if (!sound.IsDisposed && !sound.AtEnd)
+                continue;
+            sound.Dispose();
+            _oneshots[i] = _oneshots[^1];
+            _oneshots.RemoveAt(_oneshots.Count - 1);
         }
     }
 

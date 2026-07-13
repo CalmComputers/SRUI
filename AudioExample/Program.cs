@@ -82,6 +82,22 @@ if (manager.IsHrtfAvailable)
     Console.WriteLine($"  all disposed: {manager.ActiveHrtfConvolvers} convolver(s)");
 }
 
+// 5. Oneshots: fire and forget — the manager owns the sound and reaps
+// it on the first Tick after it finishes; no reference to keep.
+Console.WriteLine("fire-and-forget oneshots...");
+for (var i = 0; i < 3; i++)
+{
+    var shot = manager.CreateSound(oneshot: true);
+    shot.Load(wav);
+    shot.SetPosition(i * 2.0f - 2.0f, 3.0f, 0.0f);
+    shot.Play();
+    for (var t = 0; t < 20; t++)
+    {
+        manager.Tick();
+        Thread.Sleep(25);
+    }
+}
+
 Console.WriteLine("done");
 return;
 
