@@ -48,8 +48,9 @@ public class Button : Widget
     protected virtual void OnSecondaryActivated() => SecondaryActivated?.Invoke();
 
     public override bool ReservesKey(KeyCombo combo) =>
-        !combo.Ctrl && !combo.Alt && !combo.Shift
-        && (combo.Key == Key.Enter || combo.Key == Key.Space);
+        (!combo.Ctrl && !combo.Alt && !combo.Shift
+            && (combo.Key == Key.Enter || combo.Key == Key.Space))
+        || base.ReservesKey(combo);
 
     protected override bool OnInput(in InputEvent input)
     {
@@ -105,8 +106,9 @@ public class CheckBox : Widget
     protected virtual void OnToggled(bool isChecked) => Toggled?.Invoke(isChecked);
 
     public override bool ReservesKey(KeyCombo combo) =>
-        !combo.Ctrl && !combo.Alt && !combo.Shift
-        && (combo.Key == Key.Enter || combo.Key == Key.Space);
+        (!combo.Ctrl && !combo.Alt && !combo.Shift
+            && (combo.Key == Key.Enter || combo.Key == Key.Space))
+        || base.ReservesKey(combo);
 
     protected override bool OnInput(in InputEvent input)
     {

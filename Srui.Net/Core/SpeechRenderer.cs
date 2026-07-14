@@ -111,6 +111,7 @@ public static class SpeechRenderer
                     WidgetStates.Disabled => on ? "unavailable" : "available",
                     WidgetStates.Required => on ? "required" : "not required",
                     WidgetStates.Warning => on ? "warning" : "warning cleared",
+                    WidgetStates.WithHelp => on ? "with help" : "help removed",
                     _ => null,
                 };
 
@@ -168,6 +169,8 @@ public static class SpeechRenderer
             Append("required");
         if ((info.States & WidgetStates.Warning) != 0)
             Append("warning");
+        if ((info.States & WidgetStates.WithHelp) != 0)
+            Append("with help");
 
         // Description.
         Append(info.Description);

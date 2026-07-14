@@ -70,7 +70,8 @@ public class TabControl : Widget
         !combo.Ctrl && !combo.Alt && !combo.Shift
         && (combo.Key == Key.Left || combo.Key == Key.Right
             || combo.Key == Key.Up || combo.Key == Key.Down
-            || combo.Key == Key.Home || combo.Key == Key.End);
+            || combo.Key == Key.Home || combo.Key == Key.End)
+        || base.ReservesKey(combo);
 
     protected override bool OnInput(in InputEvent input)
     {

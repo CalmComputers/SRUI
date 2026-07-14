@@ -60,7 +60,7 @@ public class Slider : Widget
             if (combo.Key == Key.Home || combo.Key == Key.End
                 || combo.Key == Key.PageUp || combo.Key == Key.PageDown) return true;
         }
-        return false;
+        return base.ReservesKey(combo);
     }
 
     protected override bool OnInput(in InputEvent input)

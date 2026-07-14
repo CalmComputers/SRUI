@@ -60,14 +60,11 @@ The rule generalizes: if you find yourself rewriting a name string to reflect ch
 
 # 4. Descriptions
 
-`Description` is spoken after everything else, on focus. It has exactly two legitimate jobs:
-
-- Explaining an **esoterically labeled** widget — when the name is a term of art, a proper noun, or otherwise opaque, the description says what the thing actually does.
-- Disclosing an **unexpected capability** — behavior a user could not predict from the name and role. A list where left and right arrows change an item's priority is doing something no list is expected to do; the description is where that is discoverable.
+`Description` is spoken after everything else, on focus. It has exactly one legitimate job: explaining an **esoterically labeled** widget — when the name is a term of art, a proper noun, or otherwise opaque, the description says what the thing actually does.
 
 Everything else is misuse. Specifically:
 
-- **No keyboard shortcuts.** "Ctrl+N adds a task" belongs in the shortcut mechanism itself (announcements speak the first shortcut) or in a help surface (section 8), not in a description the user hears on every visit.
+- **No keys or actions.** Nonstandard keys and unexpected capabilities — a list where left and right arrows change an item's priority — belong in `KeyHelp` (section 8), which announces "with help" and reads on F1, not in a description the user hears in full on every visit. Named shortcuts belong in the shortcut mechanism itself; announcements speak the first one.
 - **No expected behavior.** "Enter submits" on an entry box, "Space toggles" on a checkbox, "Enter activates" on a button — the role already promises these. Describing them tells the user nothing and costs them the listen.
 - **No name or role paraphrase.** Section 2.2.
 - **No essential information.** Descriptions are the first thing verbosity settings will suppress. If the widget is unusable without the fact, it belongs in the name or in a slot.
@@ -114,13 +111,12 @@ The same task-first reasoning covers the other classic mismatches: a two-state a
 
 # 8. Keyboard Shortcuts and Discoverability
 
-Shortcuts are discoverable through three channels, in order of preference:
+Shortcuts are discoverable through two channels:
 
 - **The shortcut mechanism itself.** Widgets announce their first shortcut as part of the standard announcement; a shortcut registered with `AddShortcut` documents itself at zero authoring cost.
-- **A help surface.** A key-reference dialog (conventionally on F1) is the home for a game-style widget's full key list. It is read on demand, once, instead of recited on every focus visit.
-- **The description — only for the unexpected.** A `CustomWidget` whose entire interface is bound keys may summarize the two or three load-bearing ones ("Arrow keys steer. Enter drops."), because nothing else about a role-less widget hints that keys do anything. This is the unexpected-capability clause of section 4, not a license to enumerate.
+- **Key help.** `Widget.KeyHelp` is the home for nonstandard keys and actions — anything a user could not predict from the widget's name and role (a list whose left and right arrows set priority, a game widget's whole key layout). A widget with key help announces "with help", and F1 shows the text in a reviewable status dialog: read on demand, once, instead of recited on every focus visit.
 
-Never put a shortcut in a `Description` when the widget already announces it, and never enumerate a key list in any per-focus surface. If a screen needs a paragraph of key documentation, it needs an F1 dialog and a one-line pointer to it.
+Never put a key list in a `Description` — that is exactly the per-focus recitation `KeyHelp` exists to avoid — and never put a shortcut anywhere when the widget already announces it. Expected behavior (Enter on a button, typing in an edit box, arrows in a list) belongs in neither channel; the role already promises it.
 
 # 9. Testing the Transcript
 

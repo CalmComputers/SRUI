@@ -9,6 +9,9 @@ public enum WidgetStates : uint
     Required = 1 << 1,
     Warning = 1 << 2,
     Hidden = 1 << 3,
+    /// <summary>The widget carries <see cref="Widget.KeyHelp"/> text;
+    /// spoken "with help", read on F1.</summary>
+    WithHelp = 1 << 4,
 }
 
 /// <summary>What a Typing event describes.</summary>

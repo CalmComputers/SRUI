@@ -19,14 +19,16 @@ public sealed class TasksPanel : Group
     public TasksPanel(IWidgetContainer parent, IEnumerable<TaskItem> seed)
         : base(parent, "Tasks")
     {
+        // Nonstandard keys live in KeyHelp ("with help", read on F1),
+        // not the description: docs/accessibility-guidelines.md section 8.
         Entry = new HistoryEditBox(this, "New task")
         {
-            Description = "Enter adds the task. Up and down recall earlier entries.",
+            KeyHelp = "Enter adds the task.\nUp and down recall earlier entries.",
         };
         List = new TaskListBox(this, "To-do", seed)
         {
-            Description = "Space marks done, Delete removes, shift with arrows "
-                + "reorders, left and right set priority.",
+            KeyHelp = "Space marks a task done.\nDelete removes it.\n"
+                + "Shift with up and down reorders.\nLeft and right set priority.",
         };
         Clear = new ConfirmButton(this, "Clear completed",
             "Press again to clear every done task.");

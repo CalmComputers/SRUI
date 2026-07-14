@@ -214,7 +214,7 @@ internal sealed class CoreUi
     }
 
     private static readonly WidgetStates[] SpokenStates =
-        [WidgetStates.Disabled, WidgetStates.Required, WidgetStates.Warning];
+        [WidgetStates.Disabled, WidgetStates.Required, WidgetStates.Warning, WidgetStates.WithHelp];
 
     /// <summary>Show or hide a node (and, for navigation purposes, its
     /// subtree).</summary>

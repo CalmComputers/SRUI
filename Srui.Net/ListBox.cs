@@ -260,7 +260,7 @@ public class ListBox<T> : Widget where T : class, IListItem
             if (combo.Key.IsChar(out _) || combo.Key == Key.Space) return true; // type-ahead
             if (combo.Key == Key.Backspace) return true; // filter mode
         }
-        return false;
+        return base.ReservesKey(combo);
     }
 
     protected override bool OnInput(in InputEvent input)

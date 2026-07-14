@@ -152,7 +152,7 @@ public class FilterListBox<T> : Widget where T : class, IListItem
             if (combo.Key.IsChar(out _) || combo.Key == Key.Space) return true; // the query
             if (combo.Key == Key.Backspace) return true; // erases the query
         }
-        return false;
+        return base.ReservesKey(combo);
     }
 
     protected override bool OnInput(in InputEvent input)

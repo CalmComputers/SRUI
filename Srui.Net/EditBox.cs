@@ -346,7 +346,7 @@ public class EditBox : Widget
         // Ctrl+clipboard/select-all.
         if (combo.Ctrl && !combo.Alt && !combo.Shift && combo.Key.IsChar(out var c)
             && c is 'c' or 'x' or 'v' or 'a') return true;
-        return false;
+        return base.ReservesKey(combo);
     }
 
     protected override bool OnInput(in InputEvent input)

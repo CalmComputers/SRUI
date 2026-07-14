@@ -300,7 +300,7 @@ spawn.Activated += () =>
 // nine-step lane (a ping marks each step's position), hold Q to draw a
 // bow and release to loose.
 var arena = new CustomWidget(gamePanel, "Arena");
-arena.Description = "Hold Left or Right to walk. Hold Q to draw, release to loose.";
+arena.KeyHelp = "Hold Left or Right to walk.\nHold Q to draw the bow, release to loose.";
 var drum = new Button(gamePanel, "Drum");
 
 var arenaX = 0; // lane position, -4..4, audible as ping azimuth

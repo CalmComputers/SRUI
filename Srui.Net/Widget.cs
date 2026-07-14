@@ -163,6 +163,26 @@ public abstract class Widget : IWidgetContainer
         set => Engine.SetState(Node, WidgetStates.Warning, value);
     }
 
+    private string? _keyHelp;
+
+    /// <summary>Help text for the widget's extra keys and actions — the
+    /// home for anything a user could not predict from the name and role
+    /// (a list whose left and right arrows set priority, a game widget's
+    /// key layout). A widget with help announces "with help" and shows the
+    /// text in a reviewable status dialog on F1, which
+    /// <see cref="ReservesKey"/> then reports reserved. Null (the default)
+    /// removes the state and the F1 claim. Not a second description: text
+    /// the user needs on every focus visit belongs in the label fields.</summary>
+    public string? KeyHelp
+    {
+        get => _keyHelp;
+        set
+        {
+            _keyHelp = value;
+            Engine.SetState(Node, WidgetStates.WithHelp, value is not null);
+        }
+    }
+
     // ── Physical key bindings (the game-input stream) ──
 
     private List<(uint Key, Mods Mods, KeyPhase Phase, Action Handler)>? _keyBindings;
@@ -236,8 +256,11 @@ public abstract class Widget : IWidgetContainer
     /// <summary>Whether this widget might consume the combo during normal
     /// interaction while focused — the soft-conflict side of bind-dialog
     /// warnings (<see cref="KeyCombo.ReservedReason"/> is the hard side).
-    /// Widget kinds with input behavior override this to name their keys.</summary>
-    public virtual bool ReservesKey(KeyCombo combo) => false;
+    /// Widget kinds with input behavior override this to name their keys
+    /// and keep the base call: the base claims F1 while
+    /// <see cref="KeyHelp"/> is set.</summary>
+    public virtual bool ReservesKey(KeyCombo combo) =>
+        _keyHelp is not null && combo == KeyCombo.Plain(Key.F(1));
 
     // ── Events ──
 
@@ -270,7 +293,19 @@ public abstract class Widget : IWidgetContainer
     /// so they may freely open dialogs or remove widgets.</summary>
     protected virtual bool OnInput(in InputEvent input) => false;
 
-    internal bool HandleEngineInput(in InputEvent input) => OnInput(input);
+    internal bool HandleEngineInput(in InputEvent input)
+    {
+        if (OnInput(input))
+            return true;
+        // F1 reads the widget's key help, after the widget's own claim so
+        // a subclass that uses F1 itself wins.
+        if (_keyHelp is string help && input.Is(Key.F(1)))
+        {
+            Post(() => App.ShowStatus("Help", help));
+            return true;
+        }
+        return false;
+    }
 
     /// <summary>The label's value field — the third of the golden six (a
     /// list's selected item, an editor's current line). A function of
