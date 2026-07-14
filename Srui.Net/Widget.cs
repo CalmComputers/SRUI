@@ -121,7 +121,9 @@ public abstract class Widget : IWidgetContainer
         Engine.UpdateLabelSilently(Node, label => label.Name = name);
 
     /// <summary>The widget's spoken description; setting speaks the new
-    /// description when focused.</summary>
+    /// description when focused. For explaining an esoteric name — never
+    /// for keys or actions, which belong in <see cref="KeyHelp"/>
+    /// (docs/accessibility-guidelines.md, section 4).</summary>
     public string Description
     {
         get => Label?.Description ?? "";

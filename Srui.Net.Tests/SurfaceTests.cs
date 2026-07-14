@@ -2211,10 +2211,10 @@ public class CustomWidgetTests
     public void NamelessAnnouncementHasNoLeadingSpace()
     {
         var ui = new TestUi();
-        var arena = new CustomWidget(ui.App, "") { Description = "use arrow keys" };
+        var arena = new CustomWidget(ui.App, "") { Description = "the battle arena" };
         arena.Disabled = true;
         arena.Focus();
-        Assert.Equal(new[] { "unavailable use arrow keys" }, ui.Spoken());
+        Assert.Equal(new[] { "unavailable the battle arena" }, ui.Spoken());
     }
 }
 
