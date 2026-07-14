@@ -878,6 +878,32 @@ public class KeyBindingTests
     }
 
     [Fact]
+    public void OpeningDialogReleasesHeldKeysIntoOldLayer()
+    {
+        var ui = new TestUi();
+        var arena = new CustomWidget(ui.App, "Arena");
+        var q = KeyCombo.Plain(Key.Char('q'));
+        var released = 0;
+        arena.BindKey(q, KeyPhase.Release, () => released++);
+        arena.Focus();
+        ui.Drain();
+
+        // Hold shift+q, then open a dialog: the release goes to the
+        // arena now (the real KEY_UP will land in the dialog's layer).
+        ui.App.HandleKey(Transition(KeyCombo.WithShift(Key.Char('q')), KeyPhase.Press));
+        var dialog = ui.App.OpenDialog();
+        Assert.Equal(1, released);
+
+        // The real release, arriving with the dialog focused, neither
+        // reaches the arena nor re-arms a phantom hold.
+        ui.App.HandleKey(Transition(q, KeyPhase.Release));
+        dialog.Close();
+        ui.Drain();
+        ui.App.OpenDialog();
+        Assert.Equal(1, released);
+    }
+
+    [Fact]
     public void UnbindKeyRemovesEveryHandlerForTheCombo()
     {
         var ui = new TestUi();

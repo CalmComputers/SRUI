@@ -134,6 +134,16 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     private readonly Stack<Dialog> _dialogs = new();
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private bool _quit;
+    /// <summary>Set when a dialog opens mid-batch: the rest of the
+    /// current pump batch's logical inputs were aimed at the layer that
+    /// just lost focus (most commonly the TextInput half of the
+    /// keystroke that opened the dialog) and must not leak into it.</summary>
+    private bool _flushBatchInput;
+    /// <summary>Keys currently held, by flat code. When a dialog opens,
+    /// each gets a synthetic Release to the outgoing focus owner: the
+    /// real KEY_UP will arrive while the dialog holds focus and would
+    /// never reach the layer that saw the Press.</summary>
+    private readonly HashSet<uint> _heldKeys = new();
 
     SruiApp IWidgetContainer.App => this;
 
@@ -195,8 +205,19 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     /// canned dialogs in SruiDialogs do all of this).</summary>
     public Dialog OpenDialog()
     {
+        // Release every held key into the outgoing layer before focus
+        // moves: its Release bindings fire now or never (Release
+        // bindings match the bare key, so Mods.None is exact).
+        if (_heldKeys.Count > 0)
+        {
+            var held = _heldKeys.ToArray();
+            _heldKeys.Clear();
+            foreach (var key in held)
+                HandleKey(new KeyInput(key, Mods.None, KeyPhase.Release));
+        }
         var dialog = new Dialog(this);
         _dialogs.Push(dialog);
+        _flushBatchInput = true;
         return dialog;
     }
 
@@ -309,6 +330,10 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     /// then the UnhandledKey hook. False when nothing claimed it.</summary>
     public bool HandleKey(in KeyInput key)
     {
+        if (key.Phase == KeyPhase.Release)
+            _heldKeys.Remove(key.Key);
+        else
+            _heldKeys.Add(key.Key);
         if (Engine.ActiveFocusOwner()?.TryHandleKey(key) == true)
             return true;
         return UnhandledKey?.Invoke(key) == true;
@@ -390,6 +415,7 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
             _audio?.Tick();
         if (Host is SdlHost host)
         {
+            _flushBatchInput = false;
             foreach (var hostEvent in host.Pump(LoopWaitMs))
             {
                 switch (hostEvent)
@@ -404,13 +430,23 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
                         AltTap?.Invoke();
                         break;
                     case HostEvent.Key(var keyInput):
+                        // Physical transitions always flow; a dialog
+                        // opening force-releases held keys itself.
                         HandleKey(keyInput);
                         break;
                     case HostEvent.FocusLost:
+                        // Releases will never arrive; forget the holds
+                        // rather than synthesize releases later.
+                        _heldKeys.Clear();
                         FocusLost?.Invoke();
                         break;
                     case HostEvent.Input(var input):
-                        HandleInput(input);
+                        // A dialog opened earlier in this batch: the
+                        // remaining logical inputs — the TextInput half
+                        // of the keystroke that opened it, or typing
+                        // aimed at the old layer — must not land in it.
+                        if (!_flushBatchInput)
+                            HandleInput(input);
                         break;
                 }
             }
