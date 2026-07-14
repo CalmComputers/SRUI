@@ -59,11 +59,14 @@ public static class SpeechRenderer
                     _ => "Selection removed",
                 };
 
-            case AccessibilityEvent.ItemNav(_, var item, var position, var boundary):
+            case AccessibilityEvent.ItemNav(_, var item, var position, var boundary, var isChecked):
             {
+                // Checked state rides between the item and its position;
+                // unchecked items say nothing (the absence is the signal).
+                var line = isChecked == true ? $"{item} checked" : item;
                 var baseText = position is (var index, var total)
-                    ? $"{item} {index + 1} of {total}"
-                    : item;
+                    ? $"{line} {index + 1} of {total}"
+                    : line;
                 return boundary switch
                 {
                     Boundary.Top => $"top, {baseText}",

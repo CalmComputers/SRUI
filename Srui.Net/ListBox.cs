@@ -12,6 +12,14 @@ namespace Srui;
 /// with <c>activateItems: true</c>, claiming Enter and raising
 /// <see cref="Widget.Activated"/> for the selected item.
 ///
+/// A multi-select list (<c>multiSelect: true</c>) announces as
+/// "multi select list" and lets the user check items independently of
+/// the selection: checked items speak "checked" after their text,
+/// unchecked items say nothing. Enter toggles by default (so it no
+/// longer reaches the layer's primary widget); <c>toggleWithSpace:
+/// true</c> moves the toggle to Space instead, at the cost of
+/// multi-word typeahead (Space is no longer a typeahead character).
+///
 /// Items are <typeparamref name="T"/> values implementing
 /// <see cref="IListItem"/> — state-bearing subclasses derive from the
 /// typed form (<c>class TaskListBox : ListBox&lt;TaskItem&gt;</c>) and read
@@ -35,18 +43,40 @@ public class ListBox<T> : Widget where T : class, IListItem
     /// <summary>When true, Enter is claimed and raises Activated for the
     /// selected item instead of falling through to the layer's primary.</summary>
     private readonly bool _activateItems;
+    /// <summary>The checked items of a multi-select list, by reference —
+    /// null on a single-select list. Structural operations keep it in
+    /// step (a removed or replaced item forgets its check).</summary>
+    private readonly HashSet<T>? _checked;
+    /// <summary>When true (multi-select only), Space toggles instead of
+    /// Enter — and no longer feeds typeahead.</summary>
+    private readonly bool _toggleWithSpace;
     private string _typeAheadBuffer = "";
     private ulong? _lastKeystrokeMs;
 
     public ListBox(
         IWidgetContainer parent, string name, IReadOnlyList<T> items,
-        bool numbered = false, bool activateItems = false)
-        : base(parent, name, "list")
+        bool numbered = false, bool activateItems = false,
+        bool multiSelect = false, bool toggleWithSpace = false)
+        : base(parent, name, multiSelect ? "multi select list" : "list")
     {
+        if (toggleWithSpace && !multiSelect)
+            throw new ArgumentException(
+                "toggleWithSpace only applies to a multiSelect list", nameof(toggleWithSpace));
+        if (multiSelect && activateItems && !toggleWithSpace)
+            throw new ArgumentException(
+                "a multiSelect list toggles with Enter, so it cannot also activateItems; "
+                    + "use toggleWithSpace to free Enter for activation",
+                nameof(activateItems));
         _items = new List<T>(items);
         _numbered = numbered;
         _activateItems = activateItems;
+        if (multiSelect)
+            _checked = new HashSet<T>(ReferenceEqualityComparer.Instance);
+        _toggleWithSpace = toggleWithSpace;
     }
+
+    /// <summary>Whether this is a multi-select list.</summary>
+    public bool MultiSelect => _checked is not null;
 
     /// <summary>The items. Setting replaces the list (selection clamped)
     /// and speaks the newly selected item when focused and audibly
@@ -65,6 +95,7 @@ public class ListBox<T> : Widget where T : class, IListItem
         Engine.UpdateLabel(Node, _ =>
         {
             _items = copy;
+            _checked?.IntersectWith(copy);
             if (_items.Count > 0 && _selected >= _items.Count)
                 _selected = _items.Count - 1;
         });
@@ -78,6 +109,7 @@ public class ListBox<T> : Widget where T : class, IListItem
     protected void SetItemsSilently(IReadOnlyList<T> items)
     {
         _items = new List<T>(items);
+        _checked?.IntersectWith(_items);
         if (_items.Count > 0 && _selected >= _items.Count)
             _selected = _items.Count - 1;
     }
@@ -103,6 +135,7 @@ public class ListBox<T> : Widget where T : class, IListItem
         if ((uint)index >= (uint)_items.Count)
             throw new ArgumentOutOfRangeException(nameof(index));
         var wasSelected = index == _selected;
+        _checked?.Remove(_items[index]);
         _items.RemoveAt(index);
         if (index < _selected)
             _selected--;
@@ -144,7 +177,71 @@ public class ListBox<T> : Widget where T : class, IListItem
     {
         if ((uint)index >= (uint)_items.Count)
             throw new ArgumentOutOfRangeException(nameof(index));
+        _checked?.Remove(_items[index]);
         _items[index] = item;
+    }
+
+    // ── Multi-select checked state ──
+
+    /// <summary>Whether the item at the index is checked. Always false on
+    /// a single-select list.</summary>
+    public bool IsChecked(int index)
+    {
+        if ((uint)index >= (uint)_items.Count)
+            throw new ArgumentOutOfRangeException(nameof(index));
+        return _checked?.Contains(_items[index]) ?? false;
+    }
+
+    /// <summary>Check or uncheck the item at the index programmatically.
+    /// Changing the selected item's state while focused speaks the new
+    /// state exactly as a user-driven toggle would; it does not raise
+    /// <see cref="ItemToggled"/> (the program already knows). Throws on a
+    /// single-select list.</summary>
+    public void SetChecked(int index, bool value)
+    {
+        if (_checked is null)
+            throw new InvalidOperationException("not a multi-select list");
+        if ((uint)index >= (uint)_items.Count)
+            throw new ArgumentOutOfRangeException(nameof(index));
+        var item = _items[index];
+        var changed = value ? _checked.Add(item) : _checked.Remove(item);
+        if (changed && index == _selected && IsFocused)
+            Promulgate(new AccessibilityEvent.Toggle(this, value));
+    }
+
+    /// <summary>The checked items, in list order. Empty on a
+    /// single-select list.</summary>
+    public IReadOnlyList<T> CheckedItems
+    {
+        get
+        {
+            if (_checked is null || _checked.Count == 0)
+                return Array.Empty<T>();
+            var result = new List<T>(_checked.Count);
+            foreach (var item in _items)
+                if (_checked.Contains(item))
+                    result.Add(item);
+            return result;
+        }
+    }
+
+    /// <summary>The user checked or unchecked an item; the arguments are
+    /// the item and its new state.</summary>
+    public event Action<T, bool>? ItemToggled;
+
+    protected virtual void OnItemToggled(T item, bool isChecked) =>
+        ItemToggled?.Invoke(item, isChecked);
+
+    /// <summary>The user toggled the selected item: flip, announce the new
+    /// state (the same words a check box speaks), notify the program.</summary>
+    private void ToggleSelected()
+    {
+        var item = _items[_selected];
+        var isChecked = _checked!.Add(item);
+        if (!isChecked)
+            _checked.Remove(item);
+        Promulgate(new AccessibilityEvent.Toggle(this, isChecked));
+        Post(() => OnItemToggled(item, isChecked));
     }
 
     /// <summary>The selected index, or -1 when the list is empty. A
@@ -173,7 +270,11 @@ public class ListBox<T> : Widget where T : class, IListItem
     /// announcement time — an item whose Text is computed from mutated
     /// application state reads correctly with no sync call.</summary>
     protected internal override string ValueText =>
-        _selected < _items.Count ? _items[_selected].Text : "empty";
+        _selected < _items.Count
+            ? _checked?.Contains(_items[_selected]) == true
+                ? $"{_items[_selected].Text} checked"
+                : _items[_selected].Text
+            : "empty";
 
     /// <summary>"N of M" when numbered.</summary>
     protected internal override string StateText =>
@@ -186,7 +287,8 @@ public class ListBox<T> : Widget where T : class, IListItem
         if (_selected >= _items.Count)
             return;
         (int, int)? position = _numbered ? (_selected, _items.Count) : null;
-        AnnounceItem(_items[_selected].Text, position, boundary);
+        bool? isChecked = _checked?.Contains(_items[_selected]);
+        AnnounceItem(_items[_selected].Text, position, boundary, isChecked);
     }
 
     /// <summary>What an empty list says — the same word its label value
@@ -302,8 +404,14 @@ public class ListBox<T> : Widget where T : class, IListItem
                 if (_selected != _items.Count - 1)
                     SelectAndAnnounce(_items.Count - 1);
                 return true;
+            case InputKind.Activate when _checked is not null && !_toggleWithSpace:
+                ToggleSelected();
+                return true;
             case InputKind.Activate when _activateItems:
                 PostActivated();
+                return true;
+            case InputKind.TypeChar when _toggleWithSpace && input.IsChar(' '):
+                ToggleSelected();
                 return true;
             case InputKind.TypeChar:
                 if (System.Text.Rune.IsValid((int)input.Ch))
@@ -322,15 +430,17 @@ public class ListBox : ListBox<IListItem>
 {
     public ListBox(
         IWidgetContainer parent, string name, IReadOnlyList<IListItem> items,
-        bool numbered = false, bool activateItems = false)
-        : base(parent, name, items, numbered, activateItems)
+        bool numbered = false, bool activateItems = false,
+        bool multiSelect = false, bool toggleWithSpace = false)
+        : base(parent, name, items, numbered, activateItems, multiSelect, toggleWithSpace)
     {
     }
 
     public ListBox(
         IWidgetContainer parent, string name, IReadOnlyList<string> items,
-        bool numbered = false, bool activateItems = false)
-        : this(parent, name, Wrap(items), numbered, activateItems)
+        bool numbered = false, bool activateItems = false,
+        bool multiSelect = false, bool toggleWithSpace = false)
+        : this(parent, name, Wrap(items), numbered, activateItems, multiSelect, toggleWithSpace)
     {
     }
 

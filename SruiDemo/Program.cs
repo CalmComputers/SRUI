@@ -114,6 +114,9 @@ var commands = new SoundFilterListBox(
         "Zoom In", "Zoom Out",
     ],
     navSound);
+var toppings = new ListBox(
+    listsPanel, "Toppings", ["almonds", "chocolate", "granola", "honey", "yogurt"],
+    multiSelect: true);
 var effect = new SoundListBox(listsPanel, "Bus effect", ["Dry", "Echo", "Reverb"], navSound);
 var volume = new Slider(listsPanel, "Volume", 50, 0, 100, unit: "%");
 
@@ -127,6 +130,9 @@ rotate.Activated += () =>
     app.Announce($"Rotated. First fruit: {fruitItems[0]}.");
 };
 commands.Changed += () => Log($"commands: {commands.SelectedItem?.Text ?? "no match"}");
+toppings.ItemToggled += (item, isChecked) =>
+    Log($"toppings: {item.Text} {(isChecked ? "checked" : "unchecked")}, "
+        + $"now [{string.Join(", ", toppings.CheckedItems.Select(i => i.Text))}]");
 effect.Changed += () =>
 {
     ApplyEffect(effect.SelectedIndex);

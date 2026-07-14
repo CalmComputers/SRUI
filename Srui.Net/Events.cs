@@ -160,9 +160,13 @@ public abstract record AccessibilityEvent
 
     /// <summary>Discrete-value list/grid widget changed selection.
     /// Position is (zero-based index, total), or null when the widget has
-    /// no indexable concept.</summary>
+    /// no indexable concept. Checked is the item's checked state in a
+    /// multi-select widget (the reference rendering speaks "checked" and
+    /// says nothing when unchecked), or null when the widget has no
+    /// checked concept.</summary>
     public sealed record ItemNav(
-        Widget Widget, string Item, (int Index, int Total)? Position, Boundary? BoundaryHit)
+        Widget Widget, string Item, (int Index, int Total)? Position, Boundary? BoundaryHit,
+        bool? Checked = null)
         : AccessibilityEvent;
 
     /// <summary>Tab control moved to a different tab. No boundary because

@@ -336,10 +336,13 @@ public abstract class Widget : IWidgetContainer
 
     /// <summary>Queue an item-navigation event for this widget: the
     /// selected item's text, its position ((index, total), or null when
-    /// the widget has no indexable concept), and the boundary that was
-    /// hit, if any.</summary>
-    protected void AnnounceItem(string item, (int Index, int Total)? position, Boundary? boundary) =>
-        Promulgate(new AccessibilityEvent.ItemNav(this, item, position, boundary));
+    /// the widget has no indexable concept), the boundary that was hit,
+    /// if any, and — for multi-select widgets — the item's checked state
+    /// (spoken as "checked" when true, nothing when false; null for
+    /// widgets with no checked concept).</summary>
+    protected void AnnounceItem(
+        string item, (int Index, int Total)? position, Boundary? boundary, bool? isChecked = null) =>
+        Promulgate(new AccessibilityEvent.ItemNav(this, item, position, boundary, isChecked));
 
     /// <summary>Queue a structured accessibility event for the readers —
     /// the raw form under the Announce family, for events the
