@@ -216,6 +216,51 @@ public class MultiSelectListTests
         Assert.Throws<InvalidOperationException>(() => list.SetChecked(0, true));
     }
 
+    private sealed class LockingListBox : ListBox
+    {
+        public LockingListBox(SruiApp app)
+            : base(app, "L", new[] { "free", "locked" }, multiSelect: true) { }
+
+        protected override bool CanToggle(IListItem item)
+        {
+            if (item.Text != "locked")
+                return true;
+            Announce("item is locked");
+            return false;
+        }
+    }
+
+    [Fact]
+    public void CanToggleRefusesUserTogglesButNotSetChecked()
+    {
+        var ui = new TestUi();
+        var list = new LockingListBox(ui.App);
+        var toggles = 0;
+        list.ItemToggled += (_, _) => toggles++;
+        list.Focus();
+        ui.Drain();
+        ui.Spoken();
+
+        // Allowed item toggles normally.
+        ui.Input(InputKind.Activate);
+        Assert.Equal(new[] { "checked" }, ui.Spoken());
+        Assert.Equal(1, toggles);
+
+        // Refused item: no state change, no toggle event, only the
+        // subclass's refusal announcement.
+        ui.Input(InputKind.MoveDown);
+        ui.Spoken();
+        ui.Input(InputKind.Activate);
+        Assert.Equal(new[] { "item is locked" }, ui.Spoken());
+        Assert.False(list.IsChecked(1));
+        Assert.Equal(1, toggles);
+
+        // The program is never refused.
+        list.SetChecked(1, true);
+        Assert.True(list.IsChecked(1));
+        Assert.Equal(new[] { "checked" }, ui.Spoken());
+    }
+
     [Fact]
     public void InvalidConstructionThrows()
     {

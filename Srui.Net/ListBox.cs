@@ -232,11 +232,20 @@ public class ListBox<T> : Widget where T : class, IListItem
     protected virtual void OnItemToggled(T item, bool isChecked) =>
         ItemToggled?.Invoke(item, isChecked);
 
+    /// <summary>Whether the user may toggle the item's checked state;
+    /// return false to refuse. Gates user toggles only — <see
+    /// cref="SetChecked"/> is the program's and is never refused. A
+    /// refused toggle speaks nothing by itself: announce the reason from
+    /// the override so the key does not feel dead.</summary>
+    protected virtual bool CanToggle(T item) => true;
+
     /// <summary>The user toggled the selected item: flip, announce the new
     /// state (the same words a check box speaks), notify the program.</summary>
     private void ToggleSelected()
     {
         var item = _items[_selected];
+        if (!CanToggle(item))
+            return;
         var isChecked = _checked!.Add(item);
         if (!isChecked)
             _checked.Remove(item);
