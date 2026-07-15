@@ -200,6 +200,10 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
 
     // ── Dialogs ──
 
+    /// <summary>Whether a modal dialog is open — hosts pause simulations
+    /// behind the dialog stack with this.</summary>
+    public bool HasOpenDialog => _dialogs.Count > 0;
+
     /// <summary>Open a modal dialog: a fresh layer that widgets are then
     /// created into. Focus it and call AnnounceOpened when built (the
     /// canned dialogs in SruiDialogs do all of this).</summary>
