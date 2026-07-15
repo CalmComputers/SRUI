@@ -121,3 +121,12 @@ counts callbacks and deadline misses — a callback exceeding
 frameCount / sampleRate is a buffer underrun — and the exported
 ma_engine_get_callback_stats reads (and optionally resets) the
 counters. Surfaced in C# as SoundManager.GetCallbackStats.
+
+# 10. miniaudio_impl.c: volume smoothing on by default
+
+ma_engine_init_with_caching sets defaultVolumeSmoothTimeInPCMFrames to
+240 (~5ms at 48kHz). Hosts drive per-tick distance attenuation through
+ma_sound_set_volume; unsmoothed, each write is a mid-waveform gain step
+that clicks on every moving source (crackle indistinguishable from
+buffer underruns by ear). Pan and Steam Audio HRTF direction changes
+remain unsmoothed.
