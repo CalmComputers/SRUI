@@ -53,7 +53,6 @@ public sealed unsafe class Sound : IDisposable
     // (SoundManager.Reconfigure) can replay it.
     private enum LoadKind : byte { None, Plain, Stretched, Reversed, Streamed, Pull }
     private LoadKind _loadKind;
-    private bool _loadAsync;
     private string? _loadPath;
     private float _stretchFactor;
 
@@ -87,24 +86,15 @@ public sealed unsafe class Sound : IDisposable
     // ── Loading ──
 
     /// <summary>Load from a file. Decoded data is cached and shared when
-    /// the same file is loaded more than once. With
-    /// <paramref name="asyncLoad"/>, the decode runs on the resource
-    /// manager's job thread and this call returns immediately: playback
-    /// starts as soon as audio is available (instantly for an
-    /// already-cached file), but duration reads report 0 until the
-    /// decode registers — don't pass it for a sound whose length drives
-    /// timing decisions.</summary>
-    public void Load(string filename, bool asyncLoad = false)
+    /// the same file is loaded more than once.</summary>
+    public void Load(string filename)
     {
         UnloadCurrent();
-        uint flags = NativeMethods.SoundFlagDecode
-            | (asyncLoad ? NativeMethods.SoundFlagAsync : 0u);
         var result = NativeMethods.ma_sound_init_from_file(
-            Engine.Handle, filename, flags, GroupPtr, IntPtr.Zero, _sound);
+            Engine.Handle, filename, NativeMethods.SoundFlagDecode, GroupPtr, IntPtr.Zero, _sound);
         if (result != 0)
             throw new AudioException($"failed to load '{filename}'");
         _loadKind = LoadKind.Plain;
-        _loadAsync = asyncLoad;
         _loadPath = filename;
         FinishLoad();
     }
@@ -795,7 +785,7 @@ public sealed unsafe class Sound : IDisposable
             switch (_loadKind)
             {
                 case LoadKind.Plain:
-                    Load(_loadPath!, _loadAsync);
+                    Load(_loadPath!);
                     break;
                 case LoadKind.Stretched:
                     LoadStretched(_loadPath!, _stretchFactor);

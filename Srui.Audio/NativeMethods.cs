@@ -10,7 +10,6 @@ internal static class NativeMethods
     private const string Lib = "cosmos";
 
     internal const uint SoundFlagDecode = 0x00000002; // MA_SOUND_FLAG_DECODE
-    internal const uint SoundFlagAsync = 0x00000004; // MA_SOUND_FLAG_ASYNC
 
     // ── Engine ──
     [DllImport(Lib)] internal static extern IntPtr ma_engine_alloc();
