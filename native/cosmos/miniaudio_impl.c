@@ -34,6 +34,52 @@ MA_API void ma_sound_free(ma_sound* sound) {
     free(sound);
 }
 
+// SRUI: callback deadline instrumentation. The device data callback has
+// frameCount / sampleRate seconds to produce its buffer; exceeding that
+// budget is a buffer underrun (an audible gap or click) regardless of
+// what the mix sounds like. The wrapper times every callback so hosts
+// can tell real underruns apart from other click sources (resampler
+// pitch steps, source starts). Single writer (the audio thread); the
+// reader takes benign races — these are diagnostics, not control flow.
+static ma_uint64 g_cb_callbacks   = 0;   // callbacks observed
+static ma_uint64 g_cb_overruns    = 0;   // callbacks that missed the deadline
+static ma_uint64 g_cb_max_ns      = 0;   // slowest callback seen
+static ma_uint64 g_cb_budget_ns   = 0;   // most recent per-callback budget
+
+static void cosmos_timed_data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
+    ma_timer timer;
+    ma_uint64 elapsedNs;
+    ma_uint64 budgetNs;
+
+    ma_timer_init(&timer);
+    ma_engine_data_callback_internal(pDevice, pOutput, pInput, frameCount);
+    elapsedNs = (ma_uint64)(ma_timer_get_time_in_seconds(&timer) * 1.0e9);
+
+    budgetNs = ((ma_uint64)frameCount * 1000000000ULL) / pDevice->sampleRate;
+    g_cb_budget_ns = budgetNs;
+    g_cb_callbacks += 1;
+    if (elapsedNs > g_cb_max_ns) {
+        g_cb_max_ns = elapsedNs;
+    }
+    if (elapsedNs > budgetNs) {
+        g_cb_overruns += 1;
+    }
+}
+
+// SRUI: read (and optionally reset) the callback timing counters. Any
+// out-pointer may be NULL. Reset clears the counters but not the budget.
+MA_API void ma_engine_get_callback_stats(ma_uint64* pCallbacks, ma_uint64* pOverruns, ma_uint64* pMaxNs, ma_uint64* pBudgetNs, ma_uint32 reset) {
+    if (pCallbacks != NULL) *pCallbacks = g_cb_callbacks;
+    if (pOverruns  != NULL) *pOverruns  = g_cb_overruns;
+    if (pMaxNs     != NULL) *pMaxNs     = g_cb_max_ns;
+    if (pBudgetNs  != NULL) *pBudgetNs  = g_cb_budget_ns;
+    if (reset) {
+        g_cb_callbacks = 0;
+        g_cb_overruns  = 0;
+        g_cb_max_ns    = 0;
+    }
+}
+
 // SRUI: the resource manager (the decode cache) is process-global and
 // refcounted so it can outlive any single engine: an engine rebuild (a
 // period change) or a second engine reuses already-decoded files
@@ -78,6 +124,10 @@ MA_API ma_result ma_engine_init_with_caching(ma_engine* pEngine, ma_uint32 perio
     // ma_engine_get_actual_period_frames and size the phonon frame to
     // match, so the request and the Steam Audio block never disagree.
     engineConfig.periodSizeInFrames = (periodSizeInFrames == 0) ? 128 : periodSizeInFrames;
+    // SRUI: substitute the timed wrapper for the engine's internal data
+    // callback (the engine still sets the device's pUserData to itself,
+    // so the wrapper forwards straight to the internal callback).
+    engineConfig.dataCallback = cosmos_timed_data_callback;
 
     result = ma_engine_init(&engineConfig, pEngine);
     if (result != MA_SUCCESS) {

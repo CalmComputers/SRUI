@@ -22,6 +22,7 @@ internal static class NativeMethods
     [DllImport(Lib)] internal static extern IntPtr ma_engine_get_endpoint(IntPtr engine);
     [DllImport(Lib)] internal static extern IntPtr ma_engine_get_node_graph(IntPtr engine);
     [DllImport(Lib)] internal static extern int ma_engine_listener_set_position(IntPtr engine, uint index, float x, float y, float z);
+    [DllImport(Lib)] internal static extern void ma_engine_get_callback_stats(out ulong callbacks, out ulong overruns, out ulong maxNs, out ulong budgetNs, uint reset);
 
     // ── Steam Audio (via native glue; no IPL types cross) ──
     [DllImport(Lib)] internal static extern int ma_phonon_init(uint sampleRate, uint frameSize);

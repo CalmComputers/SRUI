@@ -110,3 +110,14 @@ miniaudio_phonon.c/h additionally regained the binauralizer node
 (ma_phonon_binauralizer_node_*: stereo in, stereo out, two parallel
 HRTFs summed) — ported back from the Lightspeed rust-era glue this
 file descends from.
+
+# 9. miniaudio_impl.c: callback deadline counters
+
+ma_engine_init_with_caching substitutes a timing wrapper for the
+engine's internal device data callback (via engineConfig.dataCallback;
+the engine still sets the device's pUserData to itself, so the wrapper
+forwards straight to ma_engine_data_callback_internal). The wrapper
+counts callbacks and deadline misses — a callback exceeding
+frameCount / sampleRate is a buffer underrun — and the exported
+ma_engine_get_callback_stats reads (and optionally resets) the
+counters. Surfaced in C# as SoundManager.GetCallbackStats.

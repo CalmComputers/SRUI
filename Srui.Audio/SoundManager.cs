@@ -174,6 +174,21 @@ public sealed class SoundManager : IDisposable
     /// latency. Divide by <see cref="SampleRate"/> for seconds.</summary>
     public uint DevicePeriodFrames => Engine.PeriodFrames;
 
+    /// <summary>Read the device-callback timing counters, optionally
+    /// resetting them. A callback that takes longer than its budget
+    /// (period frames / sample rate) is a buffer underrun — an audible
+    /// gap — so <see cref="CallbackStats.Overruns"/> distinguishes real
+    /// underruns from other click sources. Counters are process-wide
+    /// (they span engine rebuilds) and reads race the audio thread
+    /// benignly.</summary>
+    public CallbackStats GetCallbackStats(bool reset = false)
+    {
+        NativeMethods.ma_engine_get_callback_stats(
+            out var callbacks, out var overruns, out var maxNs, out var budgetNs,
+            reset ? 1u : 0u);
+        return new CallbackStats(callbacks, overruns, maxNs, budgetNs);
+    }
+
     private void UpdateAllSounds()
     {
         // Swap-remove dead references in place; no allocation.
