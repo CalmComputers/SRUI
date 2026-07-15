@@ -15,10 +15,10 @@ namespace Srui.Audio;
 public sealed class SoundManager : IDisposable
 {
     internal AudioEngine Engine { get; private set; }
-    internal BinauralPool BinauralPool { get; private set; }
 
     private readonly List<WeakReference<Sound>> _sounds = new();
     private readonly List<WeakReference<SoundGroup>> _groups = new();
+    private readonly List<WeakReference<SoundEntity>> _entities = new();
     private readonly List<Sound> _oneshots = new();
 
     /// <param name="periodFrames">Requested device period in frames; 0
@@ -33,12 +33,20 @@ public sealed class SoundManager : IDisposable
     public SoundManager(uint periodFrames = 0)
     {
         Engine = new AudioEngine(periodFrames);
-        BinauralPool = new BinauralPool(Engine);
     }
 
-    /// <summary>Live HRTF convolvers. Sounds sharing a position (and bus)
-    /// share one, so this is usually far below the HRTF sound count.</summary>
-    public int ActiveHrtfConvolvers => BinauralPool.ActiveConvolvers;
+    /// <summary>Live HRTF convolvers — one per HRTF-enabled entity.</summary>
+    public int ActiveHrtfConvolvers
+    {
+        get
+        {
+            var count = 0;
+            foreach (var weak in _entities)
+                if (weak.TryGetTarget(out var entity) && !entity.IsDisposed && entity.HasConvolver)
+                    count++;
+            return count;
+        }
+    }
 
     /// <summary>Rebuild the engine at a new device period, preserving
     /// the soundscape: every live Sound and SoundGroup keeps its object
@@ -58,26 +66,31 @@ public sealed class SoundManager : IDisposable
         var listenerZ = Engine.ListenerZ;
         var listenerAngle = Engine.ListenerAngle;
 
-        // Sounds release first (they detach from groups and return
-        // their convolver leases), then groups children-before-parents.
+        // Sounds release first (they detach from groups), then the
+        // entities' convolvers, then groups children-before-parents.
         foreach (var weak in _sounds)
             if (weak.TryGetTarget(out var sound) && !sound.IsDisposed)
                 sound.ReleaseNative();
+        foreach (var weak in _entities)
+            if (weak.TryGetTarget(out var entity) && !entity.IsDisposed)
+                entity.ReleaseNative();
         for (var i = _groups.Count - 1; i >= 0; i--)
             if (_groups[i].TryGetTarget(out var group) && !group.IsDisposed)
                 group.ReleaseNative();
 
-        BinauralPool.Clear();
         Engine.DisposeKeepCache();
         Engine = new AudioEngine(periodFrames);
-        BinauralPool = new BinauralPool(Engine);
         Engine.SetListenerPosition(listenerX, listenerY, listenerZ);
         Engine.SetListenerAngle(listenerAngle);
 
-        // Rebuild parents-before-children (creation order), then sounds.
+        // Rebuild parents-before-children (creation order), then the
+        // entities' convolvers onto the fresh groups, then sounds.
         foreach (var weak in _groups)
             if (weak.TryGetTarget(out var group) && !group.IsDisposed)
                 group.RecreateNative();
+        foreach (var weak in _entities)
+            if (weak.TryGetTarget(out var entity) && !entity.IsDisposed)
+                entity.RecreateNative();
         foreach (var weak in _sounds)
             if (weak.TryGetTarget(out var sound) && !sound.IsDisposed)
                 sound.RecreateNative();
@@ -94,11 +107,14 @@ public sealed class SoundManager : IDisposable
                 sound.Dispose();
         _sounds.Clear();
         _oneshots.Clear();
+        foreach (var weak in _entities)
+            if (weak.TryGetTarget(out var entity))
+                entity.Dispose();
+        _entities.Clear();
         foreach (var weak in _groups)
             if (weak.TryGetTarget(out var group))
                 group.Dispose();
         _groups.Clear();
-        BinauralPool.Clear();
         Engine.Dispose();
     }
 
@@ -129,26 +145,43 @@ public sealed class SoundManager : IDisposable
         return group;
     }
 
-    /// <summary>Advance per-sound and per-group automation, refresh
-    /// spatialization, and reap finished oneshot sounds.</summary>
+    /// <summary>Create a physical sound source. Its sounds are made with
+    /// <see cref="CreateSound"/> into <see cref="SoundEntity.Group"/>;
+    /// the entity spatializes them together as one source. Pass a parent
+    /// to route the entity through a bus (a category, a master).</summary>
+    public SoundEntity CreateEntity(SoundGroup? parent = null)
+    {
+        var entity = new SoundEntity(this, parent);
+        _entities.Add(new WeakReference<SoundEntity>(entity));
+        return entity;
+    }
+
+    /// <summary>Advance per-sound and per-group automation, apply
+    /// entity spatialization, and reap finished oneshot sounds.</summary>
     public void Tick()
     {
         TickGroups();
-        UpdateAllSounds();
+        TickSounds();
+        UpdateEntities();
         ReapOneshots();
     }
+
+    // Listener changes mark every entity stale rather than sweeping
+    // immediately: a frame's worth of entity and listener movement
+    // collapses into the single apply pass in Tick.
+    private bool _listenerDirty;
 
     public void SetListenerPosition(float x, float y, float z)
     {
         Engine.SetListenerPosition(x, y, z);
-        UpdateAllSounds();
+        _listenerDirty = true;
     }
 
     /// <summary>Degrees, unit circle: 0 = +X (east), 90 = +Y (north/forward).</summary>
     public void SetListenerAngle(float degrees)
     {
         Engine.SetListenerAngle(degrees);
-        UpdateAllSounds();
+        _listenerDirty = true;
     }
 
     /// <summary>Set position and facing angle together.</summary>
@@ -156,7 +189,7 @@ public sealed class SoundManager : IDisposable
     {
         Engine.SetListenerPosition(x, y, z);
         Engine.SetListenerAngle(angleDegrees);
-        UpdateAllSounds();
+        _listenerDirty = true;
     }
 
     public float ListenerX => Engine.ListenerX;
@@ -189,17 +222,39 @@ public sealed class SoundManager : IDisposable
         return new CallbackStats(callbacks, overruns, maxNs, budgetNs);
     }
 
-    private void UpdateAllSounds()
+    private void TickSounds()
     {
         // Swap-remove dead references in place; no allocation.
         for (var i = _sounds.Count - 1; i >= 0; i--)
         {
             if (_sounds[i].TryGetTarget(out var sound) && !sound.IsDisposed)
-                sound.UpdateSpatialization();
+                sound.AdvancePitchTween();
             else
             {
                 _sounds[i] = _sounds[^1];
                 _sounds.RemoveAt(_sounds.Count - 1);
+            }
+        }
+    }
+
+    private void UpdateEntities()
+    {
+        // One apply pass per Tick: everything when the listener moved,
+        // otherwise only entities that themselves changed.
+        var all = _listenerDirty;
+        _listenerDirty = false;
+
+        for (var i = _entities.Count - 1; i >= 0; i--)
+        {
+            if (_entities[i].TryGetTarget(out var entity) && !entity.IsDisposed)
+            {
+                if (all || entity.NeedsSpatialUpdate)
+                    entity.UpdateSpatialization();
+            }
+            else
+            {
+                _entities[i] = _entities[^1];
+                _entities.RemoveAt(_entities.Count - 1);
             }
         }
     }

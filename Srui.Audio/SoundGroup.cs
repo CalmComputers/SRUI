@@ -40,6 +40,19 @@ public sealed class SoundGroup : IDisposable
     private PitchTween _pitchTween;
     private bool _tweening;
 
+    // Spatial contribution from an owning SoundEntity: attenuation
+    // multiplies the user volume, pan applies directly, and the pitch
+    // delta (behind-pitch-decrease) adds to the user pitch. Neutral for
+    // plain buses.
+    private float _spatialGain = 1.0f;
+    private float _spatialPan;
+    private float _spatialPitchDelta;
+
+    /// <summary>The SoundEntity this group belongs to, when it is an
+    /// entity's bus — so Sound.Play can flush the entity's pending
+    /// spatialization before the first sample mixes.</summary>
+    internal SoundEntity? Entity { get; set; }
+
     // Native-only state snapshotted by ReleaseNative for RecreateNative.
     private bool _rebuildStopped;
 
@@ -71,6 +84,27 @@ public sealed class SoundGroup : IDisposable
 
     private IntPtr DownstreamNodePtr => _parent?.NodePtr ?? Engine.Endpoint;
 
+    /// <summary>Where this bus's output ultimately lands — for a
+    /// SoundEntity wiring its convolver ahead of it.</summary>
+    internal IntPtr DownstreamPtr => DownstreamNodePtr;
+
+    // An owning SoundEntity's convolver. When set, the bus (after its
+    // effect chain) routes through it instead of straight downstream.
+    internal IntPtr SpatialOutput { get; private set; }
+
+    /// <summary>Route the bus through `node` (zero restores the direct
+    /// path) and rewire. The caller owns the node and its attachment to
+    /// the downstream bus.</summary>
+    internal void SetSpatialOutput(IntPtr node)
+    {
+        SpatialOutput = node;
+        RebuildEffectChain();
+    }
+
+    /// <summary>Forget the spatial output without rewiring — for engine
+    /// rebuilds, where the natives are already gone.</summary>
+    internal void ClearSpatialOutput() => SpatialOutput = IntPtr.Zero;
+
     // ── Volume / pitch ──
 
     public float Volume
@@ -79,7 +113,7 @@ public sealed class SoundGroup : IDisposable
         set
         {
             _baseVolume = value;
-            NativeMethods.ma_sound_set_volume(_group, value);
+            NativeMethods.ma_sound_set_volume(_group, value * _spatialGain);
         }
     }
 
@@ -91,7 +125,29 @@ public sealed class SoundGroup : IDisposable
         {
             _basePitch = value;
             _tweening = false;
-            NativeMethods.ma_sound_set_pitch(_group, value);
+            NativeMethods.ma_sound_set_pitch(_group, value + _spatialPitchDelta);
+        }
+    }
+
+    /// <summary>Apply an entity's spatial state to the bus in one write
+    /// per changed parameter (the entity computes; the group owns the
+    /// natives so user volume/pitch and spatial state compose).</summary>
+    internal void SetSpatial(float gain, float pan, float pitchDelta)
+    {
+        if (gain != _spatialGain)
+        {
+            _spatialGain = gain;
+            NativeMethods.ma_sound_set_volume(_group, _baseVolume * gain);
+        }
+        if (pan != _spatialPan)
+        {
+            _spatialPan = pan;
+            NativeMethods.ma_sound_set_pan(_group, pan);
+        }
+        if (pitchDelta != _spatialPitchDelta)
+        {
+            _spatialPitchDelta = pitchDelta;
+            NativeMethods.ma_sound_set_pitch(_group, _basePitch + pitchDelta);
         }
     }
 
@@ -111,7 +167,7 @@ public sealed class SoundGroup : IDisposable
         if (_tweening)
             _basePitch = _pitchTween.Sample(out _);
         _tweening = false;
-        NativeMethods.ma_sound_set_pitch(_group, _basePitch);
+        NativeMethods.ma_sound_set_pitch(_group, _basePitch + _spatialPitchDelta);
     }
 
     public bool IsPitchTweening => _tweening;
@@ -121,7 +177,7 @@ public sealed class SoundGroup : IDisposable
         if (!_tweening)
             return;
         _basePitch = _pitchTween.Sample(out var finished);
-        NativeMethods.ma_sound_set_pitch(_group, _basePitch);
+        NativeMethods.ma_sound_set_pitch(_group, _basePitch + _spatialPitchDelta);
         if (finished)
             _tweening = false;
     }
@@ -206,7 +262,8 @@ public sealed class SoundGroup : IDisposable
             NativeMethods.ma_node_attach_output_bus(prev, 0, node, 0);
             prev = node;
         }
-        NativeMethods.ma_node_attach_output_bus(prev, 0, DownstreamNodePtr, 0);
+        NativeMethods.ma_node_attach_output_bus(
+            prev, 0, SpatialOutput != IntPtr.Zero ? SpatialOutput : DownstreamNodePtr, 0);
     }
 
     // ── Engine rebuild (SoundManager.Reconfigure) ──
@@ -231,6 +288,11 @@ public sealed class SoundGroup : IDisposable
             Engine.Handle, 0, _parent?._group ?? IntPtr.Zero, _group);
         if (result != 0)
             throw new AudioException("group re-initialization failed");
+        // Spatial state resets with the natives; the owning entity (if
+        // any) recomputes and reapplies on its own recreate pass.
+        _spatialGain = 1.0f;
+        _spatialPan = 0.0f;
+        _spatialPitchDelta = 0.0f;
         NativeMethods.ma_sound_set_volume(_group, _baseVolume);
         NativeMethods.ma_sound_set_pitch(_group, _basePitch);
         if (_rebuildStopped)

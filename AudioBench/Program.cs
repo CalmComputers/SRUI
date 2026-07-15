@@ -64,6 +64,16 @@ for (var i = 0; i < positions; i++)
 // ── Load ──
 
 var sw = Stopwatch.StartNew();
+// One entity per position; sources at a position play into its group
+// and share its convolution.
+var entities = new SoundEntity[positions];
+for (var i = 0; i < positions; i++)
+{
+    entities[i] = manager.CreateEntity();
+    entities[i].Hrtf = manager.IsHrtfAvailable;
+    var (x, y, z) = pos[i];
+    entities[i].SetPosition(x, y, z);
+}
 var sounds = new Sound[sources];
 // Uncorrelated sources sum in RMS as sqrt(N); scale each down by that
 // so the mix does not clip. The assumption only holds if the copies of
@@ -74,11 +84,8 @@ var volume = 1.0f / MathF.Sqrt(sources);
 var rng = new Random(12345);
 for (var i = 0; i < sources; i++)
 {
-    var s = manager.CreateSound();
+    var s = manager.CreateSound(entities[i % positions].Group);
     s.Load(files[i % files.Length]);
-    s.Hrtf = manager.IsHrtfAvailable;
-    var (x, y, z) = pos[i % positions];
-    s.SetPosition(x, y, z);
     s.Looping = true;
     s.BaseVolume = volume;
     s.PlaybackPosition = (ulong)(rng.NextDouble() * s.Length);

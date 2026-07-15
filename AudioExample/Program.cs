@@ -12,18 +12,21 @@ using var manager = new SoundManager();
 manager.SetListener(0.0f, 0.0f, 0.0f, 90.0f);
 Console.WriteLine($"sample rate: {manager.SampleRate}, HRTF: {manager.IsHrtfAvailable}");
 
-// 1. HRTF circle: the ping orbits the listener.
-using (var sound = manager.CreateSound())
+// 1. HRTF circle: the ping orbits the listener. Positioning is
+// entity-level: the entity owns the place in space, the sound just
+// plays into the entity's group.
+using (var orbiter = manager.CreateEntity())
+using (var sound = manager.CreateSound(orbiter.Group))
 {
+    orbiter.Hrtf = manager.IsHrtfAvailable;
     sound.Load(wav);
-    sound.Hrtf = manager.IsHrtfAvailable;
     sound.Looping = true;
     sound.Play();
     Console.WriteLine("circling with HRTF...");
     for (var step = 0; step < 240; step++)
     {
         var angle = step * (MathF.PI * 2.0f / 240.0f);
-        sound.SetPosition(5.0f * MathF.Cos(angle), 5.0f * MathF.Sin(angle), 0.0f);
+        orbiter.SetPosition(5.0f * MathF.Cos(angle), 5.0f * MathF.Sin(angle), 0.0f);
         manager.Tick();
         Thread.Sleep(25);
     }
@@ -54,23 +57,22 @@ using (var sound = manager.CreateSound(echoBus))
     Thread.Sleep(2500);
 }
 
-// 4. Convolver sharing: sounds at one position share one HRTF convolver.
+// 4. One convolution per entity: however many sounds an entity plays,
+// its group mixes them into a single HRTF convolver.
 if (manager.IsHrtfAvailable)
 {
-    Console.WriteLine("convolver sharing...");
+    Console.WriteLine("entity convolution...");
+    using var bell = manager.CreateEntity();
+    bell.Hrtf = true;
+    bell.SetPosition(3.0f, 3.0f, 0.0f);
     var chord = new Sound[4];
     for (var i = 0; i < chord.Length; i++)
     {
-        chord[i] = manager.CreateSound();
+        chord[i] = manager.CreateSound(bell.Group);
         chord[i].Load(wav);
-        chord[i].Hrtf = true;
-        chord[i].SetPosition(3.0f, 3.0f, 0.0f);
+        chord[i].Pitch = 1.0f + i * 0.25f;
     }
-    Console.WriteLine($"  4 sounds, same position: {manager.ActiveHrtfConvolvers} convolver(s)");
-    chord[0].SetPosition(-3.0f, 3.0f, 0.0f); // splits off
-    Console.WriteLine($"  one moved away: {manager.ActiveHrtfConvolvers} convolver(s)");
-    chord[0].SetPosition(3.0f, 3.0f, 0.0f); // rejoins
-    Console.WriteLine($"  moved back: {manager.ActiveHrtfConvolvers} convolver(s)");
+    Console.WriteLine($"  4 sounds, one entity: {manager.ActiveHrtfConvolvers} convolver(s)");
     foreach (var s in chord)
     {
         s.Play();
@@ -79,22 +81,24 @@ if (manager.IsHrtfAvailable)
     Thread.Sleep(500);
     foreach (var s in chord)
         s.Dispose();
-    Console.WriteLine($"  all disposed: {manager.ActiveHrtfConvolvers} convolver(s)");
 }
 
 // 5. Oneshots: fire and forget — the manager owns the sound and reaps
 // it on the first Tick after it finishes; no reference to keep.
 Console.WriteLine("fire-and-forget oneshots...");
-for (var i = 0; i < 3; i++)
+using (var thrower = manager.CreateEntity())
 {
-    var shot = manager.CreateSound(oneshot: true);
-    shot.Load(wav);
-    shot.SetPosition(i * 2.0f - 2.0f, 3.0f, 0.0f);
-    shot.Play();
-    for (var t = 0; t < 20; t++)
+    for (var i = 0; i < 3; i++)
     {
-        manager.Tick();
-        Thread.Sleep(25);
+        thrower.SetPosition(i * 2.0f - 2.0f, 3.0f, 0.0f);
+        var shot = manager.CreateSound(thrower.Group, oneshot: true);
+        shot.Load(wav);
+        shot.Play();
+        for (var t = 0; t < 20; t++)
+        {
+            manager.Tick();
+            Thread.Sleep(25);
+        }
     }
 }
 

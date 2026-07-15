@@ -3,23 +3,25 @@ using Srui.Audio;
 
 namespace SruiDemo;
 
-/// <summary>Shared navigation ping for sound-augmented lists: one Sound
-/// on the SFX bus, positioned by item index so list movement reads
-/// left-to-right across a fixed stage two units ahead of the listener.
-/// HRTF when available, pan/volume otherwise.</summary>
+/// <summary>Shared navigation ping for sound-augmented lists: one
+/// entity on the SFX bus, positioned by item index so list movement
+/// reads left-to-right across a fixed stage two units ahead of the
+/// listener. HRTF when available, pan/volume otherwise.</summary>
 public sealed class ListNavSound : IDisposable
 {
     private const float StageWidth = 8.0f;
     private const float Distance = 2.0f;
 
+    private readonly SoundEntity _entity;
     private readonly Sound _sound;
 
     public ListNavSound(SoundManager audio, SoundGroup bus, string wavPath)
     {
-        _sound = audio.CreateSound(bus);
+        _entity = audio.CreateEntity(bus);
+        _entity.Hrtf = audio.IsHrtfAvailable;
+        _entity.SetPosition(0.0f, Distance, 0.0f);
+        _sound = audio.CreateSound(_entity.Group);
         _sound.Load(wavPath);
-        _sound.Hrtf = audio.IsHrtfAvailable;
-        _sound.SetPosition(0.0f, Distance, 0.0f);
     }
 
     /// <summary>Play from the item's direction; a null index plays
@@ -29,12 +31,16 @@ public sealed class ListNavSound : IDisposable
         var x = 0.0f;
         if (index is int i && i >= 0 && count > 1)
             x = (i / (float)(count - 1) - 0.5f) * StageWidth;
-        _sound.SetPosition(x, Distance, 0.0f);
+        _entity.SetPosition(x, Distance, 0.0f);
         _sound.Stop();
         _sound.Play();
     }
 
-    public void Dispose() => _sound.Dispose();
+    public void Dispose()
+    {
+        _sound.Dispose();
+        _entity.Dispose();
+    }
 }
 
 /// <summary>A ListBox that pings on every selection move, positioned by
