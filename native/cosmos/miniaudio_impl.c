@@ -128,12 +128,6 @@ MA_API ma_result ma_engine_init_with_caching(ma_engine* pEngine, ma_uint32 perio
     // callback (the engine still sets the device's pUserData to itself,
     // so the wrapper forwards straight to the internal callback).
     engineConfig.dataCallback = cosmos_timed_data_callback;
-    // SRUI: ramp volume changes instead of stepping them. Hosts drive
-    // per-tick distance attenuation through ma_sound_set_volume; with no
-    // smoothing each write is a mid-waveform gain jump — an audible
-    // click on every moving source. ~5ms at 48kHz: long enough to kill
-    // the click, short enough that attenuation still tracks motion.
-    engineConfig.defaultVolumeSmoothTimeInPCMFrames = 240;
 
     result = ma_engine_init(&engineConfig, pEngine);
     if (result != MA_SUCCESS) {
