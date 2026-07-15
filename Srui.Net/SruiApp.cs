@@ -209,24 +209,31 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     /// canned dialogs in SruiDialogs do all of this).</summary>
     public Dialog OpenDialog()
     {
-        // Release every held key into the outgoing layer before focus
-        // moves: its Release bindings fire now or never (Release
-        // bindings match the bare key, so Mods.None is exact).
-        if (_heldKeys.Count > 0)
-        {
-            var held = _heldKeys.ToArray();
-            _heldKeys.Clear();
-            foreach (var key in held)
-                HandleKey(new KeyInput(key, Mods.None, KeyPhase.Release));
-        }
+        SealLayerInput();
         var dialog = new Dialog(this);
         _dialogs.Push(dialog);
-        _flushBatchInput = true;
         return dialog;
+    }
+
+    /// <summary>Cut the outgoing layer's input off before focus moves
+    /// across a dialog boundary: release every held key into it (its
+    /// Release bindings fire now or never — Release bindings match the
+    /// bare key, so Mods.None is exact), and drop the rest of the
+    /// current input batch so logical inputs aimed at it cannot land
+    /// in the incoming layer.</summary>
+    private void SealLayerInput()
+    {
+        foreach (var key in _heldKeys.ToArray())
+            HandleKey(new KeyInput(key, Mods.None, KeyPhase.Release));
+        _flushBatchInput = true;
     }
 
     internal void CloseDialog(Dialog dialog)
     {
+        // The closing layer gets the same seal the opening one did:
+        // held keys release into the dialog, and the rest of the batch
+        // must not leak into the layer being revealed.
+        SealLayerInput();
         // Dialogs close strictly LIFO; closing a buried dialog closes
         // those above it.
         while (_dialogs.Count > 0)
@@ -335,9 +342,18 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     public bool HandleKey(in KeyInput key)
     {
         if (key.Phase == KeyPhase.Release)
-            _heldKeys.Remove(key.Key);
+        {
+            // A release whose hold was already sealed away (dialog
+            // boundary) or forgotten (window focus loss) belongs to a
+            // layer that no longer has focus; it must not fire the
+            // revealed layer's Release bindings.
+            if (!_heldKeys.Remove(key.Key))
+                return false;
+        }
         else
+        {
             _heldKeys.Add(key.Key);
+        }
         if (Engine.ActiveFocusOwner()?.TryHandleKey(key) == true)
             return true;
         return UnhandledKey?.Invoke(key) == true;

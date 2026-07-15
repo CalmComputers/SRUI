@@ -904,6 +904,38 @@ public class KeyBindingTests
     }
 
     [Fact]
+    public void ClosingDialogReleasesHeldKeysIntoDialogLayer()
+    {
+        var ui = new TestUi();
+        var arena = new CustomWidget(ui.App, "Arena");
+        arena.Focus();
+        ui.Drain();
+
+        var dialog = ui.App.OpenDialog();
+        var pad = new CustomWidget(dialog, "Pad");
+        var q = KeyCombo.Plain(Key.Char('q'));
+        var released = 0;
+        pad.BindKey(q, KeyPhase.Release, () => released++);
+        pad.Focus();
+        ui.Drain();
+
+        // Hold q inside the dialog, then close it: the release fires
+        // into the dialog's layer before it pops.
+        ui.App.HandleKey(Transition(q, KeyPhase.Press));
+        dialog.Close();
+        ui.Drain();
+        Assert.Equal(1, released);
+
+        // The real release, arriving with the arena focused again,
+        // neither double-fires nor re-arms a phantom hold.
+        var arenaReleased = 0;
+        arena.BindKey(q, KeyPhase.Release, () => arenaReleased++);
+        ui.App.HandleKey(Transition(q, KeyPhase.Release));
+        Assert.Equal(1, released);
+        Assert.Equal(0, arenaReleased);
+    }
+
+    [Fact]
     public void UnbindKeyRemovesEveryHandlerForTheCombo()
     {
         var ui = new TestUi();

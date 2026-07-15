@@ -99,6 +99,8 @@ Alongside the logical stream, the host layer reports raw key transitions for gam
 
 The widget layer builds per-widget key bindings on this stream: handlers attach to any widget for a combo and phase (press, repeat, release) and fire while that widget is focused (`Widget.BindKey`), with unclaimed transitions falling to an app-level hook (`UnhandledKey`). Press and repeat match the exact combo; release matches the key alone, so a modifier pressed mid-hold cannot orphan the release.
 
+A dialog boundary seals the outgoing layer's input, in both directions: when a dialog opens or closes, every held key gets a synthetic release delivered to the layer being left — its release bindings fire now or never — and the remainder of the current input batch is dropped, so logical inputs aimed at the old layer cannot land in the new one. The real key-up, arriving after the seal with the other layer focused, is discarded rather than dispatched: a release whose hold was sealed away (or forgotten through window focus loss) never fires the revealed layer's release bindings.
+
 # 7. Output Events and Readers
 
 ## 7.1. Event streams
