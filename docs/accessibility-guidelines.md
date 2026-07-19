@@ -118,6 +118,8 @@ Shortcuts are discoverable through two channels:
 
 Never put a key list in a `Description` — that is exactly the per-focus recitation `KeyHelp` exists to avoid — and never put a shortcut anywhere when the widget already announces it. Expected behavior (Enter on a button, typing in an edit box, arrows in a list) belongs in neither channel; the role already promises it.
 
+These channels cover how bindings are *found*; choosing which keys to bind is its own discipline — see docs/shortcut-geometry.md.
+
 # 9. Testing the Transcript
 
 The transcript test (section 1) is automatable, and SRUI applications are expected to encode their spoken surface as tests: build the screen in a headless `SruiApp`, attach a recording `IReader`, push logical input with `HandleInput`, and assert the utterances (Srui.Net.Tests/SurfaceTests.cs holds the reference harness). Two assertions are worth writing for every screen:
