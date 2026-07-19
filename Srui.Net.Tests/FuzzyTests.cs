@@ -103,4 +103,24 @@ public class FuzzyTests
         Assert.Equal("Save File", filtered[0]);
         Assert.Equal(2, filtered.Count);
     }
+
+    [Fact]
+    public void EqualScoresPreferTheShorterTarget()
+    {
+        // "find" scores the first four characters of both identically;
+        // the item the query explains more of must win. The palette
+        // case in miniature: the command named exactly what the user
+        // typed outranks the longer command starting with it.
+        var items = new List<string>
+        {
+            "Find Next, unavailable, f3",
+            "Find, control f",
+        };
+        var filtered = Fuzzy.FilterItems("find", items);
+        Assert.Equal("Find, control f", filtered[0]);
+
+        // The same rule through the IListItem overload.
+        var wrapped = ListBox.Wrap(items);
+        Assert.Equal("Find, control f", Fuzzy.FilterItems("find", wrapped)[0].Text);
+    }
 }

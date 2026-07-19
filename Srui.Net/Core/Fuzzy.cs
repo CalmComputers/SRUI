@@ -126,8 +126,10 @@ internal static class Fuzzy
         FuzzyScore(query, target) is not null;
 
     /// <summary>Score the items against the query and return the matching
-    /// ones sorted by descending score, ties broken by ordinal order. An
-    /// empty query returns all items in their original order.</summary>
+    /// ones sorted by descending score — ties broken by shorter target
+    /// first (the query explains more of it: "find" puts "Find" above
+    /// "Find Next"), then ordinal order. An empty query returns all
+    /// items in their original order.</summary>
     public static List<string> FilterItems(string query, IReadOnlyList<string> items)
     {
         if (query.Length == 0)
@@ -139,7 +141,10 @@ internal static class Fuzzy
         scored.Sort(static (a, b) =>
         {
             var byScore = b.Score.CompareTo(a.Score);
-            return byScore != 0 ? byScore : string.CompareOrdinal(a.Item, b.Item);
+            if (byScore != 0)
+                return byScore;
+            var byLength = a.Item.Length.CompareTo(b.Item.Length);
+            return byLength != 0 ? byLength : string.CompareOrdinal(a.Item, b.Item);
         });
         var result = new List<string>(scored.Count);
         foreach (var (_, item) in scored)
@@ -149,9 +154,10 @@ internal static class Fuzzy
 
     /// <summary>Score the items against the query through each item's own
     /// <see cref="IListItem.FilterScore"/> (null excludes) and return the
-    /// matching ones sorted by descending score, ties broken by ordinal
-    /// Text order. An empty query returns all items in their original
-    /// order without consulting scores.</summary>
+    /// matching ones sorted by descending score — ties broken by
+    /// shorter Text first, then ordinal Text order. An empty query
+    /// returns all items in their original order without consulting
+    /// scores.</summary>
     public static List<T> FilterItems<T>(string query, IReadOnlyList<T> items)
         where T : IListItem
     {
@@ -164,7 +170,10 @@ internal static class Fuzzy
         scored.Sort(static (a, b) =>
         {
             var byScore = b.Score.CompareTo(a.Score);
-            return byScore != 0 ? byScore : string.CompareOrdinal(a.Item.Text, b.Item.Text);
+            if (byScore != 0)
+                return byScore;
+            var byLength = a.Item.Text.Length.CompareTo(b.Item.Text.Length);
+            return byLength != 0 ? byLength : string.CompareOrdinal(a.Item.Text, b.Item.Text);
         });
         var result = new List<T>(scored.Count);
         foreach (var (_, item) in scored)

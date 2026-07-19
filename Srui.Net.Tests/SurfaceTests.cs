@@ -2120,7 +2120,8 @@ public class FilterListBoxTests
         ui.Drain();
 
         ui.Type('s');
-        Assert.Equal(new[] { "Save File 1 of 2" }, ui.Spoken());
+        // Equal scores rank the shorter target first: Settings.
+        Assert.Equal(new[] { "Settings 1 of 2" }, ui.Spoken());
         Assert.Equal(1, changes);
         Assert.Equal("s", list.Filter);
 
@@ -2133,7 +2134,7 @@ public class FilterListBoxTests
 
         // Backspace restores results.
         ui.Input(InputKind.DeleteBackward);
-        Assert.Equal(new[] { "Save File 1 of 2" }, ui.Spoken());
+        Assert.Equal(new[] { "Settings 1 of 2" }, ui.Spoken());
     }
 
     [Fact]
