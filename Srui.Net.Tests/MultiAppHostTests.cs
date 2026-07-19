@@ -520,4 +520,38 @@ public class HostReservationTests
         using var app = SruiApp.Headless();
         Assert.Null(app.ReservedReasonFor(KeyCombo.WithCtrl(Key.Tab)));
     }
+
+    [Fact]
+    public void RequestQuitConsultsTheHandler()
+    {
+        using var ui = new MultiTestUi();
+        _ = ui.Host.Add("Notes");
+
+        var consent = false;
+        var asked = 0;
+        ui.Host.QuitRequested = () =>
+        {
+            asked++;
+            return consent;
+        };
+
+        Assert.False(ui.Host.RequestQuit());
+        Assert.Equal(1, asked);
+        // The loop keeps running after a refusal.
+        Assert.True(ui.Host.Tick());
+
+        consent = true;
+        Assert.True(ui.Host.RequestQuit());
+        Assert.Equal(2, asked);
+        Assert.False(ui.Host.Tick());
+    }
+
+    [Fact]
+    public void RequestQuitWithoutAHandlerQuits()
+    {
+        using var ui = new MultiTestUi();
+        _ = ui.Host.Add("Notes");
+        Assert.True(ui.Host.RequestQuit());
+        Assert.False(ui.Host.Tick());
+    }
 }

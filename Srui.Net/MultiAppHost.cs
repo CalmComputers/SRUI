@@ -321,6 +321,23 @@ public sealed class MultiAppHost : IDisposable
     /// <summary>Stop the loop after the current iteration.</summary>
     public void Quit() => _quit = true;
 
+    /// <summary>Consulted before honoring a window-close (or any
+    /// <see cref="RequestQuit"/>). Return false to keep running — the
+    /// handler owns whatever the user must resolve first (unsaved
+    /// changes, a confirmation). Null means quit unconditionally.</summary>
+    public Func<bool>? QuitRequested { get; set; }
+
+    /// <summary>The guarded quit path: asks <see cref="QuitRequested"/>
+    /// and stops the loop only on consent, returning whether the quit
+    /// is going ahead. The window's close button routes here.</summary>
+    public bool RequestQuit()
+    {
+        if (QuitRequested is { } requested && !requested())
+            return false;
+        _quit = true;
+        return true;
+    }
+
     /// <summary>One loop iteration: pump and route window input,
     /// advance the shared audio, deliver queued messages, then tick
     /// every hosted app (clock, tickers, drain). Returns false once
@@ -337,7 +354,7 @@ public sealed class MultiAppHost : IDisposable
                 switch (hostEvent)
                 {
                     case HostEvent.Quit:
-                        _quit = true;
+                        RequestQuit();
                         break;
                     case HostEvent.KeyDown:
                         Interrupt();
