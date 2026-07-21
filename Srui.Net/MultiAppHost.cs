@@ -259,7 +259,9 @@ public sealed class MultiAppHost : IDisposable
 
     private void Cycle(int direction)
     {
-        if (_apps.Count == 0)
+        // With nowhere to go, switching is silent — re-activating the
+        // only app would just re-announce it.
+        if (_apps.Count < 2)
             return;
         var index = _active is { } active ? _apps.IndexOf(active) : 0;
         index = (index + direction + _apps.Count) % _apps.Count;

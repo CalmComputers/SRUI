@@ -103,6 +103,23 @@ public class MultiAppHostTests
     }
 
     [Fact]
+    public void CtrlTabWithOneAppIsASilentNoOp()
+    {
+        var ui = new MultiTestUi();
+        var only = ui.Host.Add("Notes");
+        _ = new EditBox(only.App, "Note");
+        ui.Host.Activate(only);
+        ui.Drain();
+
+        // Still consumed — the combo stays reserved — but nothing is
+        // re-announced and the app stays active.
+        Assert.True(ui.Combo(KeyCombo.WithCtrl(Key.Tab)));
+        Assert.True(ui.Combo(KeyCombo.CtrlShift(Key.Tab)));
+        Assert.Empty(ui.Spoken());
+        Assert.True(only.IsActive);
+    }
+
+    [Fact]
     public void SwitchingCombosAreConfigurable()
     {
         var (ui, notes, inbox, _, _) = TwoApps();
