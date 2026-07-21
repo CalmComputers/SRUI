@@ -53,6 +53,11 @@ public class ListBox<T> : Widget where T : class, IListItem
     private string _typeAheadBuffer = "";
     private ulong? _lastKeystrokeMs;
 
+    /// <summary>Whether typed characters navigate by prefix (the
+    /// default). Off, typed characters fall through unclaimed — for
+    /// lists whose owner binds plain letters or Space as commands.</summary>
+    public bool Typeahead { get; set; } = true;
+
     public ListBox(
         IWidgetContainer parent, string name, IReadOnlyList<T> items,
         bool numbered = false, bool activateItems = false,
@@ -112,6 +117,17 @@ public class ListBox<T> : Widget where T : class, IListItem
         _checked?.IntersectWith(_items);
         if (_items.Count > 0 && _selected >= _items.Count)
             _selected = _items.Count - 1;
+    }
+
+    /// <summary>Forget any pending typeahead prefix — for subclasses
+    /// whose input handling replaced what the list is showing (a file
+    /// pane entering another folder), so the next keystroke starts a
+    /// fresh search instead of extending a prefix typed against the
+    /// old items within the timeout.</summary>
+    protected void ResetTypeahead()
+    {
+        _typeAheadBuffer = "";
+        _lastKeystrokeMs = null;
     }
 
     /// <summary>Move the selection without any announcement — the
@@ -422,6 +438,8 @@ public class ListBox<T> : Widget where T : class, IListItem
             case InputKind.TypeChar when _toggleWithSpace && input.IsChar(' '):
                 ToggleSelected();
                 return true;
+            case InputKind.TypeChar when !Typeahead:
+                return false;
             case InputKind.TypeChar:
                 if (System.Text.Rune.IsValid((int)input.Ch))
                     HandleTypeAhead(char.ConvertFromUtf32((int)input.Ch));
