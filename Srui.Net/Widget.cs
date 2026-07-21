@@ -97,6 +97,14 @@ public abstract class Widget : IWidgetContainer
 
     public bool IsFocused => Engine.Focus == Node;
 
+    /// <summary>Focus just landed on this widget, before the focus
+    /// announcement is built — a hook for state the widget reshapes on
+    /// entry (see <see cref="EditBox.SelectAllOnFocus"/>). Reshape
+    /// silently; the focus announcement itself does the speaking.</summary>
+    protected internal virtual void OnFocusGained()
+    {
+    }
+
     /// <summary>Remove this widget's node (and everything created inside
     /// it) from the tree. Focus recovers (with an announcement) if it was
     /// inside. The object stays readable but mutations no longer land

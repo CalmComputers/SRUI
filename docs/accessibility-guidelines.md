@@ -28,7 +28,7 @@ button.Name = "[x] Fireball";
 app.Announce("Fireball selected.");   // second utterance for the same toggle
 ```
 
-`Announce` is for facts that no widget change carries — an operation's outcome, a count, an error. If a property change already tells the story, the announcement is noise; if you want different wording than the property change produces, use the silent setter (`SetNameSilently`, `SetItemsSilently`, `SetTextSilently`) and announce once.
+`Announce` is for facts that no widget change carries — an operation's outcome, a count, an error. If a property change already tells the story, the announcement is noise; if you want different wording than the property change produces, use the silent setter (`SetNameSilently`, `SetItemsSilently`, `SetTextSilently`, `SetCursorSilently`) and announce once.
 
 ## 2.2 Restating the label in the description or prompt
 

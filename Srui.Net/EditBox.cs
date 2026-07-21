@@ -113,6 +113,30 @@ public class EditBox : Widget
         }
     }
 
+    /// <summary>Set the selection without any announcement — for
+    /// callers whose enclosing flow speaks (a find command announcing
+    /// its own "3 of 7, line" already covers the jump). The cursor
+    /// lands at <paramref name="cursor"/>.</summary>
+    public void SetSelectionSilently(int anchor, int cursor)
+    {
+        _editor.Selection = (Snap(anchor), Snap(cursor));
+        _editor.Cursor = Snap(cursor);
+        _editor.PreferredColumn = null;
+    }
+
+    /// <summary>Select the whole text every time focus enters, so
+    /// typing into a seeded field replaces the default instead of
+    /// concatenating (tabbing to a "0" and typing "6" gives 6, not
+    /// 60). Silent: the focus announcement reads the value as
+    /// always.</summary>
+    public bool SelectAllOnFocus { get; set; }
+
+    protected internal override void OnFocusGained()
+    {
+        if (SelectAllOnFocus && !_editor.IsEmpty)
+            _editor.SelectAll();
+    }
+
     /// <summary>The selected text, or "" when nothing is selected.</summary>
     public string SelectedText => _editor.SelectedText() ?? "";
 
@@ -256,6 +280,18 @@ public class EditBox : Widget
         _editor.SetText(text);
         _editor.Selection = null;
         _editor.Cursor = _editor.Length;
+        _editor.PreferredColumn = null;
+    }
+
+    /// <summary>Move the cursor without any announcement — the
+    /// counterpart of the <see cref="CursorPosition"/> setter for
+    /// subclass flows that speak for themselves (a document loader whose
+    /// enclosing announcement covers the landing). Clears the
+    /// selection.</summary>
+    protected void SetCursorSilently(int position)
+    {
+        _editor.Selection = null;
+        _editor.Cursor = Snap(position);
         _editor.PreferredColumn = null;
     }
 

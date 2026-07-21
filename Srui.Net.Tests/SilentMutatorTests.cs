@@ -53,6 +53,14 @@ public class SilentMutatorTests
         {
         }
 
+        /// <summary>The document-loader pattern: replace the text with
+        /// the cursor at the top, nothing spoken.</summary>
+        public void LoadFromTop(string text)
+        {
+            SetTextSilently(text);
+            SetCursorSilently(0);
+        }
+
         protected override bool OnInput(in InputEvent input)
         {
             if (input.Kind == InputKind.MoveUp)
@@ -163,6 +171,23 @@ public class SilentMutatorTests
         Assert.Equal("recalled entry", box.Text);
         Assert.Equal("recalled entry".Length, box.CursorPosition);
         Assert.Null(box.Selection);
+    }
+
+    [Fact]
+    public void SilentCursorMoveSaysNothingAndClearsTheSelection()
+    {
+        using var ui = new TestUi();
+        var box = new RecallBox(ui.App);
+        box.Focus();
+        ui.Drain();
+
+        box.LoadFromTop("fresh document");
+        Assert.Empty(ui.Spoken());
+        Assert.Equal(0, box.CursorPosition);
+        Assert.Null(box.Selection);
+
+        ui.Input(InputKind.SpeakFocus);
+        Assert.Contains(ui.Spoken(), s => s.Contains("fresh document"));
     }
 
     [Fact]

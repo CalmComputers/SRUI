@@ -336,6 +336,10 @@ internal sealed class CoreUi
         var node = _tree.Get(id);
         if (node?.Owner is Widget owner)
         {
+            // Before the announcement is built, so a widget reshaping
+            // its state on entry (e.g. an edit box selecting all) is
+            // read as reshaped.
+            owner.OnFocusGained();
             _events.Add(new CoreEvent.Acc(new AccessibilityEvent.Focused(
                 owner, node.Label.ToInfo(owner.ValueText, owner.StateText), EmptyContext, cause)));
         }

@@ -2711,3 +2711,45 @@ public class FocusCauseTests
         Assert.Equal(new[] { FocusCause.LayerRestore }, Causes(ui));
     }
 }
+
+public class SelectAllOnFocusTests
+{
+    [Fact]
+    public void TypingIntoASeededFieldReplacesInsteadOfConcatenating()
+    {
+        using var ui = new TestUi();
+        var first = new EditBox(ui.App, "Name");
+        var gain = new EditBox(ui.App, "Gain") { Text = "0", SelectAllOnFocus = true };
+        first.Focus();
+        ui.Drain();
+
+        // Tab in: everything is selected, so a digit replaces the seed.
+        ui.Input(InputKind.NavigateNext);
+        ui.Type('6');
+        Assert.Equal("6", gain.Text);
+
+        // Re-entry selects again — the behavior is persistent, not
+        // one-shot.
+        ui.Input(InputKind.NavigatePrev);
+        ui.Input(InputKind.NavigateNext);
+        ui.Type('7');
+        Assert.Equal("7", gain.Text);
+    }
+
+    [Fact]
+    public void TheSelectionFoldsIntoTheFocusAnnouncement()
+    {
+        using var ui = new TestUi();
+        var first = new EditBox(ui.App, "Name");
+        var gain = new EditBox(ui.App, "Gain") { Text = "0", SelectAllOnFocus = true };
+        first.Focus();
+        ui.Drain();
+
+        // One utterance: the focus announcement reads the value as
+        // selected. No separate selection event follows.
+        ui.Input(InputKind.NavigateNext);
+        var spoken = ui.Spoken();
+        var focus = Assert.Single(spoken, s => s.Contains("Gain"));
+        Assert.Contains("selected 0", focus);
+    }
+}
