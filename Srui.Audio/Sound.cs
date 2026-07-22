@@ -310,6 +310,24 @@ public sealed unsafe class Sound : IDisposable
         }
     }
 
+    /// <summary>The rate of the sound's cursor/seek/length frames: the
+    /// data source's native sample rate, not the engine's — the decode
+    /// cache keeps files at their native rate and pull sources report
+    /// their own. Buffer refs report 0 (their PCM was decoded at the
+    /// engine rate) and an async load reports nothing until the decode
+    /// registers; both fall back to the engine rate.</summary>
+    private uint FrameRate
+    {
+        get
+        {
+            if (NativeMethods.ma_sound_get_data_format(
+                    _sound, IntPtr.Zero, IntPtr.Zero, out var rate, IntPtr.Zero, 0) != 0
+                || rate == 0)
+                return Engine.SampleRate;
+            return rate;
+        }
+    }
+
     /// <summary>Playback position in milliseconds.</summary>
     public ulong PlaybackPosition
     {
@@ -318,13 +336,13 @@ public sealed unsafe class Sound : IDisposable
             if (!_loaded) return 0;
             if (NativeMethods.ma_sound_get_cursor_in_pcm_frames(_sound, out var cursor) != 0)
                 return 0;
-            var sr = Engine.SampleRate;
+            var sr = FrameRate;
             return sr == 0 ? 0 : cursor * 1000 / sr;
         }
         set
         {
             if (!_loaded) return;
-            var sr = Engine.SampleRate;
+            var sr = FrameRate;
             if (sr == 0) return;
             NativeMethods.ma_sound_seek_to_pcm_frame(_sound, value * sr / 1000);
         }
@@ -338,7 +356,7 @@ public sealed unsafe class Sound : IDisposable
             if (!_loaded) return 0;
             if (NativeMethods.ma_sound_get_length_in_pcm_frames(_sound, out var frames) != 0)
                 return 0;
-            var sr = Engine.SampleRate;
+            var sr = FrameRate;
             return sr == 0 ? 0 : frames * 1000 / sr;
         }
     }

@@ -42,6 +42,7 @@ internal static class NativeMethods
     [DllImport(Lib)] internal static extern int ma_sound_stop(IntPtr sound);
     [DllImport(Lib)] internal static extern int ma_sound_seek_to_pcm_frame(IntPtr sound, ulong frame);
     [DllImport(Lib)] internal static extern int ma_sound_get_cursor_in_pcm_frames(IntPtr sound, out ulong cursor);
+    [DllImport(Lib)] internal static extern int ma_sound_get_data_format(IntPtr sound, IntPtr format, IntPtr channels, out uint sampleRate, IntPtr channelMap, nuint channelMapCap);
     [DllImport(Lib)] internal static extern int ma_sound_get_length_in_pcm_frames(IntPtr sound, out ulong length);
     [DllImport(Lib)] internal static extern void ma_sound_set_volume(IntPtr sound, float volume);
     [DllImport(Lib)] internal static extern void ma_sound_set_pan(IntPtr sound, float pan);
