@@ -55,6 +55,29 @@ public sealed unsafe class MediaFoundationAudioSource : PullAudioSource
             Release(wanted);
             Check(hr, $"'{path}' has no decodable audio stream");
 
+            // The reader completes a partial output type with
+            // placeholder rate/channels (44100/2 observed for a
+            // 22050/1 AAC stream) and only settles on the decoder's
+            // real output format once the first sample is decoded,
+            // flagging CURRENTMEDIATYPECHANGED. Advertising the
+            // placeholder would have the engine consume the stream at
+            // the wrong rate — decode one sample so the format
+            // settles, then rewind before reading the settled type.
+            for (var i = 0; i < 16; i++)
+            {
+                if (ReadSample(reader, MF_SOURCE_READER_FIRST_AUDIO_STREAM, 0,
+                        out _, out var primeFlags, out _, out var primed) != 0)
+                    break;
+                var got = primed != IntPtr.Zero;
+                if (got)
+                    Release(primed);
+                if (got || (primeFlags & MF_SOURCE_READERF_ENDOFSTREAM) != 0)
+                    break;
+            }
+            var rewind = new PropVariant { Vt = VT_I8, Value = 0 };
+            var guidNull = default(Guid);
+            SetCurrentPosition(reader, &guidNull, &rewind);
+
             Check(GetCurrentMediaType(reader, MF_SOURCE_READER_FIRST_AUDIO_STREAM, out var actual),
                 "negotiated type");
             var channelsKey = MF_MT_AUDIO_NUM_CHANNELS;
@@ -151,6 +174,19 @@ public sealed unsafe class MediaFoundationAudioSource : PullAudioSource
                 _endOfStream = true;
                 return false;
             }
+            if ((flags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED) != 0
+                && !FormatStillMatches())
+            {
+                // The decoder renegotiated to a different rate or
+                // channel count mid-stream. The engine's view of this
+                // source is fixed at load, so the remainder cannot be
+                // rendered correctly — stop instead of playing it at
+                // the wrong speed.
+                if (sample != IntPtr.Zero)
+                    Release(sample);
+                _endOfStream = true;
+                return false;
+            }
             if (sample == IntPtr.Zero)
                 continue; // a gap or stream tick; ask again
 
@@ -180,6 +216,19 @@ public sealed unsafe class MediaFoundationAudioSource : PullAudioSource
             _endOfStream = true;
             return false;
         }
+    }
+
+    private bool FormatStillMatches()
+    {
+        if (GetCurrentMediaType(_reader, MF_SOURCE_READER_FIRST_AUDIO_STREAM, out var type) != 0)
+            return false;
+        var channelsKey = MF_MT_AUDIO_NUM_CHANNELS;
+        var rateKey = MF_MT_AUDIO_SAMPLES_PER_SECOND;
+        var hrChannels = GetUInt32(type, &channelsKey, out var channels);
+        var hrRate = GetUInt32(type, &rateKey, out var sampleRate);
+        Release(type);
+        return hrChannels == 0 && hrRate == 0
+            && channels == Channels && sampleRate == SampleRate;
     }
 
     public override bool Seek(ulong frameIndex)
@@ -244,6 +293,7 @@ public sealed unsafe class MediaFoundationAudioSource : PullAudioSource
     private const uint MF_SOURCE_READER_ALL_STREAMS = 0xFFFFFFFE;
     private const uint MF_SOURCE_READER_MEDIASOURCE = 0xFFFFFFFF;
     private const uint MF_SOURCE_READERF_ENDOFSTREAM = 0x2;
+    private const uint MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED = 0x20;
     private const ushort VT_I8 = 20;
     private const ushort VT_UI8 = 21;
 
