@@ -64,6 +64,17 @@ public class FilterListBox<T> : Widget where T : class, IListItem
             _selected = 0;
         });
 
+    /// <summary>Clear the filter and selection without any
+    /// announcement — for owner flows that reset the widget while the
+    /// user's attention is elsewhere (a launcher clearing its box once
+    /// another app takes focus), where speaking would land over
+    /// whatever took over.</summary>
+    protected void ClearFilterSilently()
+    {
+        _filter = "";
+        _selected = 0;
+    }
+
     /// <summary>Replace the item list without any announcement — for
     /// subclass handlers that reshape base-owned state mid-dispatch,
     /// where the enclosing input flow speaks (see
