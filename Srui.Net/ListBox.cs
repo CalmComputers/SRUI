@@ -225,6 +225,21 @@ public class ListBox<T> : Widget where T : class, IListItem
             Promulgate(new AccessibilityEvent.Toggle(this, value));
     }
 
+    /// <summary>SetChecked without the focused-item state echo — for
+    /// bulk sweeps whose caller announces the outcome itself ("Selection
+    /// cleared.") and per-item words would talk over it. Same
+    /// program-only contract otherwise: no <see cref="ItemToggled"/>,
+    /// never refused.</summary>
+    public void SetCheckedSilently(int index, bool value)
+    {
+        if (_checked is null)
+            throw new InvalidOperationException("not a multi-select list");
+        if ((uint)index >= (uint)_items.Count)
+            throw new ArgumentOutOfRangeException(nameof(index));
+        var item = _items[index];
+        _ = value ? _checked.Add(item) : _checked.Remove(item);
+    }
+
     /// <summary>The checked items, in list order. Empty on a
     /// single-select list.</summary>
     public IReadOnlyList<T> CheckedItems

@@ -159,6 +159,21 @@ public class MultiSelectListTests
     }
 
     [Fact]
+    public void SetCheckedSilentlyNeverSpeaksEvenOnTheFocusedSelection()
+    {
+        var (ui, list) = FocusedList();
+        ui.Spoken();
+
+        list.SetCheckedSilently(0, true);
+        Assert.Empty(ui.Spoken());
+        Assert.True(list.IsChecked(0));
+
+        list.SetCheckedSilently(0, false);
+        Assert.Empty(ui.Spoken());
+        Assert.False(list.IsChecked(0));
+    }
+
+    [Fact]
     public void SetCheckedSilentWhenUnfocused()
     {
         var ui = new TestUi();
