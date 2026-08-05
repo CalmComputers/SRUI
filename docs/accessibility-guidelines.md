@@ -114,7 +114,7 @@ The same task-first reasoning covers the other classic mismatches: a two-state a
 Shortcuts are discoverable through two channels:
 
 - **The shortcut mechanism itself.** Widgets announce their first shortcut as part of the standard announcement; a shortcut registered with `AddShortcut` documents itself at zero authoring cost.
-- **Key help.** `Widget.KeyHelp` is the home for nonstandard keys and actions — anything a user could not predict from the widget's name and role (a list whose left and right arrows set priority, a game widget's whole key layout). A widget with key help announces "with help", and F1 shows the text in a reviewable status dialog: read on demand, once, instead of recited on every focus visit.
+- **Key help.** `Widget.KeyHelp` is the home for nonstandard keys and actions — anything a user could not predict from the widget's name and role (a list whose left and right arrows set priority, a game widget's whole key layout). A widget with key help announces "with help", and F1 shows the text in a reviewable status dialog: read on demand, once, instead of recited on every focus visit. When help is ubiquitous — an app whose every list carries it — the announced state itself becomes noise; `Widget.AnnounceHelp = false` drops the spoken "with help" while keeping F1 and its reservation.
 
 Never put a key list in a `Description` — that is exactly the per-focus recitation `KeyHelp` exists to avoid — and never put a shortcut anywhere when the widget already announces it. Expected behavior (Enter on a button, typing in an edit box, arrows in a list) belongs in neither channel; the role already promises it.
 

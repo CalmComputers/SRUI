@@ -36,6 +36,40 @@ public class KeyHelpTests
     }
 
     [Fact]
+    public void AnnounceHelpFalseDropsTheSpokenStateOnly()
+    {
+        using var ui = new TestUi();
+        var list = new ListBox(ui.App, "To-do", ["a"])
+        {
+            AnnounceHelp = false,
+            KeyHelp = "Space marks done.",
+        };
+        list.Focus();
+        Assert.Equal(new[] { "To-do list a" }, ui.Spoken());
+
+        // F1 and its reservation survive the opt-out.
+        Assert.True(list.ReservesKey(KeyCombo.Plain(Key.F(1))));
+        Assert.True(ui.Raw(KeyCombo.Plain(Key.F(1))));
+        Assert.Contains(ui.Spoken(), s => s.Contains("Space marks done."));
+    }
+
+    [Fact]
+    public void AnnounceHelpOrderIsIrrelevantAndReenablingRestoresTheState()
+    {
+        using var ui = new TestUi();
+        // Opt-out after the help text lands: same silence.
+        var button = new Button(ui.App, "Roll") { KeyHelp = "R rolls twice." };
+        button.AnnounceHelp = false;
+        button.Focus();
+        Assert.Equal(new[] { "Roll button" }, ui.Spoken());
+
+        // Re-enabling on the focused widget speaks the transition,
+        // the ordinary state-flag contract.
+        button.AnnounceHelp = true;
+        Assert.Equal(new[] { "with help" }, ui.Spoken());
+    }
+
+    [Fact]
     public void F1OpensAReviewableHelpDialogAndEscapeReturns()
     {
         using var ui = new TestUi();

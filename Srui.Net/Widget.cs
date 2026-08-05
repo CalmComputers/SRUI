@@ -174,11 +174,13 @@ public abstract class Widget : IWidgetContainer
     }
 
     private string? _keyHelp;
+    private bool _announceHelp = true;
 
     /// <summary>Help text for the widget's extra keys and actions — the
     /// home for anything a user could not predict from the name and role
     /// (a list whose left and right arrows set priority, a game widget's
-    /// key layout). A widget with help announces "with help" and shows the
+    /// key layout). A widget with help announces "with help" (unless
+    /// <see cref="AnnounceHelp"/> opts out) and shows the
     /// text in a reviewable status dialog on F1, which
     /// <see cref="ReservesKey"/> then reports reserved. Null (the default)
     /// removes the state and the F1 claim. Not a second description: text
@@ -189,7 +191,24 @@ public abstract class Widget : IWidgetContainer
         set
         {
             _keyHelp = value;
-            Engine.SetState(Node, WidgetStates.WithHelp, value is not null);
+            Engine.SetState(Node, WidgetStates.WithHelp, value is not null && _announceHelp);
+        }
+    }
+
+    /// <summary>Whether carrying key help is reflected in announcements
+    /// (the "with help" state). False keeps the F1 dialog and its key
+    /// reservation but drops the spoken state — for apps where help is
+    /// so ubiquitous that the phrase would ride every focus visit and
+    /// carry no information. Best set at construction; flipped on a
+    /// focused widget it speaks the state transition like any other
+    /// state flag.</summary>
+    public bool AnnounceHelp
+    {
+        get => _announceHelp;
+        set
+        {
+            _announceHelp = value;
+            Engine.SetState(Node, WidgetStates.WithHelp, _keyHelp is not null && value);
         }
     }
 
