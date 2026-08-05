@@ -3,8 +3,11 @@ using Srui.Core;
 namespace Srui;
 
 /// <summary>Single-selection list over typed items. Arrows move the
-/// selection with boundary announcements, Home/End jump, printable
-/// characters do first-letter cycling and multi-letter prefix search.
+/// selection with boundary announcements — vertical and horizontal
+/// alike, so a list whose real-world metaphor is a row (a hand of
+/// cards) reads naturally without a second widget kind — Home/End
+/// jump, printable characters do first-letter cycling and multi-letter
+/// prefix search.
 /// By default Enter is deliberately not claimed: it falls through to the
 /// layer's primary widget (Windows dialog convention), which reads the
 /// selection. A list whose items are themselves the things to open —
@@ -397,6 +400,7 @@ public class ListBox<T> : Widget where T : class, IListItem
         if (!combo.Ctrl && !combo.Alt && !combo.Shift)
         {
             if (combo.Key == Key.Up || combo.Key == Key.Down
+                || combo.Key == Key.Left || combo.Key == Key.Right
                 || combo.Key == Key.Home || combo.Key == Key.End
                 || combo.Key == Key.Enter) return true;
             if (combo.Key.IsChar(out _) || combo.Key == Key.Space) return true; // type-ahead
@@ -414,6 +418,7 @@ public class ListBox<T> : Widget where T : class, IListItem
             switch (input.Kind)
             {
                 case InputKind.MoveDown or InputKind.MoveUp
+                    or InputKind.MoveRight or InputKind.MoveLeft
                     or InputKind.MoveToDocStart or InputKind.MoveToLineStart
                     or InputKind.MoveToDocEnd or InputKind.MoveToLineEnd:
                     AnnounceEmpty();
@@ -424,13 +429,13 @@ public class ListBox<T> : Widget where T : class, IListItem
         }
         switch (input.Kind)
         {
-            case InputKind.MoveDown:
+            case InputKind.MoveDown or InputKind.MoveRight:
                 if (_selected + 1 < _items.Count)
                     SelectAndAnnounce(_selected + 1);
                 else
                     AnnounceSelected(Boundary.Bottom);
                 return true;
-            case InputKind.MoveUp:
+            case InputKind.MoveUp or InputKind.MoveLeft:
                 if (_selected > 0)
                     SelectAndAnnounce(_selected - 1);
                 else

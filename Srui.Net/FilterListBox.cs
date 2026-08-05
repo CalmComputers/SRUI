@@ -158,6 +158,7 @@ public class FilterListBox<T> : Widget where T : class, IListItem
         if (!combo.Ctrl && !combo.Alt && !combo.Shift)
         {
             if (combo.Key == Key.Up || combo.Key == Key.Down
+                || combo.Key == Key.Left || combo.Key == Key.Right
                 || combo.Key == Key.Home || combo.Key == Key.End
                 || combo.Key == Key.Enter) return true;
             if (combo.Key.IsChar(out _) || combo.Key == Key.Space) return true; // the query
@@ -171,13 +172,13 @@ public class FilterListBox<T> : Widget where T : class, IListItem
         var filtered = Results;
         switch (input.Kind)
         {
-            case InputKind.MoveDown when filtered.Count > 0:
+            case InputKind.MoveDown or InputKind.MoveRight when filtered.Count > 0:
                 if (_selected + 1 < filtered.Count)
                     SelectAndAnnounce(filtered, _selected + 1);
                 else
                     AnnounceResult(filtered, Boundary.Bottom);
                 return true;
-            case InputKind.MoveUp when filtered.Count > 0:
+            case InputKind.MoveUp or InputKind.MoveLeft when filtered.Count > 0:
                 if (_selected > 0)
                     SelectAndAnnounce(filtered, _selected - 1);
                 else
@@ -192,6 +193,7 @@ public class FilterListBox<T> : Widget where T : class, IListItem
                     SelectAndAnnounce(filtered, filtered.Count - 1);
                 return true;
             case InputKind.MoveDown or InputKind.MoveUp
+                or InputKind.MoveRight or InputKind.MoveLeft
                 or InputKind.MoveToDocStart or InputKind.MoveToLineStart
                 or InputKind.MoveToDocEnd or InputKind.MoveToLineEnd:
                 // No results — answer with what the label already says.
