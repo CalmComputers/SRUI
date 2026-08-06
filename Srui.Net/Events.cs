@@ -179,8 +179,12 @@ public abstract record AccessibilityEvent
 
     /// <summary>Check box toggled — by the user, or programmatically
     /// while focused. The reference rendering speaks the new state alone
-    /// ("checked", "not checked").</summary>
-    public sealed record Toggle(Widget Widget, bool Checked) : AccessibilityEvent;
+    /// ("checked", "not checked") unless <see cref="Words"/> supplies
+    /// the whole utterance ("Flush checked").</summary>
+    public sealed record Toggle(Widget Widget, bool Checked) : AccessibilityEvent
+    {
+        public string? Words { get; init; }
+    }
 
     /// <summary>Filter / typeahead query changed; results recomputed.</summary>
     public sealed record Filter(Widget Widget, string Query, string? FirstResult, int ResultCount)

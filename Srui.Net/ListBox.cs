@@ -225,7 +225,10 @@ public class ListBox<T> : Widget where T : class, IListItem
         var item = _items[index];
         var changed = value ? _checked.Add(item) : _checked.Remove(item);
         if (changed && index == _selected && IsFocused)
-            Promulgate(new AccessibilityEvent.Toggle(this, value));
+            Promulgate(new AccessibilityEvent.Toggle(this, value)
+            {
+                Words = ToggleWords?.Invoke(item, value),
+            });
     }
 
     /// <summary>SetChecked without the focused-item state echo — for
@@ -259,6 +262,13 @@ public class ListBox<T> : Widget where T : class, IListItem
         }
     }
 
+    /// <summary>Optional wording for the toggle announcement: given the
+    /// item and its new state, return the full utterance ("Flush
+    /// checked"), or null for the default "checked"/"not checked". Runs
+    /// after the checked set updates, so it may inspect <see
+    /// cref="CheckedItems"/>.</summary>
+    public Func<T, bool, string?>? ToggleWords;
+
     /// <summary>The user checked or unchecked an item; the arguments are
     /// the item and its new state.</summary>
     public event Action<T, bool>? ItemToggled;
@@ -283,7 +293,10 @@ public class ListBox<T> : Widget where T : class, IListItem
         var isChecked = _checked!.Add(item);
         if (!isChecked)
             _checked.Remove(item);
-        Promulgate(new AccessibilityEvent.Toggle(this, isChecked));
+        Promulgate(new AccessibilityEvent.Toggle(this, isChecked)
+        {
+            Words = ToggleWords?.Invoke(item, isChecked),
+        });
         Post(() => OnItemToggled(item, isChecked));
     }
 

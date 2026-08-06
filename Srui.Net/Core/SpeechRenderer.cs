@@ -84,9 +84,10 @@ public static class SpeechRenderer
             case AccessibilityEvent.SliderChange(_, var value, var unit):
                 return $"{value}{unit}";
 
-            // The same words the focus announcement's value field uses.
-            case AccessibilityEvent.Toggle(_, var isChecked):
-                return isChecked ? "checked" : "not checked";
+            // The same words the focus announcement's value field uses,
+            // unless the widget supplied the utterance wholesale.
+            case AccessibilityEvent.Toggle(_, var isChecked) toggle:
+                return toggle.Words ?? (isChecked ? "checked" : "not checked");
 
             case AccessibilityEvent.Filter(_, _, var firstResult, var resultCount):
                 return firstResult is not null
