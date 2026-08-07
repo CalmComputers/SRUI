@@ -172,6 +172,50 @@ public class SpeechRendererTests
         var ev = new AccessibilityEvent.TabChange(tabs, "Playlist", (1, 3));
         Assert.Equal("Playlist", SpeechRenderer.RenderEvent(ev));
     }
+
+    [Fact]
+    public void VerbosityTrimsRoleShortcutAndExtras()
+    {
+        var info = Info("Hand", "list", "Ace of Spades", "1 of 8",
+            WidgetStates.WithHelp, "Space selects.",
+            KeyCombo.WithAlt(Key.Char('h')));
+        Assert.Equal(
+            "Hand list Ace of Spades 1 of 8 with help Space selects. alt h",
+            SpeechRenderer.AnnounceFocus(info));
+        var quiet = new SpeechVerbosity { Roles = false, Shortcuts = false, Extras = false };
+        Assert.Equal(
+            "Hand Ace of Spades 1 of 8",
+            SpeechRenderer.AnnounceFocus(info, quiet));
+    }
+
+    [Fact]
+    public void VerbosityNeverTrimsActionableStates()
+    {
+        var quiet = new SpeechVerbosity { Roles = false, Shortcuts = false, Extras = false };
+        var info = Info("Name", "edit", stateText: "no filter",
+            states: WidgetStates.Disabled | WidgetStates.Required | WidgetStates.Warning);
+        Assert.Equal(
+            "Name no filter unavailable required warning",
+            SpeechRenderer.AnnounceFocus(info, quiet));
+    }
+
+    [Fact]
+    public void VerbosityGatesEchoesOfSuppressedParts()
+    {
+        var quiet = new SpeechVerbosity { Roles = false, Shortcuts = false, Extras = false };
+        var save = new Button(App, "Save");
+        // Echoes of parts the focus announcement suppressed stay silent;
+        // a name change is never verbosity.
+        Assert.Null(SpeechRenderer.RenderEvent(
+            new AccessibilityEvent.StateChange(save, WidgetStates.WithHelp, true), quiet));
+        Assert.Null(SpeechRenderer.RenderEvent(
+            new AccessibilityEvent.LabelChange(save, LabelPart.Description, "new words"), quiet));
+        Assert.Equal("Store", SpeechRenderer.RenderEvent(
+            new AccessibilityEvent.LabelChange(save, LabelPart.Name, "Store"), quiet));
+        // The actionable state echoes survive full quiet.
+        Assert.Equal("unavailable", SpeechRenderer.RenderEvent(
+            new AccessibilityEvent.StateChange(save, WidgetStates.Disabled, true), quiet));
+    }
 }
 
 public class CoalesceTests

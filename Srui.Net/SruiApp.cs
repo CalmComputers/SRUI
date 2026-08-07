@@ -28,6 +28,10 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     /// null when headless.</summary>
     public Speech? Voice => _speechReader?.Voice;
 
+    /// <summary>The default speech reader's verbosity — mutate its
+    /// fields to trim announcements live. Null when headless.</summary>
+    public SpeechVerbosity? SpeechVerbosity => _speechReader?.Verbosity;
+
     private SoundManager? _audio;
     private bool _sharedAudio;
     private uint _audioPeriodFrames;

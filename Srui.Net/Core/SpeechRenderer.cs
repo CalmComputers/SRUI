@@ -2,26 +2,57 @@ using System.Text;
 
 namespace Srui;
 
+/// <summary>What the reference rendering speaks beyond the essentials.
+/// Everything on is the default and the historical behavior. A reader
+/// holds one instance (<see cref="SpeechReader.Verbosity"/>) and the
+/// app mutates its fields live; the renderer consults it per event.
+/// Name, value, dynamic state text, and the actionable states
+/// (unavailable, required, warning) are never suppressible — those
+/// are information, not verbosity.</summary>
+public sealed class SpeechVerbosity
+{
+    /// <summary>Speak widget roles ("button", "slider").</summary>
+    public bool Roles = true;
+
+    /// <summary>Speak the widget's shortcut suffix ("alt h").</summary>
+    public bool Shortcuts = true;
+
+    /// <summary>Speak descriptions and the "with help" hint.</summary>
+    public bool Extras = true;
+}
+
 /// <summary>Speech rendering — the reference rendering of accessibility
 /// events. Pure functions from structured events to utterance strings.
 /// The self-voicing <see cref="SpeechReader"/> uses these; braille and
 /// platform readers ignore them and read the structured payloads
-/// directly; tests assert against them.</summary>
+/// directly; tests assert against them. The optional
+/// <see cref="SpeechVerbosity"/> trims the rendering; omitted, the
+/// full form is spoken.</summary>
 public static class SpeechRenderer
 {
+    private static readonly SpeechVerbosity Full = new();
     /// <summary>Maximum characters to announce verbatim for selections;
     /// beyond this we say "N characters selected".</summary>
     public const int SpeakLimit = 500;
 
-    /// <summary>Render an accessibility event to an utterance. Null when
-    /// there is nothing sensible to say (readers skip silently).</summary>
-    public static string? RenderEvent(AccessibilityEvent ev)
+    /// <summary>Render an accessibility event to an utterance at full
+    /// verbosity. Null when there is nothing sensible to say (readers
+    /// skip silently). An overload, not a default parameter, so the
+    /// method group still converts to Func — tests map event lists
+    /// through it.</summary>
+    public static string? RenderEvent(AccessibilityEvent ev) => RenderEvent(ev, Full);
+
+    /// <summary>Render an accessibility event to an utterance under a
+    /// verbosity (null means full). Null when there is nothing
+    /// sensible to say (readers skip silently).</summary>
+    public static string? RenderEvent(AccessibilityEvent ev, SpeechVerbosity? verbosity)
     {
+        verbosity ??= Full;
         switch (ev)
         {
             case AccessibilityEvent.Focused(_, var info, var contextLabels, _):
             {
-                var announcement = AnnounceFocus(info);
+                var announcement = AnnounceFocus(info, verbosity);
                 return contextLabels.Count == 0
                     ? announcement
                     : $"{string.Join(" ", contextLabels)} {announcement}";
@@ -104,8 +135,14 @@ public static class SpeechRenderer
 
             // The delta alone: a renamed widget speaks its new name, a
             // replaced value the new value. Empty text (a cleared name
-            // or description) has nothing to speak.
-            case AccessibilityEvent.LabelChange(_, _, var newText):
+            // or description) has nothing to speak. A part the
+            // verbosity suppresses from focus announcements stays
+            // suppressed here — the echo of a fact never spoken.
+            case AccessibilityEvent.LabelChange(_, var part, var newText):
+                if (part == LabelPart.Description && !verbosity.Extras)
+                    return null;
+                if (part == LabelPart.Role && !verbosity.Roles)
+                    return null;
                 return newText.Length == 0 ? null : newText;
 
             case AccessibilityEvent.StateChange(_, var state, var on):
@@ -115,6 +152,7 @@ public static class SpeechRenderer
                     WidgetStates.Disabled => on ? "unavailable" : "available",
                     WidgetStates.Required => on ? "required" : "not required",
                     WidgetStates.Warning => on ? "warning" : "warning cleared",
+                    WidgetStates.WithHelp when !verbosity.Extras => null,
                     WidgetStates.WithHelp => on ? "with help" : "help removed",
                     _ => null,
                 };
@@ -137,11 +175,18 @@ public static class SpeechRenderer
         }
     }
 
-    /// <summary>Construct a focus announcement from the golden six, in
-    /// NVDA ordering: Name Role Value States Description Shortcut. No
-    /// commas between fields; shortcuts spoken as "alt s" not "Alt+S".</summary>
-    public static string AnnounceFocus(WidgetInfo info)
+    /// <summary>Construct a focus announcement from the golden six at
+    /// full verbosity, in NVDA ordering: Name Role Value States
+    /// Description Shortcut. No commas between fields; shortcuts
+    /// spoken as "alt s" not "Alt+S".</summary>
+    public static string AnnounceFocus(WidgetInfo info) => AnnounceFocus(info, Full);
+
+    /// <summary>Construct a focus announcement under a verbosity (null
+    /// means full): it trims role, "with help", description, and the
+    /// shortcut; the rest always speaks.</summary>
+    public static string AnnounceFocus(WidgetInfo info, SpeechVerbosity? verbosity)
     {
+        verbosity ??= Full;
         var result = new StringBuilder(64);
 
         // Every present field separates itself from whatever preceded
@@ -160,7 +205,8 @@ public static class SpeechRenderer
         Append(info.Name ?? "");
 
         // Role (empty for role-less widgets — announces without a role word).
-        Append(info.Role);
+        if (verbosity.Roles)
+            Append(info.Role);
 
         // Value.
         Append(info.Value);
@@ -173,14 +219,15 @@ public static class SpeechRenderer
             Append("required");
         if ((info.States & WidgetStates.Warning) != 0)
             Append("warning");
-        if ((info.States & WidgetStates.WithHelp) != 0)
+        if ((info.States & WidgetStates.WithHelp) != 0 && verbosity.Extras)
             Append("with help");
 
         // Description.
-        Append(info.Description);
+        if (verbosity.Extras)
+            Append(info.Description);
 
         // Shortcut — the first one attached, in spoken form ("alt w").
-        if (info.Shortcuts.Count != 0)
+        if (verbosity.Shortcuts && info.Shortcuts.Count != 0)
             Append(info.Shortcuts[0].DisplayName());
 
         return result.ToString();

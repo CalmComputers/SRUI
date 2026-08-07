@@ -94,10 +94,15 @@ public sealed class SpeechReader : IReader, IDisposable
     /// ownership and disposes it.</summary>
     public SpeechReader(Speech voice) => Voice = voice;
 
+    /// <summary>What this reader speaks beyond the essentials. One
+    /// instance for the reader's life — mutate its fields to change
+    /// verbosity live.</summary>
+    public SpeechVerbosity Verbosity { get; } = new();
+
     public void OnEvent(AccessibilityEvent e)
     {
         // An event that renders to silence is skipped.
-        if (SpeechRenderer.RenderEvent(e) is string text)
+        if (SpeechRenderer.RenderEvent(e, Verbosity) is string text)
             Voice.Speak(text);
     }
 
