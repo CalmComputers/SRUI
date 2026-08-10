@@ -362,42 +362,103 @@ public class TreeView<T> : Widget where T : TreeNode<T>
 
     // ── Typeahead ──
 
-    /// <summary>Candidates in match priority order: visible nodes
-    /// scanning outward from the cursor (nearest first, alternating
-    /// after/before), then hidden nodes the same way — collapsed
-    /// content matches only when nothing reachable does. <paramref
+    /// <summary>Candidates in match priority order: the cursor's
+    /// sibling ring first (outward both ways, wrapping — the room
+    /// you're standing in), then the rest of the visible tree by tree
+    /// distance (edges up and down between the nodes, so a cousin at
+    /// your level outranks a leaf buried in the neighbor's subtree —
+    /// proximity is structural, never the flattened depth-first
+    /// index), then hidden nodes the same way — collapsed content
+    /// matches only when nothing reachable does. <paramref
     /// name="includeCursor"/> puts the cursor itself first (the
     /// multi-letter prefix convention; single-letter cycling starts
     /// past it).</summary>
     private List<T> TypeaheadCandidates(bool includeCursor)
     {
-        var visible = VisibleNodes();
         var result = new List<T>();
         if (_cursor is not { } cursor)
             return result;
-        int ci = visible.IndexOf(cursor);
+        var seen = new HashSet<T>(ReferenceEqualityComparer.Instance) { cursor };
         if (includeCursor)
             result.Add(cursor);
-        for (int d = 1; d < visible.Count; d++)
+
+        // The room: siblings outward from the cursor, wrapping, the
+        // same ring navigation walks.
+        var siblings = SiblingsOf(cursor);
+        int at = siblings.IndexOf(cursor);
+        for (int d = 1; d < siblings.Count; d++)
         {
-            if (ci + d < visible.Count) result.Add(visible[ci + d]);
-            if (ci - d >= 0) result.Add(visible[ci - d]);
+            var after = siblings[(at + d) % siblings.Count];
+            if (seen.Add(after)) result.Add(after);
+            var before = siblings[(at - d + siblings.Count) % siblings.Count];
+            if (seen.Add(before)) result.Add(before);
         }
 
+        var visible = VisibleNodes();
+        result.AddRange(RankByDistance(cursor, visible,
+            visible.Where(n => !seen.Contains(n))));
+        foreach (var node in visible)
+            seen.Add(node);
+
         var all = AllNodes();
-        var visibleSet = new HashSet<T>(visible, ReferenceEqualityComparer.Instance);
-        var hidden = new List<(T Node, int Index)>();
-        for (int i = 0; i < all.Count; i++)
-            if (!visibleSet.Contains(all[i]))
-                hidden.Add((all[i], i));
-        int cursorAt = all.IndexOf(cursor);
-        hidden.Sort((a, b) =>
-        {
-            int byDistance = Math.Abs(a.Index - cursorAt).CompareTo(Math.Abs(b.Index - cursorAt));
-            return byDistance != 0 ? byDistance : a.Index.CompareTo(b.Index);
-        });
-        result.AddRange(hidden.Select(h => h.Node));
+        result.AddRange(RankByDistance(cursor, all,
+            all.Where(n => !seen.Contains(n))));
         return result;
+    }
+
+    /// <summary>Cycling candidates: the visible tree in flat order
+    /// rotated to start past the cursor, hidden nodes after — the
+    /// rotation every repeat-press walks so no bearer is starved.</summary>
+    private List<T> RotationCandidates()
+    {
+        var result = new List<T>();
+        if (_cursor is not { } cursor)
+            return result;
+        var visible = VisibleNodes();
+        int ci = visible.IndexOf(cursor);
+        for (int d = 1; d <= visible.Count; d++)
+            result.Add(visible[(ci + d) % visible.Count]);
+        var visibleSet = new HashSet<T>(visible, ReferenceEqualityComparer.Instance);
+        var all = AllNodes();
+        result.AddRange(RankByDistance(cursor, all,
+            all.Where(n => !visibleSet.Contains(n))));
+        return result;
+    }
+
+    /// <summary>Order candidates by tree distance from the cursor,
+    /// ties broken by flat-order nearness, after before behind.</summary>
+    private static List<T> RankByDistance(T cursor, List<T> flat, IEnumerable<T> candidates)
+    {
+        var indexOf = new Dictionary<T, int>(ReferenceEqualityComparer.Instance);
+        for (int i = 0; i < flat.Count; i++)
+            indexOf[flat[i]] = i;
+        int ci = indexOf.TryGetValue(cursor, out var c) ? c : 0;
+        return [.. candidates
+            .OrderBy(n => TreeDistance(cursor, n))
+            .ThenBy(n => Math.Abs(indexOf[n] - ci))
+            .ThenBy(n => indexOf[n] > ci ? 0 : 1)];
+    }
+
+    /// <summary>Edges between two nodes — up from one, down to the
+    /// other; different roots meet through a virtual root above them
+    /// all.</summary>
+    private static int TreeDistance(T a, T b)
+    {
+        var upFromA = new Dictionary<T, int>(ReferenceEqualityComparer.Instance);
+        int climb = 0;
+        T top = a;
+        for (T? n = a; n is not null; n = n.Parent)
+        {
+            upFromA[n] = climb++;
+            top = n;
+        }
+        int up = 0;
+        for (T? n = b; n is not null; n = n.Parent, up++)
+            if (upFromA.TryGetValue(n, out var down))
+                return down + up;
+        // Through the virtual root: a to its root, up and over, b's
+        // root down to b (up counted nodes, so b's edges are up - 1).
+        return upFromA[top] + (up - 1) + 2;
     }
 
     private void HandleTypeAhead(string runeText)
@@ -416,7 +477,12 @@ public class TreeView<T> : Widget where T : TreeNode<T>
 
         bool singleChar = cycling || _typeAheadBuffer == runeLower;
         var needle = singleChar ? runeLower : _typeAheadBuffer;
-        foreach (var node in TypeaheadCandidates(includeCursor: !singleChar))
+        // A first press hunts by proximity — the nearest bearer wins.
+        // Repeats rotate in flat order instead: proximity re-ranked
+        // from each new cursor would bounce between two close matches
+        // and starve the rest; a rotation visits every bearer.
+        var candidates = cycling ? RotationCandidates() : TypeaheadCandidates(includeCursor: !singleChar);
+        foreach (var node in candidates)
         {
             if (!AsciiMatch.StartsWithLower(node.Text, needle))
                 continue;

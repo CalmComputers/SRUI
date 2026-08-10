@@ -140,6 +140,31 @@ public class TreeViewTests
     }
 
     [Fact]
+    public void TypeaheadPrefersSiblingsOverANeighborsDeepContent()
+    {
+        var ui = new TestUi();
+        // Mystic is open with "mult" inside; Madness is Mystic's
+        // sibling. From Mystic, 'm' must find the sibling at your
+        // level, not dive into the flat-order-nearer subtree.
+        var mystic = new TreeNode("Mystic", new TreeNode("mult")) { Expanded = true };
+        var madness = new TreeNode("Madness");
+        var tree = new TreeView(ui.App, "Jokers", [mystic, madness]);
+        tree.Focus();
+        ui.Drain();
+
+        ui.Type('m');
+        Assert.Same(madness, tree.SelectedNode);
+        Assert.Equal(new[] { "Madness" }, ui.Spoken());
+
+        // Repeats rotate in flat order, so every bearer gets a turn —
+        // including the subtree the first press deliberately skipped.
+        ui.Type('m');
+        Assert.Same(mystic, tree.SelectedNode);
+        ui.Type('m');
+        Assert.Equal("mult", tree.SelectedNode!.Text);
+    }
+
+    [Fact]
     public void TypeaheadRevealsCollapsedContentWhenNothingVisibleMatches()
     {
         var (ui, tree, vanilla, _, _) = Build();
