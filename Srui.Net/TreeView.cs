@@ -30,6 +30,13 @@ public class TreeNode<T> : IListItem where T : TreeNode<T>
     /// user-driven expansion.</summary>
     public bool Expanded { get; set; }
 
+    /// <summary>Whether Space may check this node in a multi-select
+    /// tree. Null is the default rule — leaves yes, branches no. A
+    /// branch that opts in is an item with properties inside (a
+    /// configurable thing), not a group; a leaf that opts out is
+    /// display-only or activation-only.</summary>
+    public bool? Checkable { get; set; }
+
     /// <summary>The owning node, stamped by the widget — null at root
     /// level.</summary>
     public T? Parent { get; internal set; }
@@ -73,8 +80,10 @@ public sealed class TreeNode : TreeNode<TreeNode>
 /// select tree view" and lets the user check leaves independently of
 /// the cursor: Space toggles the selected leaf (Space leaves the
 /// typeahead buffer, the toggleWithSpace trade), checked leaves speak
-/// "checked" after their line, and branches refuse the toggle with a
-/// word — checks belong to items, not groups. Enter stays whatever
+/// "checked" after their line, and non-checkable nodes refuse the
+/// toggle with a word. Checkability is per node (TreeNode.Checkable):
+/// leaves by default, branches on opt-in — a checkable branch is an
+/// item with properties inside, not a group. Enter stays whatever
 /// the activateItems choice made it.</summary>
 public class TreeView<T> : Widget where T : TreeNode<T>
 {
@@ -203,8 +212,8 @@ public class TreeView<T> : Widget where T : TreeNode<T>
     {
         if (_checked is null)
             throw new InvalidOperationException("not a multi-select tree");
-        if (node.IsBranch)
-            throw new InvalidOperationException("checks apply to leaves, not branches");
+        if (!(node.Checkable ?? !node.IsBranch))
+            throw new InvalidOperationException("the node is not checkable");
         var changed = value ? _checked.Add(node) : _checked.Remove(node);
         if (changed && ReferenceEquals(node, _cursor) && IsFocused)
             Promulgate(new AccessibilityEvent.Toggle(this, value));
@@ -240,7 +249,7 @@ public class TreeView<T> : Widget where T : TreeNode<T>
     {
         if (_cursor is not { } cursor)
             return;
-        if (cursor.IsBranch)
+        if (!(cursor.Checkable ?? !cursor.IsBranch))
         {
             Announce("Checks apply to items, not groups.");
             return;
@@ -337,7 +346,8 @@ public class TreeView<T> : Widget where T : TreeNode<T>
             var siblings = SiblingsOf(c);
             position = (siblings.IndexOf(c), siblings.Count);
         }
-        bool? isChecked = _checked is not null && !c.IsBranch ? _checked.Contains(c) : null;
+        bool? isChecked = _checked is not null && (c.Checkable ?? !c.IsBranch)
+            ? _checked.Contains(c) : null;
         AnnounceItem(NodeLine(c), position, boundary, isChecked);
     }
 

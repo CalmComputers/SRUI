@@ -311,6 +311,32 @@ public class TreeViewTests
     }
 
     [Fact]
+    public void CheckableOverridesTheDefaultRule()
+    {
+        var ui = new TestUi();
+        // A configurable item: the branch itself checks (include me),
+        // one child checks (a property), one is activation-only.
+        var joker = new TreeNode("Joker",
+            new TreeNode("Foil"),
+            new TreeNode("payout") { Checkable = false })
+        { Checkable = true };
+        var tree = new TreeView(ui.App, "Config", [joker], multiSelect: true);
+        tree.Focus();
+        ui.Drain();
+
+        ui.Type(' ');
+        Assert.True(tree.IsChecked(joker));                  // branch opted in
+        Assert.Equal(new[] { "checked" }, ui.Spoken());
+
+        ui.Input(InputKind.MoveRight);                       // open, land on Foil
+        ui.Input(InputKind.MoveDown);                        // payout
+        ui.Drain();
+        ui.Type(' ');
+        Assert.False(tree.IsChecked(joker.Children[1]));     // leaf opted out
+        Assert.Equal(new[] { "Checks apply to items, not groups." }, ui.Spoken());
+    }
+
+    [Fact]
     public void NodeToggledReportsUserExpansionOnly()
     {
         var (ui, tree, vanilla, _, _) = Build();
