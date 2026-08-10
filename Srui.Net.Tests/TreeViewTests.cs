@@ -35,7 +35,7 @@ public class TreeViewTests
 
         ui.Input(InputKind.MoveDown);
         Assert.Same(extra, tree.SelectedNode);
-        Assert.Equal(new[] { "Extra Credit, collapsed, 2 items" }, ui.Spoken());
+        Assert.Equal(new[] { "Extra Credit collapsed 2 items" }, ui.Spoken());
 
         ui.Input(InputKind.MoveDown);
         Assert.Same(leaf, tree.SelectedNode);
@@ -43,7 +43,7 @@ public class TreeViewTests
 
         // Past the last root: wrap to the first, boundary marked.
         ui.Input(InputKind.MoveDown);
-        Assert.Equal(new[] { "bottom, Vanilla, collapsed, 2 items" }, ui.Spoken());
+        Assert.Equal(new[] { "bottom, Vanilla collapsed 2 items" }, ui.Spoken());
     }
 
     [Fact]
@@ -93,17 +93,17 @@ public class TreeViewTests
         // On a leaf, left is the recovery move: up to the parent.
         ui.Input(InputKind.MoveLeft);
         Assert.Same(vanilla, tree.SelectedNode);
-        Assert.Equal(new[] { "Vanilla, expanded, 2 items" }, ui.Spoken());
+        Assert.Equal(new[] { "Vanilla expanded 2 items" }, ui.Spoken());
 
         // On an open branch, left closes it first...
         ui.Input(InputKind.MoveLeft);
         Assert.False(vanilla.Expanded);
-        Assert.Equal(new[] { "Vanilla, collapsed, 2 items" }, ui.Spoken());
+        Assert.Equal(new[] { "Vanilla collapsed 2 items" }, ui.Spoken());
 
         // ...and at root level with nothing to close, it stays put.
         ui.Input(InputKind.MoveLeft);
         Assert.Same(vanilla, tree.SelectedNode);
-        Assert.Equal(new[] { "Vanilla, collapsed, 2 items" }, ui.Spoken());
+        Assert.Equal(new[] { "Vanilla collapsed 2 items" }, ui.Spoken());
     }
 
     [Fact]

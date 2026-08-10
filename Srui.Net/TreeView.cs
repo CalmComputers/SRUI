@@ -320,10 +320,11 @@ public class TreeView<T> : Widget where T : TreeNode<T>
 
     /// <summary>A node's spoken line: the text, plus the expansion
     /// state and child count for branches — leaves are their text
-    /// alone.</summary>
+    /// alone. No commas: they buy intonation pauses the line doesn't
+    /// need.</summary>
     private static string NodeLine(T node) =>
         node.IsBranch
-            ? $"{node.Text}, {(node.Expanded ? "expanded" : "collapsed")}, {node.Children.Count} items"
+            ? $"{node.Text} {(node.Expanded ? "expanded" : "collapsed")} {node.Children.Count} items"
             : node.Text;
 
     private void AnnounceCursor(Boundary? boundary)
