@@ -56,17 +56,15 @@ public class TreeViewTests
     }
 
     [Fact]
-    public void RightExpandsThenEnters()
+    public void RightOpensAndEntersInOneGesture()
     {
         var (ui, tree, vanilla, _, _) = Build();
 
+        // You pressed right because you want in: the branch opens and
+        // the first child speaks — landing inside IS the report.
         ui.Input(InputKind.MoveRight);
         Assert.True(vanilla.Expanded);
-        Assert.Same(vanilla, tree.SelectedNode);            // expanding does not move
-        Assert.Equal(new[] { "Vanilla, expanded, 2 items" }, ui.Spoken());
-
-        ui.Input(InputKind.MoveRight);
-        Assert.Equal("Joker", tree.SelectedNode!.Text);     // entering does
+        Assert.Equal("Joker", tree.SelectedNode!.Text);
         Assert.Equal(new[] { "Joker" }, ui.Spoken());
     }
 
@@ -74,8 +72,7 @@ public class TreeViewTests
     public void WrapIsBranchLocalInsideAnOpenBranch()
     {
         var (ui, tree, _, _, _) = Build();
-        ui.Input(InputKind.MoveRight);                       // expand Vanilla
-        ui.Input(InputKind.MoveRight);                       // enter: Joker
+        ui.Input(InputKind.MoveRight);                       // open Vanilla, land on Joker
         ui.Input(InputKind.MoveDown);                        // Blueprint
         ui.Drain();
 
@@ -90,8 +87,7 @@ public class TreeViewTests
     public void LeftCollapsesThenJumpsToParent()
     {
         var (ui, tree, vanilla, _, _) = Build();
-        ui.Input(InputKind.MoveRight);                       // expand
-        ui.Input(InputKind.MoveRight);                       // enter: Joker
+        ui.Input(InputKind.MoveRight);                       // open Vanilla, land on Joker
         ui.Drain();
 
         // On a leaf, left is the recovery move: up to the parent.
@@ -124,9 +120,7 @@ public class TreeViewTests
     public void NumberedPositionsCountSiblingsNotTheWholeTree()
     {
         var (ui, _, _, _, _) = Build(numbered: true);
-        ui.Input(InputKind.MoveRight);                       // expand Vanilla
-        ui.Drain();
-        ui.Input(InputKind.MoveRight);                       // enter: Joker
+        ui.Input(InputKind.MoveRight);                       // open Vanilla, land on Joker
         Assert.Equal(new[] { "Joker 1 of 2" }, ui.Spoken());
     }
 

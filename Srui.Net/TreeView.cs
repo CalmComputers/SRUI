@@ -51,9 +51,10 @@ public sealed class TreeNode : TreeNode<TreeNode>
 /// node's siblings and wrap within them (the wrap carries a boundary
 /// marker, so readers can cue the seam while the landed item speaks),
 /// making a branch a room rather than a region of one long hallway.
-/// Right expands a closed branch, then steps into its first child;
-/// Left collapses an open branch, then jumps to the parent — the
-/// "where am I" recovery move. Home/End jump within the siblings.
+/// Right on a branch opens it if closed and steps into its first
+/// child, one gesture; Left collapses an open branch, then jumps to
+/// the parent — the "where am I" recovery move. Home/End jump within
+/// the siblings.
 ///
 /// Typeahead searches outward from the cursor — nearer nodes in the
 /// flattened visible order match first, so a name that repeats across
@@ -386,15 +387,16 @@ public class TreeView<T> : Widget where T : TreeNode<T>
                     MoveAndAnnounce(siblings[^1], siblings.Count > 1 ? Boundary.Top : null);
                 return true;
             case InputKind.MoveRight:
-                if (cursor.IsBranch && !cursor.Expanded)
+                if (cursor.IsBranch)
                 {
+                    // Opening and entering are one gesture: you pressed
+                    // right because you want in, so the first child
+                    // speaks — landing inside IS the expansion report.
+                    bool opened = !cursor.Expanded;
                     cursor.Expanded = true;
-                    AnnounceCursor(null);
-                    Post(() => OnNodeToggled(cursor, true));
-                }
-                else if (cursor.IsBranch)
-                {
                     MoveAndAnnounce(cursor.Children[0]);
+                    if (opened)
+                        Post(() => OnNodeToggled(cursor, true));
                 }
                 else
                 {
