@@ -117,6 +117,16 @@ var commands = new SoundFilterListBox(
 var toppings = new ListBox(
     listsPanel, "Toppings", ["almonds", "chocolate", "granola", "honey", "yogurt"],
     multiSelect: true);
+var pantry = new TreeView(
+    listsPanel, "Pantry",
+    [
+        new TreeNode("Baking",
+            new TreeNode("Flour"), new TreeNode("Sugar"), new TreeNode("Vanilla extract")),
+        new TreeNode("Spices",
+            new TreeNode("Cinnamon"), new TreeNode("Cumin"), new TreeNode("Vanilla bean")),
+        new TreeNode("Rice"),
+    ],
+    numbered: true);
 var effect = new SoundListBox(listsPanel, "Bus effect", ["Dry", "Echo", "Reverb"], navSound);
 var volume = new Slider(listsPanel, "Volume", 50, 0, 100, unit: "%");
 
@@ -130,6 +140,9 @@ rotate.Activated += () =>
     app.Announce($"Rotated. First fruit: {fruitItems[0]}.");
 };
 commands.Changed += () => Log($"commands: {commands.SelectedItem?.Text ?? "no match"}");
+pantry.Changed += () => Log($"pantry: {pantry.SelectedNode?.Text}");
+pantry.NodeToggled += (node, expanded) =>
+    Log($"pantry: {node.Text} {(expanded ? "expanded" : "collapsed")}");
 toppings.ItemToggled += (item, isChecked) =>
     Log($"toppings: {item.Text} {(isChecked ? "checked" : "unchecked")}, "
         + $"now [{string.Join(", ", toppings.CheckedItems.Select(i => i.Text))}]");
