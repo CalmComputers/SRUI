@@ -258,6 +258,59 @@ public class TreeViewTests
     }
 
     [Fact]
+    public void MultiSelectChecksLeavesWithSpace()
+    {
+        var ui = new TestUi();
+        var vanilla = new TreeNode("Vanilla", new TreeNode("Joker"), new TreeNode("Blueprint"));
+        var tree = new TreeView(ui.App, "Content", [vanilla], multiSelect: true);
+        tree.Focus();
+        ui.Drain();
+
+        var toggles = new List<(TreeNode Node, bool Checked)>();
+        tree.NodeChecked += (node, on) => toggles.Add((node, on));
+
+        // Space on a branch refuses with a word, changes nothing.
+        ui.Type(' ');
+        Assert.Equal(new[] { "Checks apply to items, not groups." }, ui.Spoken());
+        Assert.Empty(tree.CheckedNodes);
+
+        ui.Input(InputKind.MoveRight);                       // open, land on Joker
+        ui.Drain();
+        ui.Type(' ');
+        Assert.Equal(new[] { "checked" }, ui.Spoken());
+        Assert.True(tree.IsChecked(vanilla.Children[0]));
+        Assert.Equal([(vanilla.Children[0], true)], toggles);
+
+        // Navigation speaks the checked state after the line.
+        ui.Input(InputKind.MoveDown);
+        Assert.Equal(new[] { "Blueprint" }, ui.Spoken());
+        ui.Input(InputKind.MoveDown);                        // wrap back to Joker
+        Assert.Equal(new[] { "bottom, Joker checked" }, ui.Spoken());
+
+        ui.Type(' ');
+        Assert.Equal(new[] { "not checked" }, ui.Spoken());
+        Assert.Empty(tree.CheckedNodes);
+    }
+
+    [Fact]
+    public void CheckedNodesSurviveCollapseAndListInTreeOrder()
+    {
+        var ui = new TestUi();
+        var vanilla = new TreeNode("Vanilla", new TreeNode("Joker"), new TreeNode("Blueprint"));
+        var extra = new TreeNode("Extra", new TreeNode("Turtle"));
+        var tree = new TreeView(ui.App, "Content", [vanilla, extra], multiSelect: true);
+        tree.Focus();
+        ui.Drain();
+
+        tree.SetChecked(extra.Children[0], true);
+        tree.SetChecked(vanilla.Children[1], true);
+        vanilla.Expanded = false;                            // hide one checked leaf
+        Assert.Equal(
+            new[] { vanilla.Children[1], extra.Children[0] },
+            tree.CheckedNodes);                              // tree order, collapse ignored
+    }
+
+    [Fact]
     public void NodeToggledReportsUserExpansionOnly()
     {
         var (ui, tree, vanilla, _, _) = Build();

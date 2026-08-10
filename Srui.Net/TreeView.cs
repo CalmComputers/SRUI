@@ -67,7 +67,15 @@ public sealed class TreeNode : TreeNode<TreeNode>
 /// Enter is not claimed by default (the dialog convention — it falls
 /// through to the layer's primary); <c>activateItems: true</c> claims
 /// it and raises <see cref="Widget.Activated"/> for the selected
-/// node.</summary>
+/// node.
+///
+/// A multi-select tree (<c>multiSelect: true</c>) announces as "multi
+/// select tree view" and lets the user check leaves independently of
+/// the cursor: Space toggles the selected leaf (Space leaves the
+/// typeahead buffer, the toggleWithSpace trade), checked leaves speak
+/// "checked" after their line, and branches refuse the toggle with a
+/// word — checks belong to items, not groups. Enter stays whatever
+/// the activateItems choice made it.</summary>
 public class TreeView<T> : Widget where T : TreeNode<T>
 {
     /// <summary>Timeout for resetting the typeahead buffer (milliseconds
@@ -78,20 +86,28 @@ public class TreeView<T> : Widget where T : TreeNode<T>
     private T? _cursor;
     private readonly bool _numbered;
     private readonly bool _activateItems;
+    /// <summary>The checked leaves of a multi-select tree, by
+    /// reference — null on a single-select tree.</summary>
+    private readonly HashSet<T>? _checked;
     private string _typeAheadBuffer = "";
     private ulong? _lastKeystrokeMs;
 
     public TreeView(
         IWidgetContainer parent, string name, IReadOnlyList<T> roots,
-        bool numbered = false, bool activateItems = false)
-        : base(parent, name, "tree view")
+        bool numbered = false, bool activateItems = false, bool multiSelect = false)
+        : base(parent, name, multiSelect ? "multi select tree view" : "tree view")
     {
         _roots = new List<T>(roots);
         StampParents(_roots, null);
         _cursor = _roots.Count > 0 ? _roots[0] : null;
         _numbered = numbered;
         _activateItems = activateItems;
+        if (multiSelect)
+            _checked = new HashSet<T>(ReferenceEqualityComparer.Instance);
     }
+
+    /// <summary>Whether this is a multi-select tree.</summary>
+    public bool MultiSelect => _checked is not null;
 
     /// <summary>The root nodes. Setting replaces the tree (parent
     /// links stamped, cursor moved to the first root) and speaks the
@@ -148,7 +164,9 @@ public class TreeView<T> : Widget where T : TreeNode<T>
     /// <summary>The selected node's line (or "empty"), pulled fresh at
     /// announcement time.</summary>
     protected internal override string ValueText =>
-        _cursor is { } c ? NodeLine(c) : "empty";
+        _cursor is { } c
+            ? _checked?.Contains(c) == true ? $"{NodeLine(c)} checked" : NodeLine(c)
+            : "empty";
 
     /// <summary>"N of M" among the selected node's siblings, when
     /// numbered.</summary>
@@ -169,6 +187,70 @@ public class TreeView<T> : Widget where T : TreeNode<T>
 
     protected virtual void OnNodeToggled(T node, bool expanded) =>
         NodeToggled?.Invoke(node, expanded);
+
+    // ── Multi-select checked state ──
+
+    /// <summary>Whether the node is checked. Always false on a
+    /// single-select tree.</summary>
+    public bool IsChecked(T node) => _checked?.Contains(node) ?? false;
+
+    /// <summary>Check or uncheck a leaf programmatically. Changing the
+    /// selected node's state while focused speaks the new state
+    /// exactly as a user-driven toggle would; it does not raise
+    /// <see cref="NodeChecked"/> (the program already knows). Throws
+    /// on a single-select tree or a branch node.</summary>
+    public void SetChecked(T node, bool value)
+    {
+        if (_checked is null)
+            throw new InvalidOperationException("not a multi-select tree");
+        if (node.IsBranch)
+            throw new InvalidOperationException("checks apply to leaves, not branches");
+        var changed = value ? _checked.Add(node) : _checked.Remove(node);
+        if (changed && ReferenceEquals(node, _cursor) && IsFocused)
+            Promulgate(new AccessibilityEvent.Toggle(this, value));
+    }
+
+    /// <summary>The checked nodes, in tree order (expansion ignored —
+    /// a check inside a since-collapsed branch still counts).</summary>
+    public IReadOnlyList<T> CheckedNodes
+    {
+        get
+        {
+            if (_checked is null || _checked.Count == 0)
+                return Array.Empty<T>();
+            var result = new List<T>(_checked.Count);
+            foreach (var node in AllNodes())
+                if (_checked.Contains(node))
+                    result.Add(node);
+            return result;
+        }
+    }
+
+    /// <summary>The user checked or unchecked a leaf; the arguments
+    /// are the node and its new state.</summary>
+    public event Action<T, bool>? NodeChecked;
+
+    protected virtual void OnNodeChecked(T node, bool isChecked) =>
+        NodeChecked?.Invoke(node, isChecked);
+
+    /// <summary>The user toggled the selected leaf: flip, announce the
+    /// new state, notify the program. Branches refuse with a word —
+    /// silence would feel like a dead key.</summary>
+    private void ToggleSelected()
+    {
+        if (_cursor is not { } cursor)
+            return;
+        if (cursor.IsBranch)
+        {
+            Announce("Checks apply to items, not groups.");
+            return;
+        }
+        var isChecked = _checked!.Add(cursor);
+        if (!isChecked)
+            _checked.Remove(cursor);
+        Promulgate(new AccessibilityEvent.Toggle(this, isChecked));
+        Post(() => OnNodeChecked(cursor, isChecked));
+    }
 
     // ── Structure helpers ──
 
@@ -254,7 +336,8 @@ public class TreeView<T> : Widget where T : TreeNode<T>
             var siblings = SiblingsOf(c);
             position = (siblings.IndexOf(c), siblings.Count);
         }
-        AnnounceItem(NodeLine(c), position, boundary);
+        bool? isChecked = _checked is not null && !c.IsBranch ? _checked.Contains(c) : null;
+        AnnounceItem(NodeLine(c), position, boundary, isChecked);
     }
 
     private void AnnounceEmpty() => AnnounceItem("empty", null, null);
@@ -430,6 +513,9 @@ public class TreeView<T> : Widget where T : TreeNode<T>
             case InputKind.Activate when _activateItems:
                 PostActivated();
                 return true;
+            case InputKind.TypeChar when _checked is not null && input.IsChar(' '):
+                ToggleSelected();
+                return true;
             case InputKind.TypeChar:
                 if (System.Text.Rune.IsValid((int)input.Ch))
                     HandleTypeAhead(char.ConvertFromUtf32((int)input.Ch));
@@ -446,8 +532,8 @@ public class TreeView : TreeView<TreeNode>
 {
     public TreeView(
         IWidgetContainer parent, string name, IReadOnlyList<TreeNode> roots,
-        bool numbered = false, bool activateItems = false)
-        : base(parent, name, roots, numbered, activateItems)
+        bool numbered = false, bool activateItems = false, bool multiSelect = false)
+        : base(parent, name, roots, numbered, activateItems, multiSelect)
     {
     }
 }
