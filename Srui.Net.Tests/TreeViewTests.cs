@@ -176,6 +176,119 @@ public class TreeViewTests
         Assert.Equal(new[] { "Blueprint" }, ui.Spoken());
     }
 
+    /// <summary>Two collapsed crates and a stray leaf, for the
+    /// provisional-reveal contract: Crate [Apple], Basket [Apricot],
+    /// Zed. The shared "ap" prefix lets a refinement travel from one
+    /// crate's content to the other's.</summary>
+    private static (TestUi Ui, TreeView Tree, TreeNode Crate, TreeNode Basket) BuildCrates()
+    {
+        var ui = new TestUi();
+        var crate = new TreeNode("Crate", new TreeNode("Apple"));
+        var basket = new TreeNode("Basket", new TreeNode("Apricot"));
+        var tree = new TreeView(ui.App, "Pantry", [crate, basket, new TreeNode("Zed")]);
+        tree.Focus();
+        ui.Drain();
+        return (ui, tree, crate, basket);
+    }
+
+    [Fact]
+    public void TypeaheadRefinementClosesTheBranchItPassedThrough()
+    {
+        var (ui, tree, crate, basket) = BuildCrates();
+
+        ui.Type('a');                                        // Apple, hidden in Crate
+        Assert.Equal("Apple", tree.SelectedNode!.Text);
+        Assert.True(crate.Expanded);
+
+        // "apr" walks off Apple to Basket's Apricot: Apple was not
+        // the goal, so neither was opening Crate — it closes again,
+        // and Basket opens in its place.
+        ui.Type('p');
+        ui.Type('r');
+        Assert.Equal("Apricot", tree.SelectedNode!.Text);
+        Assert.False(crate.Expanded);
+        Assert.True(basket.Expanded);
+    }
+
+    [Fact]
+    public void TypeaheadCyclingClosesThePreviousBearersBranch()
+    {
+        var ui = new TestUi();
+        var crate = new TreeNode("Crate", new TreeNode("Joker B"));
+        var visible = new TreeNode("Joker A");
+        var tree = new TreeView(ui.App, "Jokers", [visible, crate]);
+        tree.Focus();
+        ui.Drain();
+
+        ui.Type('j');                                        // only hidden Joker B matches
+        Assert.Equal("Joker B", tree.SelectedNode!.Text);
+        Assert.True(crate.Expanded);
+
+        // Cycling on: Joker B was not the one, and its crate closes
+        // behind the departure.
+        ui.Type('j');
+        Assert.Same(visible, tree.SelectedNode);
+        Assert.False(crate.Expanded);
+    }
+
+    [Fact]
+    public void EngagingAcceptsATypeaheadReveal()
+    {
+        var (ui, tree, crate, _) = BuildCrates();
+        ui.Type('a');                                        // Apple, Crate opens
+        ui.Input(InputKind.MoveUp);                          // engagement: this is the place
+        ui.Drain();
+
+        // A fresh search leaving later finds the reveal accepted.
+        ui.App.SetNow(1000);
+        ui.Type('z');
+        Assert.Equal("Zed", tree.SelectedNode!.Text);
+        Assert.True(crate.Expanded);
+    }
+
+    [Fact]
+    public void UserOpenedBranchesSurviveTypeaheadMovingOn()
+    {
+        var (ui, tree, crate, basket) = BuildCrates();
+        crate.Expanded = true;                               // the user's own doing
+
+        ui.Type('a');                                        // Apple, already visible
+        ui.Type('p');
+        ui.Type('r');                                        // Apricot, Basket opens
+        Assert.True(crate.Expanded);
+        Assert.True(basket.Expanded);
+
+        // A new search moving on closes only the typeahead's opening.
+        ui.App.SetNow(1000);
+        ui.Type('z');
+        Assert.True(crate.Expanded);
+        Assert.False(basket.Expanded);
+    }
+
+    [Fact]
+    public void RefinementWithinABranchKeepsItProvisional()
+    {
+        var ui = new TestUi();
+        var crate = new TreeNode("Crate", new TreeNode("Apple"), new TreeNode("Apricot"));
+        var tree = new TreeView(ui.App, "Pantry", [crate, new TreeNode("Zed")]);
+        tree.Focus();
+        ui.Drain();
+
+        // "a" lands on hidden Apple; "apr" refines to its sibling —
+        // the crate stays open, the landing merely moved rooms inside.
+        ui.Type('a');
+        ui.Type('p');
+        ui.Type('r');
+        Assert.Equal("Apricot", tree.SelectedNode!.Text);
+        Assert.True(crate.Expanded);
+
+        // But it never stopped being provisional: a fresh search
+        // leaving the crate still closes it.
+        ui.App.SetNow(1000);
+        ui.Type('z');
+        Assert.False(crate.Expanded);
+    }
+
     [Fact]
     public void TypeaheadPrefersVisibleOverCollapsedMatches()
     {

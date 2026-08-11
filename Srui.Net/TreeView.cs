@@ -67,9 +67,13 @@ public sealed class TreeNode : TreeNode<TreeNode>
 /// flattened visible order match first, so a name that repeats across
 /// branches resolves to the topologically closest bearer — and then
 /// falls back to nodes inside collapsed branches, outward again;
-/// landing on one reveals it (its ancestors expand). Single letters
-/// cycle like a list's; multi-letter prefixes search from the cursor
-/// out.
+/// landing on one reveals it (its ancestors expand). A reveal stays
+/// provisional until the user engages: the next typeahead landing
+/// closes whatever the previous one opened that the new match does
+/// not need — a match typed past was not the goal, so neither was
+/// opening its parents — while arrows, Enter, or a check accept the
+/// expansion as deliberate. Single letters cycle like a list's;
+/// multi-letter prefixes search from the cursor out.
 ///
 /// Enter is not claimed by default (the dialog convention — it falls
 /// through to the layer's primary); <c>activateItems: true</c> claims
@@ -100,6 +104,15 @@ public class TreeView<T> : Widget where T : TreeNode<T>
     private readonly HashSet<T>? _checked;
     private string _typeAheadBuffer = "";
     private ulong? _lastKeystrokeMs;
+    /// <summary>Branches a typeahead landing opened (the
+    /// collapsed-content fallback), still provisional: the next
+    /// typeahead landing closes the ones the new match does not sit
+    /// under — a match the user typed past was not the goal, so
+    /// neither was opening its parents — while any other engagement
+    /// (arrows, Enter, a check, a programmatic move) accepts them as
+    /// the tree's real state. Only branches the reveal itself flipped
+    /// are recorded, so a user-opened ancestor never closes.</summary>
+    private readonly List<T> _typeaheadOpened = [];
 
     public TreeView(
         IWidgetContainer parent, string name, IReadOnlyList<T> roots,
@@ -137,6 +150,7 @@ public class TreeView<T> : Widget where T : TreeNode<T>
             _roots = copy;
             StampParents(_roots, null);
             _cursor = _roots.Count > 0 ? _roots[0] : null;
+            _typeaheadOpened.Clear();
         });
     }
 
@@ -148,6 +162,7 @@ public class TreeView<T> : Widget where T : TreeNode<T>
     public void Refresh()
     {
         StampParents(_roots, null);
+        _typeaheadOpened.Clear();
         if (_cursor is null || !InTree(_cursor))
             _cursor = _roots.Count > 0 ? _roots[0] : null;
     }
@@ -162,6 +177,7 @@ public class TreeView<T> : Widget where T : TreeNode<T>
     {
         if (!InTree(node))
             throw new ArgumentException("the node is not in this tree", nameof(node));
+        _typeaheadOpened.Clear();
         Reveal(node);
         if (ReferenceEquals(node, _cursor))
             return;
@@ -247,6 +263,7 @@ public class TreeView<T> : Widget where T : TreeNode<T>
     /// silence would feel like a dead key.</summary>
     private void ToggleSelected()
     {
+        _typeaheadOpened.Clear();
         if (_cursor is not { } cursor)
             return;
         if (!(cursor.Checkable ?? !cursor.IsBranch))
@@ -461,6 +478,28 @@ public class TreeView<T> : Widget where T : TreeNode<T>
         return upFromA[top] + (up - 1) + 2;
     }
 
+    /// <summary>Reveal a typeahead landing and settle the previous
+    /// one's debt: branches the last landing opened close again unless
+    /// the new match needs them, and whatever this reveal flips open
+    /// becomes the new provisional set. Silent both ways, like every
+    /// programmatic expansion.</summary>
+    private void RevealForTypeahead(T node)
+    {
+        var keep = new HashSet<T>(ReferenceEqualityComparer.Instance);
+        for (var p = node.Parent; p is not null; p = p.Parent)
+            keep.Add(p);
+        foreach (var stale in _typeaheadOpened)
+            if (!keep.Contains(stale))
+                stale.Expanded = false;
+        _typeaheadOpened.RemoveAll(n => !keep.Contains(n));
+        for (var p = node.Parent; p is not null; p = p.Parent)
+            if (!p.Expanded)
+            {
+                p.Expanded = true;
+                _typeaheadOpened.Add(p);
+            }
+    }
+
     private void HandleTypeAhead(string runeText)
     {
         var runeLower = AsciiMatch.LowerString(runeText);
@@ -492,7 +531,7 @@ public class TreeView<T> : Widget where T : TreeNode<T>
             }
             else
             {
-                Reveal(node);
+                RevealForTypeahead(node);
                 MoveAndAnnounce(node);
             }
             return;
@@ -516,6 +555,12 @@ public class TreeView<T> : Widget where T : TreeNode<T>
 
     protected override bool OnInput(in InputEvent input)
     {
+        // Anything but typeahead accepts the last landing's reveals:
+        // engaging with the tree from here means this is where the
+        // user meant to be. (The multi-select Space confirm rides the
+        // TypeChar kind; ToggleSelected clears for it.)
+        if (input.Kind is not InputKind.TypeChar)
+            _typeaheadOpened.Clear();
         if (_cursor is not { } cursor)
         {
             switch (input.Kind)
