@@ -18,6 +18,7 @@ public class EditBox : Widget
         : base(parent, name, RoleTextFor(false, multiline))
     {
         _editor = new EditorState(text, multiline);
+        SelectAllOnFocus = !multiline;
     }
 
     /// <summary>The current line (multiline) or the text (single-line),
@@ -127,8 +128,12 @@ public class EditBox : Widget
     /// <summary>Select the whole text every time focus enters, so
     /// typing into a seeded field replaces the default instead of
     /// concatenating (tabbing to a "0" and typing "6" gives 6, not
-    /// 60). Silent: the focus announcement reads the value as
-    /// always.</summary>
+    /// 60) — the Windows edit-control convention. On by default for
+    /// single-line editors, off for multiline ones, where a focus
+    /// visit must not clobber a working selection; assign to override
+    /// either way. Off touches nothing: the box keeps whatever
+    /// selection it already had, possibly none. Silent: the focus
+    /// announcement reads the value as always.</summary>
     public bool SelectAllOnFocus { get; set; }
 
     protected internal override void OnFocusGained()

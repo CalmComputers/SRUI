@@ -1360,7 +1360,9 @@ public class EditBoxTests
     public void ArrowNavigationSpeaksChars()
     {
         var ui = new TestUi();
-        var notes = new EditBox(ui.App, "Notes", "ab");
+        // Opted out of select-all-on-focus: this test is about bare
+        // cursor movement from a known position.
+        var notes = new EditBox(ui.App, "Notes", "ab") { SelectAllOnFocus = false };
         notes.Focus();
         ui.Drain();
 
@@ -2751,5 +2753,29 @@ public class SelectAllOnFocusTests
         var spoken = ui.Spoken();
         var focus = Assert.Single(spoken, s => s.Contains("Gain"));
         Assert.Contains("selected 0", focus);
+    }
+
+    [Fact]
+    public void SingleLineDefaultsOnAndMultilineOff()
+    {
+        using var ui = new TestUi();
+        Assert.True(new EditBox(ui.App, "Gain").SelectAllOnFocus);
+        Assert.False(new EditBox(ui.App, "Notes", multiline: true).SelectAllOnFocus);
+    }
+
+    [Fact]
+    public void OptingOutKeepsThePriorSelection()
+    {
+        using var ui = new TestUi();
+        var first = new EditBox(ui.App, "Name");
+        var notes = new EditBox(ui.App, "Notes", "alpha beta", multiline: true);
+        notes.Focus();
+        notes.SetSelectionSilently(0, 5);                    // "alpha"
+        first.Focus();
+        ui.Drain();
+
+        // Focus returns; the working selection is exactly as left.
+        ui.Input(InputKind.NavigateNext);
+        Assert.Equal("alpha", notes.SelectedText);
     }
 }
