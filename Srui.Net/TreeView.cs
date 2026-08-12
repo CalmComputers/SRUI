@@ -55,9 +55,10 @@ public sealed class TreeNode : TreeNode<TreeNode>
 
 /// <summary>Single-selection tree over typed nodes: a list whose items
 /// expand. Navigation is branch-local — Up/Down move among the current
-/// node's siblings and wrap within them (the wrap carries a boundary
-/// marker, so readers can cue the seam while the landed item speaks),
-/// making a branch a room rather than a region of one long hallway.
+/// node's siblings and wrap within them silently, unlike a list's
+/// marked wrap: the ring is short and a numbered tree's position
+/// report betrays the seam by itself — making a branch a room rather
+/// than a region of one long hallway.
 /// Right on a branch opens it if closed and steps into its first
 /// child, one gesture; Left collapses an open branch, then jumps to
 /// the parent — the "where am I" recovery move. Home/End jump within
@@ -370,10 +371,10 @@ public class TreeView<T> : Widget where T : TreeNode<T>
 
     private void AnnounceEmpty() => AnnounceItem("empty", null, null);
 
-    private void MoveAndAnnounce(T node, Boundary? boundary = null)
+    private void MoveAndAnnounce(T node)
     {
         _cursor = node;
-        AnnounceCursor(boundary);
+        AnnounceCursor(null);
         PostChanged();
     }
 
@@ -580,16 +581,10 @@ public class TreeView<T> : Widget where T : TreeNode<T>
         switch (input.Kind)
         {
             case InputKind.MoveDown:
-                if (at + 1 < siblings.Count)
-                    MoveAndAnnounce(siblings[at + 1]);
-                else
-                    MoveAndAnnounce(siblings[0], siblings.Count > 1 ? Boundary.Bottom : null);
+                MoveAndAnnounce(siblings[(at + 1) % siblings.Count]);
                 return true;
             case InputKind.MoveUp:
-                if (at > 0)
-                    MoveAndAnnounce(siblings[at - 1]);
-                else
-                    MoveAndAnnounce(siblings[^1], siblings.Count > 1 ? Boundary.Top : null);
+                MoveAndAnnounce(siblings[(at - 1 + siblings.Count) % siblings.Count]);
                 return true;
             case InputKind.MoveRight:
                 if (cursor.IsBranch)

@@ -3,7 +3,7 @@ using Xunit;
 
 namespace Srui.Net.Tests;
 
-/// <summary>TreeView behavior: branch-local navigation with wrap,
+/// <summary>TreeView behavior: branch-local navigation with silent wrap,
 /// expand/collapse on the horizontal axis with left-to-parent
 /// recovery, outward-scanning typeahead with collapsed-branch
 /// fallback, and the programmatic surface (SetRoots, SelectNode,
@@ -41,9 +41,10 @@ public class TreeViewTests
         Assert.Same(leaf, tree.SelectedNode);
         Assert.Equal(new[] { "Hand size" }, ui.Spoken());
 
-        // Past the last root: wrap to the first, boundary marked.
+        // Past the last root: wrap to the first, no boundary words —
+        // the landed line is the whole report, like any other move.
         ui.Input(InputKind.MoveDown);
-        Assert.Equal(new[] { "bottom, Vanilla collapsed 2 items" }, ui.Spoken());
+        Assert.Equal(new[] { "Vanilla collapsed 2 items" }, ui.Spoken());
     }
 
     [Fact]
@@ -52,7 +53,7 @@ public class TreeViewTests
         var (ui, tree, _, _, leaf) = Build();
         ui.Input(InputKind.MoveUp);
         Assert.Same(leaf, tree.SelectedNode);
-        Assert.Equal(new[] { "top, Hand size" }, ui.Spoken());
+        Assert.Equal(new[] { "Hand size" }, ui.Spoken());
     }
 
     [Fact]
@@ -80,7 +81,7 @@ public class TreeViewTests
         // first, never to Extra Credit outside.
         ui.Input(InputKind.MoveDown);
         Assert.Equal("Joker", tree.SelectedNode!.Text);
-        Assert.Equal(new[] { "bottom, Joker" }, ui.Spoken());
+        Assert.Equal(new[] { "Joker" }, ui.Spoken());
     }
 
     [Fact]
@@ -423,7 +424,7 @@ public class TreeViewTests
         ui.Input(InputKind.MoveDown);
         Assert.Equal(new[] { "Blueprint" }, ui.Spoken());
         ui.Input(InputKind.MoveDown);                        // wrap back to Joker
-        Assert.Equal(new[] { "bottom, Joker checked" }, ui.Spoken());
+        Assert.Equal(new[] { "Joker checked" }, ui.Spoken());
 
         ui.Type(' ');
         Assert.Equal(new[] { "not checked" }, ui.Spoken());
