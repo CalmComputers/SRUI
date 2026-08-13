@@ -89,6 +89,8 @@ The mapping is many-to-one (shift+backspace and ctrl+backspace both mean word-de
 
 Input events are pushed to the app one at a time (`SruiApp.HandleInput`); there is no frame granularity. Each event is dispatched in a fixed claim order: the focused widget's `OnInput` gets first claim, then framework navigation and layer defaults (tab ring, hierarchy navigation, primary/cancel), then widget shortcuts (section 8), then dialog dismissal, then the host's own bindings (`UnhandledInput`). Whatever handles the event emits the corresponding output events; queued output is delivered when the app drains (`DispatchEvents` — the event loop does this every iteration).
 
+Ahead of the whole order sits an optional host gate, `SruiApp.InputFilter`: it sees every logical input first — dialog layers included, so a filter that should stand down behind an open dialog checks `HasOpenDialog` itself — and a true return consumes the input outright. This is the freeze seam for apps that must refuse interaction wholesale (a cutscene, a blocking animation) without disabling or hiding widgets: screens and focus stand exactly where they are. Only the logical stream is filtered; the physical key stream (section 6.4) and the keydown speech interrupt flow regardless.
+
 ## 6.3. Time
 
 The engine has no clock; the host feeds one through `SetNow` (monotonic milliseconds) — the event loop does this every iteration, and headless hosts do it themselves. Typeahead timeouts and tickers are both observed there.

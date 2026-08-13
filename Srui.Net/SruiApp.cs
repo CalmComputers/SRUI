@@ -126,6 +126,21 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     /// handled.</summary>
     public Func<KeyInput, bool>? UnhandledKey { get; set; }
 
+    /// <summary>Runs before any claim on a logical input — ahead of the
+    /// focused widget, framework navigation, shortcuts, dialog
+    /// dismissal, and <see cref="UnhandledInput"/>. Return true to
+    /// consume the input: nothing else sees it. The freeze seam — an
+    /// app that must refuse interaction wholesale (a cutscene, a
+    /// blocking animation) gates here instead of disabling every
+    /// widget, keeping focus and screens exactly where they stand. The
+    /// filter sees every logical input, dialog layers included; one
+    /// that should stand down behind an open dialog checks
+    /// <see cref="HasOpenDialog"/> itself. Only the logical stream is
+    /// filtered: physical key transitions (<see cref="Widget.BindKey"/>,
+    /// <see cref="UnhandledKey"/>) and the any-key speech interrupt
+    /// flow regardless.</summary>
+    public Func<InputEvent, bool>? InputFilter { get; set; }
+
     /// <summary>The window lost keyboard focus. Held-key releases will
     /// not arrive; zero any held-key state here.</summary>
     public Action? FocusLost { get; set; }
@@ -323,12 +338,15 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
         Host == null ? TimeSpan.FromMilliseconds(Engine.Now) : _clock.Elapsed;
 
     /// <summary>Dispatch one logical input through the claim order:
-    /// focused widget, framework navigation and layer defaults, widget
-    /// shortcuts, then dialog dismissal and the UnhandledInput hook.
-    /// False when nothing consumed it. Queued output is not delivered
-    /// until <see cref="DispatchEvents"/> runs.</summary>
+    /// the <see cref="InputFilter"/> gate, focused widget, framework
+    /// navigation and layer defaults, widget shortcuts, then dialog
+    /// dismissal and the UnhandledInput hook. False when nothing
+    /// consumed it. Queued output is not delivered until
+    /// <see cref="DispatchEvents"/> runs.</summary>
     public bool HandleInput(in InputEvent input)
     {
+        if (InputFilter?.Invoke(input) == true)
+            return true;
         if (Engine.HandleInput(input))
             return true;
         // Escape closes an open dialog with no explicit cancel widget.
