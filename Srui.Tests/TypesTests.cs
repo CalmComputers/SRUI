@@ -1,7 +1,7 @@
 using Srui;
 using Xunit;
 
-namespace Srui.Net.Tests;
+namespace Srui.Tests;
 
 /// <summary>Reservation tables — the soft-conflict side of bind-dialog
 /// warnings, one virtual per widget kind.</summary>

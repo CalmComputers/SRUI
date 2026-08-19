@@ -1,7 +1,7 @@
 using Srui;
 using Xunit;
 
-namespace Srui.Net.Tests;
+namespace Srui.Tests;
 
 /// <summary>Records what a reader hears, for assertion.</summary>
 internal sealed class TestReader : IReader

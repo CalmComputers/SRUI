@@ -10,7 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Srui.Net\Srui.Net.csproj" />
+    <ProjectReference Include="..\Srui\Srui.csproj" />
     <ProjectReference Include="..\Srui.Audio\Srui.Audio.csproj" />
   </ItemGroup>
 

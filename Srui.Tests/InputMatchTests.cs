@@ -1,7 +1,7 @@
 using Srui;
 using Xunit;
 
-namespace Srui.Net.Tests;
+namespace Srui.Tests;
 
 /// <summary>InputEvent.Is/IsChar — combo matching by physical intent
 /// (provenance when stamped, canonical fallback when synthetic) and

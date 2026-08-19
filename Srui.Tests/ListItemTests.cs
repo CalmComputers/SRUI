@@ -1,7 +1,7 @@
 using Srui;
 using Xunit;
 
-namespace Srui.Net.Tests;
+namespace Srui.Tests;
 
 /// <summary>Item operations and the IListItem contract: structural
 /// consequences (selection clamping, what the user hears about where the

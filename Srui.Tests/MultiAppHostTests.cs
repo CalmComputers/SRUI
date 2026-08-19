@@ -1,7 +1,7 @@
 using Srui;
 using Xunit;
 
-namespace Srui.Net.Tests;
+namespace Srui.Tests;
 
 /// <summary>A headless multi-app host with a recording shared reader:
 /// build apps, activate and switch, assert what the shared stream hears.</summary>

@@ -9,7 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Srui.Net\Srui.Net.csproj" />
+    <ProjectReference Include="..\Srui\Srui.csproj" />
   </ItemGroup>
 
   <!-- Native dependencies staged by native/build-native.ps1. No game

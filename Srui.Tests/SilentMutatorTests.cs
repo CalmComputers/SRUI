@@ -1,7 +1,7 @@
 using Srui;
 using Xunit;
 
-namespace Srui.Net.Tests;
+namespace Srui.Tests;
 
 /// <summary>The protected silent mutators (ListBox.SetItemsSilently,
 /// EditBox.SetTextSilently): a subclass input handler reshapes base-owned

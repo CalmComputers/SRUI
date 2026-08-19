@@ -1,7 +1,7 @@
 using Srui;
 using Xunit;
 
-namespace Srui.Net.Tests;
+namespace Srui.Tests;
 
 /// <summary>Widget.KeyHelp: the "with help" state, the F1 status dialog,
 /// and the key reservation that rides along.</summary>

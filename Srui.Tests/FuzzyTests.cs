@@ -1,7 +1,7 @@
 using Srui.Core;
 using Xunit;
 
-namespace Srui.Net.Tests;
+namespace Srui.Tests;
 
 public class FuzzyTests
 {

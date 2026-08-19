@@ -1,7 +1,7 @@
 using Srui;
 using Xunit;
 
-namespace Srui.Net.Tests;
+namespace Srui.Tests;
 
 /// <summary>Multi-select lists: the "multi select list" role, checked
 /// items speaking "checked" (and unchecked ones nothing), the Enter and

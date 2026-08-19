@@ -122,7 +122,7 @@ These channels cover how bindings are *found*; choosing which keys to bind is it
 
 # 9. Testing the Transcript
 
-The transcript test (section 1) is automatable, and SRUI applications are expected to encode their spoken surface as tests: build the screen in a headless `SruiApp`, attach a recording `IReader`, push logical input with `HandleInput`, and assert the utterances (Srui.Net.Tests/SurfaceTests.cs holds the reference harness). Two assertions are worth writing for every screen:
+The transcript test (section 1) is automatable, and SRUI applications are expected to encode their spoken surface as tests: build the screen in a headless `SruiApp`, attach a recording `IReader`, push logical input with `HandleInput`, and assert the utterances (Srui.Tests/SurfaceTests.cs holds the reference harness). Two assertions are worth writing for every screen:
 
 - **The walk**: tab from the first widget to the last and assert the full sequence. Duplication is immediately visible as repeated substrings in adjacent utterances.
 - **The action**: perform each state-changing operation and assert that it produces exactly one utterance, and that the utterance leads with the outcome.

@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Srui.Net.Tests" />
+    <InternalsVisibleTo Include="Srui.Tests" />
   </ItemGroup>
 
 </Project>

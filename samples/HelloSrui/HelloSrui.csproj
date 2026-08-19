@@ -14,8 +14,8 @@
 
   <!-- Managed assemblies, referenced as plain DLLs. -->
   <ItemGroup>
-    <Reference Include="Srui.Net">
-      <HintPath>$(SruiDist)\Srui.Net.dll</HintPath>
+    <Reference Include="Srui">
+      <HintPath>$(SruiDist)\Srui.dll</HintPath>
     </Reference>
     <Reference Include="Srui.Audio">
       <HintPath>$(SruiDist)\Srui.Audio.dll</HintPath>

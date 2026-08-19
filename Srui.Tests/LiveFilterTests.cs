@@ -1,7 +1,7 @@
 using Srui;
 using Xunit;
 
-namespace Srui.Net.Tests;
+namespace Srui.Tests;
 
 /// <summary>The live-source seam on FilterListBox: OnFilterChanged runs
 /// before the results report, so a subclass that re-queries an external

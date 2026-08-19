@@ -2,7 +2,7 @@
 
 # 1. What This Is
 
-A minimal application that consumes srui as a set of compiled binaries — no project references, no source tree, exactly what a closed-source consumer sees. It shows the full stack: a window with speaking widgets (Srui.Net over the native engine) and positional audio with a bus effect (Srui.Audio over cosmos). The project is deliberately not part of Srui.slnx.
+A minimal application that consumes srui as a set of compiled binaries — no project references, no source tree, exactly what a closed-source consumer sees. It shows the full stack: a window with speaking widgets (Srui over the native engine) and positional audio with a bus effect (Srui.Audio over cosmos). The project is deliberately not part of Srui.slnx.
 
 # 2. Producing the Binary Drop
 
@@ -10,7 +10,7 @@ From the repository root, run `./dist.ps1`. It builds everything in Release and 
 
 | File | Component | Needed by |
 |---|---|---|
-| Srui.Net.dll | The engine: widget classes, app shell, SDL host, speech | UI |
+| Srui.dll | The engine: widget classes, app shell, SDL host, speech | UI |
 | prism.dll | Speech output via screen reader or platform TTS | UI (native) |
 | SDL3.dll | Window and keyboard input | UI (native) |
 | Srui.Audio.dll | Sounds, groups, effects, tweens | audio |

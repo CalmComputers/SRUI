@@ -3,7 +3,7 @@ using Srui;
 using Srui.Core;
 using Xunit;
 
-namespace Srui.Net.Tests;
+namespace Srui.Tests;
 
 /// <summary>The physical-provenance contract of the SDL input mapper:
 /// every logical input carries the combo that produced it, including

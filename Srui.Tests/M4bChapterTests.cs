@@ -3,7 +3,7 @@ using System.Text;
 using Srui.Audio;
 using Xunit;
 
-namespace Srui.Net.Tests;
+namespace Srui.Tests;
 
 /// <summary>The MP4 chapter parser against synthesized containers —
 /// Nero chpl tables, QuickTime text tracks, and the mvhd duration.</summary>

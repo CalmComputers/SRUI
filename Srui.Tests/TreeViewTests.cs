@@ -1,7 +1,7 @@
 using Srui;
 using Xunit;
 
-namespace Srui.Net.Tests;
+namespace Srui.Tests;
 
 /// <summary>TreeView behavior: branch-local navigation with silent wrap,
 /// expand/collapse on the horizontal axis with left-to-parent

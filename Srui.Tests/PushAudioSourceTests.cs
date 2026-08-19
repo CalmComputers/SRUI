@@ -1,7 +1,7 @@
 using Srui.Audio;
 using Xunit;
 
-namespace Srui.Net.Tests;
+namespace Srui.Tests;
 
 /// <summary>The push-fed ring source, driven directly (no native
 /// engine): write/read round-trips, wraparound, silence on underrun,
