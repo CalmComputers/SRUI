@@ -17,9 +17,11 @@
     <Description>Game audio for SRUI: decoded, streamed, and push-fed sounds over buses, with HRTF spatialisation, an ordered effect chain, and tweens. Usable standalone, without the UI stack.</Description>
   </PropertyGroup>
 
-  <!-- The package front page on nuget.org. -->
+  <!-- The package front page on nuget.org, and the vendored-component
+       terms that travel with the native binaries. -->
   <ItemGroup>
     <None Include="..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>

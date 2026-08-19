@@ -28,9 +28,11 @@
     <InternalsVisibleTo Include="Srui.Tests" />
   </ItemGroup>
 
-  <!-- The package front page on nuget.org. -->
+  <!-- The package front page on nuget.org, and the vendored-component
+       terms that travel with the native binaries. -->
   <ItemGroup>
     <None Include="..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>
