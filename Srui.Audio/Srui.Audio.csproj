@@ -6,6 +6,20 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Srui.Audio</RootNamespace>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>true</IsPackable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- The vocabulary types (enum members, event and effect records)
+         are still undocumented; CS1591 on them would bury every other
+         warning. The prose-carrying API is covered, and the .xml ships
+         either way. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <IsAotCompatible>true</IsAotCompatible>
+    <Description>Game audio for SRUI: decoded, streamed, and push-fed sounds over buses, with HRTF spatialisation, an ordered effect chain, and tweens. Usable standalone, without the UI stack.</Description>
   </PropertyGroup>
+
+  <!-- The package front page on nuget.org. -->
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
 </Project>

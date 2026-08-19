@@ -232,6 +232,6 @@ public class FilterListBox : FilterListBox<IListItem>
     }
 
     /// <summary>Replace the item list with plain strings; equivalent to
-    /// setting <see cref="Items"/>.</summary>
+    /// setting <see cref="FilterListBox{T}.Items"/>.</summary>
     public void SetItems(IReadOnlyList<string> items) => Items = ListBox.Wrap(items);
 }

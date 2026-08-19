@@ -1,0 +1,37 @@
+<Project>
+
+  <!-- Shared identity and packaging defaults for every project in the
+       repository. Only the two libraries are packable; the demos, the
+       bench, and the test suite opt out via the default below. -->
+  <PropertyGroup>
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <Authors>CalmComputers</Authors>
+    <Company>CalmComputers</Company>
+    <Product>SRUI</Product>
+    <Copyright>Copyright 2026 CalmComputers</Copyright>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!-- Package metadata. The licence expression covers SRUI's own code;
+       the vendored native components carry their own terms, recorded in
+       THIRD-PARTY-NOTICES.md, which ships inside the package. -->
+  <PropertyGroup>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/CalmComputers/srui</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>accessibility;a11y;screen-reader;nvda;blind;ui;toolkit;keyboard</PackageTags>
+    <RepositoryUrl>https://github.com/CalmComputers/srui</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <!-- Source-stepping for consumers: SourceLink ships in the SDK from
+       .NET 8, so the properties are the whole configuration. Symbols go
+       to nuget.org's symbol server as a separate .snupkg. -->
+  <PropertyGroup>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+</Project>

@@ -6,6 +6,15 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Srui</RootNamespace>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>true</IsPackable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- The vocabulary types (enum members, event and effect records)
+         are still undocumented; CS1591 on them would bury every other
+         warning. The prose-carrying API is covered, and the .xml ships
+         either way. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <IsAotCompatible>true</IsAotCompatible>
+    <Description>A screen-reader-first UI toolkit for C#: a retained semantic tree, keyboard input in, structured accessibility events out, no pixels ever. Built-in widgets, dialogs, shortcuts, and a text engine, spoken through the running screen reader.</Description>
   </PropertyGroup>
 
   <!-- For SruiApp.Audio (app-owned, loop-ticked game audio). Loaded
@@ -17,6 +26,11 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Srui.Tests" />
+  </ItemGroup>
+
+  <!-- The package front page on nuget.org. -->
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>

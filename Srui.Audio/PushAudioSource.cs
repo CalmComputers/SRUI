@@ -20,6 +20,9 @@ public sealed class PushAudioSource : PullAudioSource
     private long _read;
     private volatile bool _completed;
 
+    /// <param name="channels">Channel count of the interleaved f32
+    /// frames the producer will write.</param>
+    /// <param name="sampleRate">Sample rate of those frames, in hertz.</param>
     /// <param name="capacityFrames">Ring size. Sizing it is a latency
     /// choice: a full ring makes <see cref="Write"/> return short, so
     /// the producer's backlog — not this buffer — holds the excess.</param>
