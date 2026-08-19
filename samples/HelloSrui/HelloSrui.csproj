@@ -6,30 +6,23 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>HelloSrui</RootNamespace>
-    <!-- The srui binary drop (produced by dist.ps1 at the repository
-         root). Repoint this at wherever your app keeps the DLLs; nothing
-         in this project references srui source. -->
-    <SruiDist>..\..\dist</SruiDist>
   </PropertyGroup>
 
-  <!-- Managed assemblies, referenced as plain DLLs. -->
-  <ItemGroup>
-    <Reference Include="Srui">
-      <HintPath>$(SruiDist)\Srui.dll</HintPath>
-    </Reference>
-    <Reference Include="Srui.Audio">
-      <HintPath>$(SruiDist)\Srui.Audio.dll</HintPath>
-    </Reference>
-  </ItemGroup>
+  <!-- srui as a consumer sees it: two package references and nothing
+       else. The native DLLs travel inside the packages under
+       runtimes/win-x64/native/ and are resolved by the host, so there is
+       nothing to copy beside the executable.
 
-  <!-- Native DLLs travel beside the exe. prism/SDL3 serve the UI stack;
-       cosmos/phonon serve Srui.Audio — a UI-only app can drop the last
-       two, an audio-only app the first two. -->
+       Srui.Audio arrives transitively with Srui; it is named explicitly
+       because this program uses its types directly.
+
+       nuget.config in this directory points at the repository's
+       artifacts/ folder, so the sample builds against a freshly packed
+       drop before anything is published. Delete it to consume the
+       published packages from nuget.org instead. -->
   <ItemGroup>
-    <None Include="$(SruiDist)\prism.dll" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="$(SruiDist)\SDL3.dll" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="$(SruiDist)\cosmos.dll" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="$(SruiDist)\phonon.dll" CopyToOutputDirectory="PreserveNewest" />
+    <PackageReference Include="Srui" Version="0.1.0" />
+    <PackageReference Include="Srui.Audio" Version="0.1.0" />
   </ItemGroup>
 
 </Project>

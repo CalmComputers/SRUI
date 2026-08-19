@@ -1,5 +1,5 @@
-// HelloSrui: the smallest useful srui app, built against a compiled
-// drop (see README.md) rather than the source tree.
+// HelloSrui: the smallest useful srui app, built against the published
+// packages (see README.md) rather than the source tree.
 //
 // Tab moves between widgets. The Position slider slides a ping across
 // the stereo field (HRTF when Steam Audio is available); the Reverb
@@ -25,10 +25,13 @@ using var bus = audio.CreateGroup();
 
 var pingWav = Path.Combine(Path.GetTempPath(), "hello-srui-ping.wav");
 WritePingWav(pingWav);
-using var ping = audio.CreateSound(bus);
+// Spatialization lives on the entity; the sound plays into the group the
+// entity owns, so moving the entity moves what is heard.
+using var entity = audio.CreateEntity(bus);
+entity.Hrtf = audio.IsHrtfAvailable;
+entity.SetPosition(0.0f, 2.0f, 0.0f);
+using var ping = audio.CreateSound(entity.Group);
 ping.Load(pingWav);
-ping.Hrtf = audio.IsHrtfAvailable;
-ping.SetPosition(0.0f, 2.0f, 0.0f);
 
 // ── UI ──
 
@@ -49,7 +52,7 @@ greet.AddShortcut(KeyCombo.WithCtrl(Key.Char('g')), ShortcutAction.Activate);
 // Arrowing the slider slides the ping across a lane two units ahead.
 position.Changed += () =>
 {
-    ping.SetPosition(position.Value, 2.0f, 0.0f);
+    entity.SetPosition(position.Value, 2.0f, 0.0f);
     ping.Stop();
     ping.Play();
 };
