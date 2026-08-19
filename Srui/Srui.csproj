@@ -35,4 +35,23 @@
     <None Include="..\THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
+  <!-- Native dependencies, packed into the RID-specific native folder
+       the host probes; the P/Invokes use bare names ("prism", "SDL3"),
+       so no consumer-side copying is needed. Staged by
+       native/build-native.ps1, which pack.ps1 runs first. -->
+  <PropertyGroup>
+    <SruiNativeDir>$(MSBuildThisFileDirectory)..\native\out\</SruiNativeDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(SruiNativeDir)prism.dll" Pack="true" PackagePath="runtimes\win-x64\native\" Visible="false" />
+    <None Include="$(SruiNativeDir)SDL3.dll" Pack="true" PackagePath="runtimes\win-x64\native\" Visible="false" />
+  </ItemGroup>
+
+  <!-- A missing native/out would otherwise pack silently, producing a
+       package that compiles for consumers and dies on first P/Invoke. -->
+  <Target Name="SruiVerifyNativeAssets" BeforeTargets="GenerateNuspec">
+    <Error Condition="!Exists('$(SruiNativeDir)prism.dll') Or !Exists('$(SruiNativeDir)SDL3.dll')"
+           Text="native/out is missing prism.dll or SDL3.dll. Run native/build-native.ps1 before packing; pack.ps1 does it for you." />
+  </Target>
+
 </Project>

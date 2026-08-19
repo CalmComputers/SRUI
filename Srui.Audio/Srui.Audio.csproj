@@ -24,4 +24,26 @@
     <None Include="..\THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
+  <!-- Native dependencies, packed into the RID-specific native folder
+       the host probes; the P/Invokes use bare names ("cosmos"), so no
+       consumer-side copying is needed. phonon.dll is not optional:
+       cosmos.dll links phonon.lib, so Steam Audio is a hard import and
+       cosmos cannot load without it. Staged by native/build-native.ps1,
+       which pack.ps1 runs first. -->
+  <PropertyGroup>
+    <SruiNativeDir>$(MSBuildThisFileDirectory)..\native\out\</SruiNativeDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(SruiNativeDir)cosmos.dll" Pack="true" PackagePath="runtimes\win-x64\native\" Visible="false" />
+    <None Include="$(SruiNativeDir)phonon.dll" Pack="true" PackagePath="runtimes\win-x64\native\" Visible="false" />
+    <None Include="build\Srui.Audio.targets" Pack="true" PackagePath="buildTransitive\net10.0\" />
+  </ItemGroup>
+
+  <!-- A missing native/out would otherwise pack silently, producing a
+       package that compiles for consumers and dies on first P/Invoke. -->
+  <Target Name="SruiVerifyNativeAssets" BeforeTargets="GenerateNuspec">
+    <Error Condition="!Exists('$(SruiNativeDir)cosmos.dll') Or !Exists('$(SruiNativeDir)phonon.dll')"
+           Text="native/out is missing cosmos.dll or phonon.dll. Run native/build-native.ps1 before packing; pack.ps1 does it for you." />
+  </Target>
+
 </Project>

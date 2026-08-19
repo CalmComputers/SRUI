@@ -1,0 +1,23 @@
+<Project>
+
+  <!-- SRUI's native binaries are currently published for win-x64 only.
+       The limitation is one of build coverage, not of design — SDL3 is
+       cross-platform and Prism carries Orca and speech-dispatcher
+       backends — so it is reported here rather than baked into the
+       target framework, which would make it permanent and force every
+       consumer onto a -windows TFM.
+
+       This file ships in the Srui.Audio package, which the Srui package
+       always depends on, so one copy reaches every consumer of either. -->
+  <Target Name="SruiCheckNativePlatform" BeforeTargets="Build">
+    <Warning
+      Condition="'$(RuntimeIdentifier)' != '' and '$(RuntimeIdentifier)' != 'win-x64'"
+      Code="SRUI0001"
+      Text="SRUI publishes native binaries for win-x64 only; this project targets '$(RuntimeIdentifier)'. The build will succeed, but loading a widget host or a sound will throw DllNotFoundException at run time." />
+    <Warning
+      Condition="'$(RuntimeIdentifier)' == '' and !$([MSBuild]::IsOSPlatform('Windows'))"
+      Code="SRUI0001"
+      Text="SRUI publishes native binaries for win-x64 only, and this build is not running on Windows. The build will succeed, but loading a widget host or a sound will throw DllNotFoundException at run time." />
+  </Target>
+
+</Project>

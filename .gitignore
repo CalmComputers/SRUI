@@ -9,3 +9,4 @@
 # Native build outputs (produced by native/build-native.ps1).
 /native/out/
 /native/build/
+/artifacts/
