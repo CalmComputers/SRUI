@@ -66,45 +66,55 @@ echoes characters; Enter greets from anywhere in the window.
 
 # 4. Testing What It Says
 
-The spoken surface is the product, so it is the thing worth asserting on. A
-headless application takes logical input directly and reports what a reader
-would have heard, with no window and no native binaries involved:
+The spoken surface is the product, so it is the thing worth asserting on.
+The `Srui.Testing` package drives a headless application and asserts what a
+reader would have heard, with no window and no native binaries involved:
+
+```
+dotnet add package Srui.Testing
+```
 
 ```csharp
 using Srui;
+using Srui.Testing;
 
-var app = SruiApp.Headless();
-var recorder = new Recorder();
-app.AddReader(recorder);
-
-var greet = new Button(app, "Greet");
-greet.Activated += () => app.Announce("Hello, stranger.");
-
-greet.Focus();
-app.HandleInput(InputEvent.Simple(InputKind.Activate));
-app.DispatchEvents();
-
-// recorder.Spoken is now ["Greet button", "Hello, stranger."]
-
-sealed class Recorder : IReader
+using var ui = new TestApp(app =>
 {
-    public readonly List<string> Spoken = new();
+    var greet = new Button(app, "Greet");
+    greet.Activated += () => app.Announce("Hello, stranger.");
+});
 
-    public void OnEvent(AccessibilityEvent e)
-    {
-        if (SpeechRenderer.RenderEvent(e) is { } utterance) Spoken.Add(utterance);
-    }
-
-    public void OnInterrupt() { }
-}
+ui.Expect("Greet button");   // focus landed on the button and announced it
+ui.Press("enter");
+ui.Expect("Hello, stranger.");
 ```
 
-Output is coalesced, so a run that pushes several inputs before dispatching
-sees only the final state of what they changed. Dispatch between steps when
-the intermediate utterances are the point.
+`Press` simulates a key tap the way a real host delivers it — physical key
+phases, the standard key mapping, typed characters — and `Wait` advances
+the clock, so timeouts and tickers elapse instantly. For anything beyond
+exact batches, `Spoken()` returns the utterances as a plain list to query
+however the test likes. The package depends on no test framework; it works
+under xUnit, NUnit, MSTest, or a bare console.
 
-This is how SRUI tests itself; `Srui.Tests/SurfaceTests.cs` holds the
-reference harness.
+An exchange can also be frozen as a plain-text scenario file and replayed
+from a test with `ui.RunScenario(path)`:
+
+```
+// the greeting flow
+say Greet button
+enter
+say Hello, stranger.
+```
+
+A bare line taps a key combo; `say` asserts the next utterance exactly;
+`nospeech` asserts silence; `down`, `up`, `type`, and `wait` cover holds,
+text, and time. Speech no line asserts is out of scope and ignored.
+`ui.RecordScenario(path)` rewrites a file's assertions from a real run —
+record once, read the file to approve it, and review later changes as
+diffs.
+
+This is how SRUI tests itself; `Srui.Tests` is the harness's first
+consumer.
 
 # 5. What Is In The Packages
 
@@ -112,6 +122,7 @@ reference harness.
 |---|---|---|
 | Srui | Widgets, dialogs, focus and navigation, shortcuts, the text engine, the SDL host, speech | prism.dll, SDL3.dll |
 | Srui.Audio | Sounds, buses, effect chains, HRTF spatialisation, tweens | cosmos.dll, phonon.dll |
+| Srui.Testing | The headless test harness: input simulation, utterance assertions, scenario record and replay | none |
 
 Steam Audio (`phonon.dll`) is not optional: `cosmos.dll` imports it
 directly, so it ships wherever the audio package does.
