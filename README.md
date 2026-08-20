@@ -152,10 +152,10 @@ directly, so it ships wherever the audio package does.
 - `samples/HelloSrui` — the smallest complete application, consuming the
   published packages.
 
-The repository also carries four runnable demonstrations: `SruiDemo` (every
-widget kind), `SruiTasks` (an application structured around subclassed
-behaviour), `MultiAppDemo` (several applications in one window), and
-`AudioExample` (the audio stack alone).
+The repository also carries four runnable demonstrations under `samples/`:
+`SruiDemo` (every widget kind), `SruiTasks` (an application structured
+around subclassed behaviour), `MultiAppDemo` (several applications in one
+window), and `AudioExample` (the audio stack alone).
 
 # 7. Building From Source
 

@@ -13,7 +13,7 @@
 // --probe opens the device, prints what it granted, and exits without
 // playing anything.
 //
-// Assets are the OGG files in AudioBench/assets/ (gitignored — bring
+// Assets are the OGG files in samples/AudioBench/assets/ (gitignored — bring
 // your own); sources cycle through them.
 //
 // Reference points, measured by ear on an Intel i7-12700F at 48 kHz:
@@ -35,7 +35,7 @@ var files = Directory.Exists(assetDir)
     : Array.Empty<string>();
 if (files.Length == 0)
 {
-    Console.WriteLine($"no .ogg files in {assetDir} — place some in AudioBench/assets/");
+    Console.WriteLine($"no .ogg files in {assetDir} — place some in samples/AudioBench/assets/");
     return 1;
 }
 Array.Sort(files, StringComparer.OrdinalIgnoreCase);

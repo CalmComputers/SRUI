@@ -1,13 +1,13 @@
 <Solution>
-  <Project Path="AotDemo/AotDemo.csproj" />
-  <Project Path="AudioBench/AudioBench.csproj" />
-  <Project Path="AudioExample/AudioExample.csproj" />
-  <Project Path="MultiAppDemo/MultiAppDemo.csproj" />
+  <Project Path="samples/AotDemo/AotDemo.csproj" />
+  <Project Path="samples/AudioBench/AudioBench.csproj" />
+  <Project Path="samples/AudioExample/AudioExample.csproj" />
+  <Project Path="samples/MultiAppDemo/MultiAppDemo.csproj" />
   <Project Path="Srui.Audio/Srui.Audio.csproj" />
   <Project Path="Srui.Testing/Srui.Testing.csproj" />
   <Project Path="Srui.Tests/Srui.Tests.csproj" />
   <Project Path="Srui/Srui.csproj" />
-  <Project Path="SruiDemo/SruiDemo.csproj" />
-  <Project Path="SruiTasks/SruiTasks.csproj" />
+  <Project Path="samples/SruiDemo/SruiDemo.csproj" />
+  <Project Path="samples/SruiTasks/SruiTasks.csproj" />
   <Project Path="templates/Srui.Templates.csproj" />
 </Solution>
