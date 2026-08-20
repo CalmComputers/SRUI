@@ -1,16 +1,19 @@
 // The Native AOT canary: the smallest full-stack srui application,
-// published with PublishAot to prove the toolkit compiles and runs
-// ahead-of-time. Windowed by default — a window, three widgets, and
-// speech, like the other demos. With --headless it instead drives a
-// headless SruiApp through a scripted exchange, prints every utterance
-// a recording reader heard, and exits nonzero if key utterances are
-// missing; that mode needs no window, no speech, and no native DLLs,
-// so it doubles as a terminal-verifiable AOT smoke test.
+// published with PublishAot to prove the toolkit — and the Srui.Testing
+// harness — compiles and runs ahead-of-time. Windowed by default — a
+// window, three widgets, and speech, like the other demos. With
+// --headless it instead replays an embedded scenario against a headless
+// TestApp, prints every utterance as it is heard, and exits nonzero on
+// the first divergence; that mode needs no window, no speech, and no
+// native DLLs, so it doubles as a terminal-verifiable AOT smoke test.
+// --headless --record prints the scenario re-recorded from the current
+// behavior instead, for pasting back into HeadlessSmoke.Scenario after
+// an intentional change.
 
 using Srui;
 
 if (args.Contains("--headless"))
-    return HeadlessSmoke.Run();
+    return HeadlessSmoke.Run(record: args.Contains("--record"));
 
 using var app = new SruiApp("SRUI AOT Demo");
 Console.WriteLine($"speech backend: {app.Voice?.BackendName}");
@@ -39,67 +42,62 @@ internal partial class Program
     }
 }
 
-internal sealed class RecordingReader : IReader
+/// <summary>Prints every utterance as it is delivered, so the smoke's
+/// output is the full transcript even when the run fails early.</summary>
+internal sealed class PrintingReader : IReader
 {
-    public readonly List<AccessibilityEvent> Events = new();
-
-    public void OnEvent(AccessibilityEvent e) => Events.Add(e);
+    public void OnEvent(AccessibilityEvent e)
+    {
+        if (SpeechRenderer.RenderEvent(e) is string s)
+            Console.WriteLine(s);
+    }
 }
 
 internal static class HeadlessSmoke
 {
-    public static int Run()
+    // The frozen exchange: focus lands on the name field, its text is
+    // replaced, Shout toggles on with Space, and Greet announces the
+    // assembled greeting. Regenerate with --headless --record after an
+    // intentional behavior change, and read the diff as the review.
+    private const string Scenario = """
+        say Name edit selected world
+        s+end
+        say Already selected to bottom, d
+        type AOT
+        say Selection removed
+        say cap A
+        say cap O
+        say cap T
+        tab
+        say Shout check box not checked
+        space
+        say checked
+        tab
+        say Greet button
+        enter
+        say HELLO, AOT!
+        """;
+
+    public static int Run(bool record)
     {
-        using var app = SruiApp.Headless();
-        var reader = new RecordingReader();
-        app.AddReader(reader);
-        Program.BuildUi(app);
-
-        var transcript = new List<string>();
-        // Deliver after every step: utterances a later input would
-        // coalesce away are part of the exchange here.
-        void Drain()
+        using var ui = new Srui.Testing.TestApp(app => Program.BuildUi(app));
+        if (record)
         {
-            app.DispatchEvents();
-            transcript.AddRange(reader.Events
-                .Select(SpeechRenderer.RenderEvent)
-                .OfType<string>());
-            reader.Events.Clear();
-        }
-        void Push(InputEvent ev)
-        {
-            app.HandleInput(ev);
-            Drain();
-        }
-
-        // Focus the name field, replace its text, toggle shout on with
-        // Space, and press the greet button.
-        app.EnsureFocus();
-        Drain();
-        Push(InputEvent.Simple(InputKind.SelectToLineEnd));
-        foreach (var c in "AOT")
-            Push(InputEvent.TypeChar(c));
-        Push(InputEvent.Simple(InputKind.NavigateNext));
-        Push(InputEvent.TypeChar(' '));
-        Push(InputEvent.Simple(InputKind.NavigateNext));
-        Push(InputEvent.Simple(InputKind.Activate));
-
-        foreach (var line in transcript)
-            Console.WriteLine(line);
-
-        // The load-bearing moments of the exchange: the toggle spoken
-        // from live widget state, and the announcement assembled from
-        // the edited text and the checked box.
-        string[] expected = { "Shout check box", "checked", "HELLO, AOT!" };
-        var missing = expected
-            .Where(e => !transcript.Any(t => t.Contains(e)))
-            .ToList();
-        if (missing.Count == 0)
-        {
-            Console.WriteLine("headless smoke: ok");
+            Console.Write(ui.RecordScenarioText(Scenario));
             return 0;
         }
-        Console.WriteLine($"headless smoke: MISSING {string.Join(", ", missing)}");
-        return 1;
+        ui.App.AddReader(new PrintingReader());
+        try
+        {
+            ui.RunScenarioText(Scenario, "embedded scenario");
+        }
+        catch (Srui.Testing.SruiAssertException ex)
+        {
+            Console.WriteLine(ex.Message);
+            Console.WriteLine("headless smoke: FAILED");
+            return 1;
+        }
+        Console.WriteLine("headless smoke: ok");
+        return 0;
     }
 }

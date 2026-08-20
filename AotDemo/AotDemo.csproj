@@ -11,6 +11,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Srui\Srui.csproj" />
+    <!-- The headless smoke runs an embedded scenario, which also makes
+         this the AOT canary for the testing package. -->
+    <ProjectReference Include="..\Srui.Testing\Srui.Testing.csproj" />
   </ItemGroup>
 
   <!-- Native dependencies staged by native/build-native.ps1. Window and
