@@ -36,8 +36,16 @@ foreach ($id in "srui", "srui.audio", "srui.testing", "srui.templates") {
     if (Test-Path $cached) { Remove-Item -Recurse -Force $cached }
 }
 
+# Uninstall before installing: "install --force" from a file path stacks a
+# second registration beside the first rather than replacing it, and two
+# registrations make every "dotnet new srui-app" fail with an ambiguity.
+# (Not an error when nothing is installed yet; the stderr line it prints
+# then must not trip the Stop preference.)
+$ErrorActionPreference = "Continue"
+dotnet new uninstall Srui.Templates *> $null
+$ErrorActionPreference = "Stop"
 $templatePack = Get-ChildItem $artifacts -Filter "Srui.Templates.*.nupkg" | Select-Object -First 1
-dotnet new install $templatePack.FullName --force | Out-Null
+dotnet new install $templatePack.FullName | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "template install failed" }
 
 Write-Host "refreshed: packages packed, cache purged, template reinstalled"
