@@ -233,6 +233,36 @@ public class ScenarioRecordTests
     }
 
     [Fact]
+    public void RecordEnvironmentVariableTurnsRunIntoRecord()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"srui-record-{Guid.NewGuid():N}.srs");
+        File.WriteAllText(path, "enter\ntab\n");
+        try
+        {
+            Environment.SetEnvironmentVariable("SRUI_RECORD", "1");
+            try
+            {
+                using var recordingUi = Demo();
+                recordingUi.RunScenario(path);
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("SRUI_RECORD", null);
+            }
+            var recorded = File.ReadAllText(path);
+            Assert.Contains("say fired one", recorded);
+
+            // With the variable cleared, the same call replays and holds.
+            using var replayUi = Demo();
+            replayUi.RunScenario(path);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void RecordedScenarioReplaysCleanly()
     {
         string recorded;

@@ -121,7 +121,9 @@ A bare line taps a key combo; `say` asserts the next utterance exactly;
 text, and time. Speech no line asserts is out of scope and ignored.
 `ui.RecordScenario(path)` rewrites a file's assertions from a real run —
 record once, read the file to approve it, and review later changes as
-diffs.
+diffs. Running the tests with the environment variable `SRUI_RECORD=1`
+re-records every scenario they run instead of asserting, which
+re-approves a whole suite after an intentional speech change.
 
 This is how SRUI tests itself; `Srui.Tests` is the harness's first
 consumer.

@@ -211,9 +211,29 @@ public sealed class TestApp : IDisposable
 
     /// <summary>Run a scenario file against the app from its current
     /// state. Throws <see cref="ScenarioException"/>, with the file path
-    /// and line number, on the first failed assertion.</summary>
-    public void RunScenario(string path) =>
+    /// and line number, on the first failed assertion. When the
+    /// SRUI_RECORD environment variable is set (non-empty, not "0"),
+    /// re-records the file in place instead and passes — the one-flag
+    /// re-approval pass after an intentional speech change; review the
+    /// rewritten files as diffs.</summary>
+    public void RunScenario(string path)
+    {
+        if (RecordRequested)
+        {
+            RecordScenario(path);
+            return;
+        }
         Scenario.Parse(File.ReadAllText(path), path).Run(this);
+    }
+
+    private static bool RecordRequested
+    {
+        get
+        {
+            var value = Environment.GetEnvironmentVariable("SRUI_RECORD");
+            return !string.IsNullOrEmpty(value) && value != "0";
+        }
+    }
 
     /// <summary>Run scenario text against the app from its current state.</summary>
     public void RunScenarioText(string text, string sourceName = "<inline>") =>
