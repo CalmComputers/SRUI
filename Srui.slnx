@@ -9,4 +9,5 @@
   <Project Path="Srui/Srui.csproj" />
   <Project Path="SruiDemo/SruiDemo.csproj" />
   <Project Path="SruiTasks/SruiTasks.csproj" />
+  <Project Path="templates/Srui.Templates.csproj" />
 </Solution>

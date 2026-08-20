@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A template pack: no assembly, only content. Each subdirectory
+       with a .template.config is one template. -->
+  <PropertyGroup>
+    <PackageType>Template</PackageType>
+    <PackageId>Srui.Templates</PackageId>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <IncludeContentInPack>true</IncludeContentInPack>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <ContentTargetFolders>content</ContentTargetFolders>
+    <!-- .template.config directories start with a dot and would be
+         excluded by default. -->
+    <NoDefaultExcludes>true</NoDefaultExcludes>
+    <!-- No assembly, so no lib/ folder and nothing to put in a symbol
+         package; both warnings are the point, not a problem. -->
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+    <IncludeSymbols>false</IncludeSymbols>
+    <Description>Project templates for SRUI, the screen-reader-first UI toolkit. "dotnet new srui-app" creates a windowed application plus a headless test project with utterance assertions and a recorded scenario, passing from the first build.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="srui-app\**\*" Exclude="srui-app\**\bin\**;srui-app\**\obj\**" />
+    <Compile Remove="**\*" />
+  </ItemGroup>
+
+  <!-- The package front page on nuget.org. -->
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

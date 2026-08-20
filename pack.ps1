@@ -1,7 +1,7 @@
 # Builds the NuGet packages into artifacts/: Srui, Srui.Audio, and
-# Srui.Testing, each carrying its managed assembly and XML documentation;
-# the first two also embed the native DLLs they load, under
-# runtimes/win-x64/native/.
+# Srui.Testing, each carrying its managed assembly and XML documentation
+# (the first two also embed the native DLLs they load, under
+# runtimes/win-x64/native/), plus the content-only Srui.Templates.
 #
 # Run from the repository root. The native step comes first because the
 # packages embed its output; packing without it fails rather than producing

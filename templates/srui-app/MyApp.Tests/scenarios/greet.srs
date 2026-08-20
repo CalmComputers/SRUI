@@ -1,0 +1,10 @@
+// The whole greeting exchange, frozen. After an intentional speech
+// change, regenerate by running this file through RecordScenario once
+// and reading the diff.
+say Your name edit blank
+type Ada
+say cap A
+say d
+say a
+enter
+say Hello, Ada.

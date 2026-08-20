@@ -37,6 +37,16 @@ without the UI stack, for programs that only want sound:
 dotnet add package Srui.Audio
 ```
 
+A new project can start from the template pack instead:
+
+```
+dotnet new install Srui.Templates
+dotnet new srui-app -n MyThing
+```
+
+which creates a windowed application (a name field and a greet button)
+and a headless test project whose tests pass from the first build.
+
 # 3. A First Program
 
 ```csharp
@@ -123,6 +133,7 @@ consumer.
 | Srui | Widgets, dialogs, focus and navigation, shortcuts, the text engine, the SDL host, speech | prism.dll, SDL3.dll |
 | Srui.Audio | Sounds, buses, effect chains, HRTF spatialisation, tweens | cosmos.dll, phonon.dll |
 | Srui.Testing | The headless test harness: input simulation, utterance assertions, scenario record and replay | none |
+| Srui.Templates | The `dotnet new` templates | none |
 
 Steam Audio (`phonon.dll`) is not optional: `cosmos.dll` imports it
 directly, so it ships wherever the audio package does.

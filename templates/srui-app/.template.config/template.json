@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "CalmComputers",
+  "classifications": ["SRUI", "Accessibility", "UI"],
+  "identity": "Srui.App",
+  "name": "SRUI application",
+  "shortName": "srui-app",
+  "description": "A screen-reader-first SRUI application: a windowed greeter plus a headless test project with utterance assertions and a recorded scenario.",
+  "sourceName": "MyApp",
+  "preferNameDirectory": true,
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  }
+}
