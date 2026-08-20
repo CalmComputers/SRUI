@@ -128,120 +128,115 @@ internal sealed class InputMapper
         return pending;
     }
 
-    /// <summary>Map a keydown to its logical input, stamped with its
-    /// physical provenance: the (key, mods) combo travels on the event,
-    /// so shortcut matching and combo capture never reverse-map.</summary>
+    /// <summary>Map a keydown to its logical input: SDL keycode to
+    /// physical combo, then the shared combo mapping.</summary>
     private static InputEvent? MapKeyDown(uint keycode, ushort keymod)
     {
-        if (MapKeyDownInner(keycode, keymod) is not InputEvent mapped)
+        if (PhysicalCombo(keycode, keymod) is not (var key, var mods))
             return null;
-        if (mapped.Key == 0 && PhysicalCombo(keycode, keymod) is (var key, var mods))
-            return mapped with { Key = key, Mods = mods };
-        return mapped;
+        return MapCombo(KeyCombo.FromFlat(key, mods));
     }
 
-    private static InputEvent? MapKeyDownInner(uint keycode, ushort keymod)
+    /// <summary>Map a physical combo to the logical input its keydown
+    /// produces, stamped with the combo as physical provenance so
+    /// shortcut matching and combo capture never reverse-map. The pure
+    /// half of keydown mapping, shared by the SDL path and synthetic
+    /// hosts (the test harness). Null when the keydown yields no logical
+    /// input directly: unmodified printables arrive as the following
+    /// TextInput → TypeChar instead.</summary>
+    public static InputEvent? MapCombo(KeyCombo combo)
     {
-        var ctrl = (keymod & Sdl3.KmodCtrl) != 0;
-        var alt = (keymod & Sdl3.KmodAlt) != 0;
-        var shift = (keymod & Sdl3.KmodShift) != 0;
+        if (MapComboInner(combo) is not InputEvent mapped)
+            return null;
+        if (mapped.Key != 0)
+            return mapped;
+        var (key, mods) = combo.ToFlat();
+        return mapped with { Key = key, Mods = mods };
+    }
+
+    private static InputEvent? MapComboInner(KeyCombo combo)
+    {
+        var (key, ctrl, alt, shift) = (combo.Key, combo.Ctrl, combo.Alt, combo.Shift);
 
         // Alt+arrow → tree navigation; Alt+letter → widget mnemonic.
         if (alt && !ctrl && !shift)
         {
-            switch (keycode)
-            {
-                case Sdl3.KeyUp: return InputEvent.Simple(InputKind.TreeUp);
-                case Sdl3.KeyDown: return InputEvent.Simple(InputKind.TreeDown);
-                case Sdl3.KeyLeft: return InputEvent.Simple(InputKind.TreeLeft);
-                case Sdl3.KeyRight: return InputEvent.Simple(InputKind.TreeRight);
-            }
-            if (keycode is >= 'a' and <= 'z')
-                return new InputEvent(InputKind.Shortcut, keycode, 0, Mods.None);
+            if (key == Key.Up) return InputEvent.Simple(InputKind.TreeUp);
+            if (key == Key.Down) return InputEvent.Simple(InputKind.TreeDown);
+            if (key == Key.Left) return InputEvent.Simple(InputKind.TreeLeft);
+            if (key == Key.Right) return InputEvent.Simple(InputKind.TreeRight);
+            if (key.IsChar(out var mnemonic) && char.IsAsciiLetter(mnemonic))
+                return new InputEvent(
+                    InputKind.Shortcut, char.ToLowerInvariant(mnemonic), 0, Mods.None);
         }
 
         // Ctrl+key combos.
         if (ctrl && !alt)
         {
-            switch (keycode)
-            {
-                case 'c' when !shift: return InputEvent.Simple(InputKind.Copy);
-                case 'x' when !shift: return InputEvent.Simple(InputKind.Cut);
-                case 'v' when !shift: return InputEvent.Simple(InputKind.Paste);
-                case 'a' when !shift: return InputEvent.Simple(InputKind.SelectAll);
+            if (!shift && key == Key.Char('c')) return InputEvent.Simple(InputKind.Copy);
+            if (!shift && key == Key.Char('x')) return InputEvent.Simple(InputKind.Cut);
+            if (!shift && key == Key.Char('v')) return InputEvent.Simple(InputKind.Paste);
+            if (!shift && key == Key.Char('a')) return InputEvent.Simple(InputKind.SelectAll);
 
-                case Sdl3.KeyLeft when shift: return InputEvent.Simple(InputKind.SelectWordLeft);
-                case Sdl3.KeyRight when shift: return InputEvent.Simple(InputKind.SelectWordRight);
-                case Sdl3.KeyLeft: return InputEvent.Simple(InputKind.MoveWordLeft);
-                case Sdl3.KeyRight: return InputEvent.Simple(InputKind.MoveWordRight);
+            if (key == Key.Left)
+                return InputEvent.Simple(shift ? InputKind.SelectWordLeft : InputKind.MoveWordLeft);
+            if (key == Key.Right)
+                return InputEvent.Simple(shift ? InputKind.SelectWordRight : InputKind.MoveWordRight);
+            if (key == Key.Home)
+                return InputEvent.Simple(shift ? InputKind.SelectToDocStart : InputKind.MoveToDocStart);
+            if (key == Key.End)
+                return InputEvent.Simple(shift ? InputKind.SelectToDocEnd : InputKind.MoveToDocEnd);
 
-                case Sdl3.KeyHome when shift: return InputEvent.Simple(InputKind.SelectToDocStart);
-                case Sdl3.KeyEnd when shift: return InputEvent.Simple(InputKind.SelectToDocEnd);
-                case Sdl3.KeyHome: return InputEvent.Simple(InputKind.MoveToDocStart);
-                case Sdl3.KeyEnd: return InputEvent.Simple(InputKind.MoveToDocEnd);
-
-                case Sdl3.KeyBackspace: return InputEvent.Simple(InputKind.DeleteWordBackward);
-                case Sdl3.KeyDelete: return InputEvent.Simple(InputKind.DeleteWordForward);
-            }
+            if (key == Key.Backspace) return InputEvent.Simple(InputKind.DeleteWordBackward);
+            if (key == Key.Delete) return InputEvent.Simple(InputKind.DeleteWordForward);
         }
 
         // Shift+movement → selection. Windows editing conventions:
         // Shift+Backspace is plain backspace, Shift+Delete is cut.
         if (shift && !ctrl && !alt)
         {
-            switch (keycode)
-            {
-                case Sdl3.KeyLeft: return InputEvent.Simple(InputKind.SelectLeft);
-                case Sdl3.KeyRight: return InputEvent.Simple(InputKind.SelectRight);
-                case Sdl3.KeyUp: return InputEvent.Simple(InputKind.SelectLineUp);
-                case Sdl3.KeyDown: return InputEvent.Simple(InputKind.SelectLineDown);
-                case Sdl3.KeyHome: return InputEvent.Simple(InputKind.SelectToLineStart);
-                case Sdl3.KeyEnd: return InputEvent.Simple(InputKind.SelectToLineEnd);
+            if (key == Key.Left) return InputEvent.Simple(InputKind.SelectLeft);
+            if (key == Key.Right) return InputEvent.Simple(InputKind.SelectRight);
+            if (key == Key.Up) return InputEvent.Simple(InputKind.SelectLineUp);
+            if (key == Key.Down) return InputEvent.Simple(InputKind.SelectLineDown);
+            if (key == Key.Home) return InputEvent.Simple(InputKind.SelectToLineStart);
+            if (key == Key.End) return InputEvent.Simple(InputKind.SelectToLineEnd);
 
-                case Sdl3.KeyBackspace: return InputEvent.Simple(InputKind.DeleteBackward);
-                case Sdl3.KeyDelete: return InputEvent.Simple(InputKind.Cut);
-            }
+            if (key == Key.Backspace) return InputEvent.Simple(InputKind.DeleteBackward);
+            if (key == Key.Delete) return InputEvent.Simple(InputKind.Cut);
         }
 
         // Plain keys.
         if (!alt && !ctrl)
         {
-            switch (keycode)
+            if (key == Key.Tab)
+                return InputEvent.Simple(shift ? InputKind.NavigatePrev : InputKind.NavigateNext);
+            if (key == Key.Enter)
+                return InputEvent.Simple(shift ? InputKind.SecondaryActivate : InputKind.Activate);
+
+            if (!shift)
             {
-                case Sdl3.KeyTab when shift: return InputEvent.Simple(InputKind.NavigatePrev);
-                case Sdl3.KeyTab: return InputEvent.Simple(InputKind.NavigateNext);
-
-                case Sdl3.KeyEscape when !shift: return InputEvent.Simple(InputKind.Dismiss);
-                case Sdl3.KeyReturn or Sdl3.KeyKpEnter when shift:
-                    return InputEvent.Simple(InputKind.SecondaryActivate);
-                case Sdl3.KeyReturn or Sdl3.KeyKpEnter:
-                    return InputEvent.Simple(InputKind.Activate);
-
-                case Sdl3.KeyUp when !shift: return InputEvent.Simple(InputKind.MoveUp);
-                case Sdl3.KeyDown when !shift: return InputEvent.Simple(InputKind.MoveDown);
-                case Sdl3.KeyLeft when !shift: return InputEvent.Simple(InputKind.MoveLeft);
-                case Sdl3.KeyRight when !shift: return InputEvent.Simple(InputKind.MoveRight);
-
-                case Sdl3.KeyHome when !shift: return InputEvent.Simple(InputKind.MoveToLineStart);
-                case Sdl3.KeyEnd when !shift: return InputEvent.Simple(InputKind.MoveToLineEnd);
-
-                case Sdl3.KeyBackspace: return InputEvent.Simple(InputKind.DeleteBackward);
-                case Sdl3.KeyDelete: return InputEvent.Simple(InputKind.DeleteForward);
+                if (key == Key.Escape) return InputEvent.Simple(InputKind.Dismiss);
+                if (key == Key.Up) return InputEvent.Simple(InputKind.MoveUp);
+                if (key == Key.Down) return InputEvent.Simple(InputKind.MoveDown);
+                if (key == Key.Left) return InputEvent.Simple(InputKind.MoveLeft);
+                if (key == Key.Right) return InputEvent.Simple(InputKind.MoveRight);
+                if (key == Key.Home) return InputEvent.Simple(InputKind.MoveToLineStart);
+                if (key == Key.End) return InputEvent.Simple(InputKind.MoveToLineEnd);
             }
+
+            if (key == Key.Backspace) return InputEvent.Simple(InputKind.DeleteBackward);
+            if (key == Key.Delete) return InputEvent.Simple(InputKind.DeleteForward);
         }
 
         // No semantic mapping — emit RawKey for the host's shortcut
         // matching. Skip keys that will also arrive as TextInput →
         // TypeChar, to avoid double-firing shortcuts: unmodified printable
         // keys (letters, digits, space, punctuation).
-        if (KeycodeToKey(keycode) is not Key key)
-            return null;
         if (!ctrl && !alt && (key.IsChar(out _) || key == Key.Space))
             return null;
-        var mods = (ctrl ? Mods.Ctrl : Mods.None)
-            | (alt ? Mods.Alt : Mods.None)
-            | (shift ? Mods.Shift : Mods.None);
-        return InputEvent.RawKey(key.Code, mods);
+        var (code, mods) = combo.ToFlat();
+        return InputEvent.RawKey(code, mods);
     }
 
     /// <summary>The physical combo for an SDL key event, in the flat
