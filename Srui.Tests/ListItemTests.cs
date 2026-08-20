@@ -27,9 +27,9 @@ public class ListItemTests
         public int? FilterScore(string query) => name == "hidden" ? null : rank;
     }
 
-    private static (TestUi Ui, ListBox List) FocusedList(params string[] items)
+    private static (TestApp Ui, ListBox List) FocusedList(params string[] items)
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var list = new ListBox(ui.App, "Tasks", items, numbered: true);
         list.Focus();
         ui.Drain();
@@ -86,7 +86,7 @@ public class ListItemTests
     [Fact]
     public void RemoveAtUnfocusedIsSilent()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var list = new ListBox(ui.App, "Tasks", ["a", "b"]);
         var other = new Button(ui.App, "Other");
         other.Focus();
@@ -117,7 +117,7 @@ public class ListItemTests
     [Fact]
     public void InsertIntoEmptyFocusedListSpeaksTheItem()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var list = new ListBox(ui.App, "Tasks", Array.Empty<string>(), numbered: true);
         list.Focus();
         ui.Drain();
@@ -134,7 +134,7 @@ public class ListItemTests
     [Fact]
     public void InsertIntoEmptyUnfocusedListIsSilent()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var list = new ListBox(ui.App, "Tasks", Array.Empty<string>());
         var other = new Button(ui.App, "Other");
         other.Focus();
@@ -158,7 +158,7 @@ public class ListItemTests
     [Fact]
     public void MutatedItemLinesAreReadLiveAtAnnouncement()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var chore = new Chore("sweep");
         var list = new ListBox(ui.App, "Chores", [chore]);
         list.Focus();
@@ -174,7 +174,7 @@ public class ListItemTests
     [Fact]
     public void MutatedItemLinesAreLiveAcrossFocusMoves()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var chore = new Chore("sweep");
         var list = new ListBox(ui.App, "Chores", [chore]);
         var other = new Button(ui.App, "Other");
@@ -191,7 +191,7 @@ public class ListItemTests
     [Fact]
     public void TypeaheadMatchesTheItemText()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var done = new Chore("sweep") { Done = true };
         var list = new ListBox(ui.App, "Chores", [new Chore("dust"), done]);
         list.Focus();
@@ -205,7 +205,7 @@ public class ListItemTests
     [Fact]
     public void FilterScoreDrivesMatchingAndRanking()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var list = new FilterListBox(ui.App, "Palette",
             [new Command("open file", 1), new Command("open recent", 5), new Command("hidden", 9)]);
         list.Focus();
@@ -221,7 +221,7 @@ public class ListItemTests
     [Fact]
     public void EmptyQueryBypassesScoresAndKeepsListOrder()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var list = new FilterListBox(ui.App, "Palette",
             [new Command("beta", 1), new Command("alpha", 5)]);
 
@@ -231,7 +231,7 @@ public class ListItemTests
     [Fact]
     public void TypedListBoxReadsItemsBackWithoutCasts()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var sweep = new Chore("sweep");
         var dust = new Chore("dust");
         var list = new ListBox<Chore>(ui.App, "Chores", [sweep, dust]);
@@ -251,7 +251,7 @@ public class ListItemTests
     [Fact]
     public void TypedFilterListBoxReturnsTypedResults()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var open = new Command("open file", 1);
         var list = new FilterListBox<Command>(ui.App, "Palette",
             [open, new Command("hidden", 9)]);
@@ -268,7 +268,7 @@ public class ListItemTests
     [Fact]
     public void FilterWithNoResultsAnswersArrowsWithEmpty()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var list = new FilterListBox(ui.App, "Palette", ["alpha"]);
         list.Focus();
         ui.Drain();

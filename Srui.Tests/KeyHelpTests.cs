@@ -10,7 +10,7 @@ public class KeyHelpTests
     [Fact]
     public void HelpAppearsInFocusAnnouncement()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var button = new Button(ui.App, "Roll") { KeyHelp = "R rolls twice." };
         button.Focus();
         Assert.Equal(new[] { "Roll button with help" }, ui.Spoken());
@@ -19,7 +19,7 @@ public class KeyHelpTests
     [Fact]
     public void TogglingHelpWhileFocusedSpeaksTheTransition()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var button = new Button(ui.App, "Roll");
         button.Focus();
         ui.Drain();
@@ -38,7 +38,7 @@ public class KeyHelpTests
     [Fact]
     public void AnnounceHelpFalseDropsTheSpokenStateOnly()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var list = new ListBox(ui.App, "To-do", ["a"])
         {
             AnnounceHelp = false,
@@ -56,7 +56,7 @@ public class KeyHelpTests
     [Fact]
     public void AnnounceHelpOrderIsIrrelevantAndReenablingRestoresTheState()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         // Opt-out after the help text lands: same silence.
         var button = new Button(ui.App, "Roll") { KeyHelp = "R rolls twice." };
         button.AnnounceHelp = false;
@@ -72,7 +72,7 @@ public class KeyHelpTests
     [Fact]
     public void F1OpensAReviewableHelpDialogAndEscapeReturns()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var list = new ListBox(ui.App, "To-do", ["a"]) { KeyHelp = "Space marks done." };
         list.Focus();
         ui.Drain();
@@ -90,7 +90,7 @@ public class KeyHelpTests
     [Fact]
     public void F1FallsThroughWithoutHelp()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var button = new Button(ui.App, "Roll");
         button.Focus();
         ui.Drain();
@@ -100,7 +100,7 @@ public class KeyHelpTests
     [Fact]
     public void WidgetOwnInputBeatsTheHelpBinding()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var widget = new F1Eater(ui.App) { KeyHelp = "Never shown." };
         widget.Focus();
         ui.Drain();
@@ -112,7 +112,7 @@ public class KeyHelpTests
     [Fact]
     public void HelpReservesF1AcrossWidgetKinds()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var f1 = KeyCombo.Plain(Key.F(1));
 
         var button = new Button(ui.App, "Roll");

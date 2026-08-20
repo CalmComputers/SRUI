@@ -26,6 +26,9 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Srui.Tests" />
+    <!-- The harness simulates key presses through the real input
+         mapping (InputMapper.MapCombo). -->
+    <InternalsVisibleTo Include="Srui.Testing" />
   </ItemGroup>
 
   <!-- The package front page on nuget.org, and the vendored-component

@@ -8,7 +8,7 @@ public class FocusIntrospectionTests
     [Fact]
     public void FocusedWidgetTracksFocus()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var first = new Button(ui.App, "First");
         var second = new Button(ui.App, "Second");
         Assert.Null(ui.App.FocusedWidget);
@@ -23,7 +23,7 @@ public class FocusIntrospectionTests
     [Fact]
     public void FocusedWidgetFollowsDialogLayers()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var below = new Button(ui.App, "Below");
         below.Focus();
         ui.Drain();

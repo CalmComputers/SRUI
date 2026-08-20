@@ -8,7 +8,7 @@ public class InputFilterTests
     [Fact]
     public void FilterConsumesAheadOfEveryClaim()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var button = new Button(ui.App, "Go");
         bool activated = false;
         button.Activated += () => activated = true;
@@ -34,7 +34,7 @@ public class InputFilterTests
     [Fact]
     public void DecliningFilterLetsInputFlow()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var button = new Button(ui.App, "Go");
         bool activated = false;
         button.Activated += () => activated = true;
@@ -50,7 +50,7 @@ public class InputFilterTests
     [Fact]
     public void FilterSeesDialogInputToo()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var below = new Button(ui.App, "Below");
         below.Focus();
         ui.Drain();

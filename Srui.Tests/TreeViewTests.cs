@@ -14,10 +14,10 @@ public class TreeViewTests
     /// Vanilla [Joker, Blueprint], Extra Credit [Turtle, Joker],
     /// Hand size. The duplicate "Joker" is deliberate — proximity
     /// disambiguation is the typeahead contract.</summary>
-    private static (TestUi Ui, TreeView Tree, TreeNode Vanilla, TreeNode Extra, TreeNode Leaf) Build(
+    private static (TestApp Ui, TreeView Tree, TreeNode Vanilla, TreeNode Extra, TreeNode Leaf) Build(
         bool numbered = false, bool activateItems = false)
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var vanilla = new TreeNode("Vanilla", new TreeNode("Joker"), new TreeNode("Blueprint"));
         var extra = new TreeNode("Extra Credit", new TreeNode("Turtle"), new TreeNode("Joker"));
         var leaf = new TreeNode("Hand size");
@@ -143,7 +143,7 @@ public class TreeViewTests
     [Fact]
     public void TypeaheadPrefersSiblingsOverANeighborsDeepContent()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         // Mystic is open with "mult" inside; Madness is Mystic's
         // sibling. From Mystic, 'm' must find the sibling at your
         // level, not dive into the flat-order-nearer subtree.
@@ -181,9 +181,9 @@ public class TreeViewTests
     /// provisional-reveal contract: Crate [Apple], Basket [Apricot],
     /// Zed. The shared "ap" prefix lets a refinement travel from one
     /// crate's content to the other's.</summary>
-    private static (TestUi Ui, TreeView Tree, TreeNode Crate, TreeNode Basket) BuildCrates()
+    private static (TestApp Ui, TreeView Tree, TreeNode Crate, TreeNode Basket) BuildCrates()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var crate = new TreeNode("Crate", new TreeNode("Apple"));
         var basket = new TreeNode("Basket", new TreeNode("Apricot"));
         var tree = new TreeView(ui.App, "Pantry", [crate, basket, new TreeNode("Zed")]);
@@ -214,7 +214,7 @@ public class TreeViewTests
     [Fact]
     public void TypeaheadCyclingClosesThePreviousBearersBranch()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var crate = new TreeNode("Crate", new TreeNode("Joker B"));
         var visible = new TreeNode("Joker A");
         var tree = new TreeView(ui.App, "Jokers", [visible, crate]);
@@ -269,7 +269,7 @@ public class TreeViewTests
     [Fact]
     public void RefinementWithinABranchKeepsItProvisional()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var crate = new TreeNode("Crate", new TreeNode("Apple"), new TreeNode("Apricot"));
         var tree = new TreeView(ui.App, "Pantry", [crate, new TreeNode("Zed")]);
         tree.Focus();
@@ -386,7 +386,7 @@ public class TreeViewTests
     [Fact]
     public void AnEmptyTreeAnswersNavigationWithEmpty()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var tree = new TreeView(ui.App, "Nothing", Array.Empty<TreeNode>());
         tree.Focus();
         ui.Drain();
@@ -399,7 +399,7 @@ public class TreeViewTests
     [Fact]
     public void MultiSelectChecksLeavesWithSpace()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var vanilla = new TreeNode("Vanilla", new TreeNode("Joker"), new TreeNode("Blueprint"));
         var tree = new TreeView(ui.App, "Content", [vanilla], multiSelect: true);
         tree.Focus();
@@ -434,7 +434,7 @@ public class TreeViewTests
     [Fact]
     public void CheckedNodesSurviveCollapseAndListInTreeOrder()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var vanilla = new TreeNode("Vanilla", new TreeNode("Joker"), new TreeNode("Blueprint"));
         var extra = new TreeNode("Extra", new TreeNode("Turtle"));
         var tree = new TreeView(ui.App, "Content", [vanilla, extra], multiSelect: true);
@@ -452,7 +452,7 @@ public class TreeViewTests
     [Fact]
     public void CheckableOverridesTheDefaultRule()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         // A configurable item: the branch itself checks (include me),
         // one child checks (a property), one is activation-only.
         var joker = new TreeNode("Joker",

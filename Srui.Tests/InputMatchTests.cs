@@ -58,7 +58,7 @@ public class InputMatchTests
     [Fact]
     public void AstralCharacterDoesNotToggleACheckBox()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var box = new CheckBox(ui.App, "Wrap");
         box.Focus();
         ui.Drain();
@@ -71,7 +71,7 @@ public class InputMatchTests
     [Fact]
     public void AstralCharacterDoesNotPressAButton()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var button = new Button(ui.App, "Save");
         var pressed = 0;
         button.Activated += () => pressed++;

@@ -9,10 +9,10 @@ namespace Srui.Tests;
 /// state surviving the item operations.</summary>
 public class MultiSelectListTests
 {
-    private static (TestUi Ui, ListBox List) FocusedList(
+    private static (TestApp Ui, ListBox List) FocusedList(
         bool toggleWithSpace = false, bool numbered = false, params string[] items)
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var list = new ListBox(
             ui.App, "Fruits", items.Length > 0 ? items : ["apple", "banana", "cherry"],
             numbered: numbered, multiSelect: true, toggleWithSpace: toggleWithSpace);
@@ -24,7 +24,7 @@ public class MultiSelectListTests
     [Fact]
     public void AnnouncesAsMultiSelectList()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var list = new ListBox(ui.App, "Fruits", ["apple"], multiSelect: true);
         list.Focus();
         Assert.Equal(new[] { "Fruits multi select list apple" }, ui.Spoken());
@@ -119,7 +119,7 @@ public class MultiSelectListTests
     [Fact]
     public void EnterModeKeepsSpaceForTypeahead()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var list = new ListBox(
             ui.App, "Files", ["red apple", "red berry"], multiSelect: true);
         list.Focus();
@@ -176,7 +176,7 @@ public class MultiSelectListTests
     [Fact]
     public void SetCheckedSilentWhenUnfocused()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var list = new ListBox(ui.App, "Fruits", ["a", "b"], multiSelect: true);
         var other = new Button(ui.App, "Other");
         other.Focus();
@@ -209,7 +209,7 @@ public class MultiSelectListTests
     [Fact]
     public void SetItemsKeepsChecksOnSurvivingItemObjects()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var a = new ListItem("a");
         var b = new ListItem("b");
         var list = new ListBox(ui.App, "L", new IListItem[] { a, b }, multiSelect: true);
@@ -223,7 +223,7 @@ public class MultiSelectListTests
     [Fact]
     public void SingleSelectSurfaceStaysInert()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var list = new ListBox(ui.App, "L", ["a"]);
         Assert.False(list.MultiSelect);
         Assert.False(list.IsChecked(0));
@@ -248,7 +248,7 @@ public class MultiSelectListTests
     [Fact]
     public void CanToggleRefusesUserTogglesButNotSetChecked()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var list = new LockingListBox(ui.App);
         var toggles = 0;
         list.ItemToggled += (_, _) => toggles++;
@@ -279,7 +279,7 @@ public class MultiSelectListTests
     [Fact]
     public void InvalidConstructionThrows()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         Assert.Throws<ArgumentException>(() =>
             new ListBox(ui.App, "L", ["a"], toggleWithSpace: true));
         Assert.Throws<ArgumentException>(() =>

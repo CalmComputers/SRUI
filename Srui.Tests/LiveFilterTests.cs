@@ -60,7 +60,7 @@ public class LiveFilterTests
     [Fact]
     public void FilterReportReadsTheFreshlySwappedItems()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var list = new LiveList(ui.App)
         {
             Source = filter => filter.Length == 0
@@ -80,7 +80,7 @@ public class LiveFilterTests
     [Fact]
     public void ErasingTheFilterSwapsBackThroughTheSameSeam()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var browse = new[] { new Item("browse entry", 1) };
         var list = new LiveList(ui.App)
         {
@@ -101,7 +101,7 @@ public class LiveFilterTests
     [Fact]
     public void SilentReplacementAloneSaysNothing()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var list = new LiveList(ui.App);
         list.Focus();
         ui.Drain();
@@ -120,7 +120,7 @@ public class LiveFilterTests
     [Fact]
     public void SelectionIdentitySurvivesAReorderingSwap()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var list = new LiveList(ui.App)
         {
             Source = _ => new[] { new Item("alpha", 3), new Item("beta", 2) },

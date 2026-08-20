@@ -76,7 +76,7 @@ public class SilentMutatorTests
     [Fact]
     public void SilentItemReplacementSpeaksOnlyTheSubclassEmission()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var list = new ToggleList(ui.App, ["alpha", "beta"]);
         var changed = 0;
         list.Changed += () => changed++;
@@ -96,7 +96,7 @@ public class SilentMutatorTests
     [Fact]
     public void SilentItemReplacementKeepsFocusAnnouncementsCurrent()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var list = new ToggleList(ui.App, ["alpha", "beta"]);
         list.Focus();
         ui.Drain();
@@ -111,7 +111,7 @@ public class SilentMutatorTests
     [Fact]
     public void SilentItemReplacementClampsSelectionSilently()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var list = new ToggleList(ui.App, ["alpha", "beta", "gamma"]);
         list.Focus();
         ui.Input(InputKind.MoveToDocEnd);
@@ -127,7 +127,7 @@ public class SilentMutatorTests
     [Fact]
     public void SilentSelectionMovesWithoutSpeakingAndClamps()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var list = new ToggleList(ui.App, ["alpha", "beta", "gamma"]);
         list.Focus();
         ui.Drain();
@@ -146,7 +146,7 @@ public class SilentMutatorTests
     [Fact]
     public void SilentRenameSaysNothingButReadsOnTheNextAnnouncement()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var list = new ToggleList(ui.App, ["alpha"]);
         list.Focus();
         ui.Drain();
@@ -161,7 +161,7 @@ public class SilentMutatorTests
     [Fact]
     public void SilentTextReplacementSpeaksOnlyTheSubclassEmission()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var box = new RecallBox(ui.App);
         box.Focus();
         ui.Drain();
@@ -176,7 +176,7 @@ public class SilentMutatorTests
     [Fact]
     public void SilentCursorMoveSaysNothingAndClearsTheSelection()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var box = new RecallBox(ui.App);
         box.Focus();
         ui.Drain();
@@ -193,7 +193,7 @@ public class SilentMutatorTests
     [Fact]
     public void SubclassAnnouncesCarryTheirSource()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var box = new RecallBox(ui.App);
         box.Focus();
         ui.Drain();

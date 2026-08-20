@@ -3,68 +3,14 @@ using Xunit;
 
 namespace Srui.Tests;
 
-/// <summary>Records what a reader hears, for assertion.</summary>
-internal sealed class TestReader : IReader
-{
-    public readonly List<AccessibilityEvent> Events = new();
-    public int Interrupts;
-
-    public void OnEvent(AccessibilityEvent e) => Events.Add(e);
-
-    public void OnInterrupt() => Interrupts++;
-}
-
-/// <summary>A headless app with a recording reader — the harness every
-/// public-surface test drives: build widgets, push input, assert what
-/// the reader hears.</summary>
-internal sealed class TestUi : IDisposable
-{
-    public readonly SruiApp App = SruiApp.Headless();
-    public readonly TestReader Reader = new();
-
-    public TestUi() => App.AddReader(Reader);
-
-    public void Dispose() => App.Dispose();
-
-    /// <summary>Deliver queued output and return the utterances heard
-    /// since the last call, in order.</summary>
-    public List<string> Spoken()
-    {
-        App.DispatchEvents();
-        var result = Reader.Events
-            .Select(SpeechRenderer.RenderEvent)
-            .Where(s => s is not null)
-            .Select(s => s!)
-            .ToList();
-        Reader.Events.Clear();
-        return result;
-    }
-
-    /// <summary>Deliver queued output, discarding it.</summary>
-    public void Drain()
-    {
-        App.DispatchEvents();
-        Reader.Events.Clear();
-    }
-
-    public bool Input(InputKind kind) => App.HandleInput(InputEvent.Simple(kind));
-
-    public bool Input(InputEvent ev) => App.HandleInput(ev);
-
-    public bool Type(char c) => App.HandleInput(InputEvent.TypeChar(c));
-
-    public bool Raw(KeyCombo combo)
-    {
-        var (key, mods) = combo.ToFlat();
-        return App.HandleInput(InputEvent.RawKey(key, mods));
-    }
-}
+// The harness (TestApp, RecordingReader) lives in Srui.Testing — the
+// suite is its first consumer.
 
 public class FocusAndNavigationTests
 {
-    private static (TestUi Ui, Button Save, Group Options, CheckBox Wrap) DemoUi()
+    private static (TestApp Ui, Button Save, Group Options, CheckBox Wrap) DemoUi()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var save = new Button(ui.App, "Save");
         var options = new Group(ui.App, "Options");
         var wrap = new CheckBox(options, "Word Wrap");
@@ -137,7 +83,7 @@ public class FocusAndNavigationTests
     [Fact]
     public void FocusMemoryRestoresLastChildOnReentry()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var group = new Group(ui.App, "Options");
         _ = new CheckBox(group, "First");
         var second = new CheckBox(group, "Second");
@@ -315,7 +261,7 @@ public class FocusAndNavigationTests
     [Fact]
     public void StateFlagsSpeakTransitionsWhenFocused()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var name = new EditBox(ui.App, "Name");
         name.Focus();
         ui.Drain();
@@ -344,7 +290,7 @@ public class FocusAndNavigationTests
     [Fact]
     public void RequiredAndWarningAnnounce()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var name = new EditBox(ui.App, "Name");
         name.Required = true;
         name.Warning = true;
@@ -384,7 +330,7 @@ public class ActivationTests
     [Fact]
     public void ButtonActivatesOnEnterAndSpace()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var save = new Button(ui.App, "Save");
         var presses = 0;
         save.Activated += () => presses++;
@@ -400,7 +346,7 @@ public class ActivationTests
     [Fact]
     public void SecondaryActivateRaisesItsEvent()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var save = new Button(ui.App, "Save");
         var secondary = 0;
         save.SecondaryActivated += () => secondary++;
@@ -415,7 +361,7 @@ public class ActivationTests
     [Fact]
     public void ActivateItemsListClaimsEnterOverPrimary()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var files = new ListBox(
             ui.App, "Files", new[] { "Alpha", "Beta" }, activateItems: true);
         var ok = new Button(ui.App, "OK");
@@ -436,7 +382,7 @@ public class ActivationTests
     [Fact]
     public void EmptyActivateItemsListLetsEnterFallThrough()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var files = new ListBox(
             ui.App, "Files", Array.Empty<string>(), activateItems: true);
         var ok = new Button(ui.App, "OK");
@@ -457,7 +403,7 @@ public class ActivationTests
     [Fact]
     public void EnterOnCheckboxFallsThroughToPrimary()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var wrap = new CheckBox(ui.App, "Word Wrap");
         var ok = new Button(ui.App, "OK");
         var presses = 0;
@@ -475,7 +421,7 @@ public class ActivationTests
     [Fact]
     public void HiddenPrimaryDoesNotActivate()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var wrap = new CheckBox(ui.App, "Word Wrap");
         var ok = new Button(ui.App, "OK");
         var presses = 0;
@@ -493,7 +439,7 @@ public class ActivationTests
     [Fact]
     public void DisabledPrimaryDoesNotActivate()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var wrap = new CheckBox(ui.App, "Word Wrap");
         var ok = new Button(ui.App, "OK");
         var presses = 0;
@@ -511,7 +457,7 @@ public class ActivationTests
     [Fact]
     public void PrimaryUnderHiddenAncestorDoesNotActivate()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var wrap = new CheckBox(ui.App, "Word Wrap");
         var panel = new Group(ui.App, "Panel");
         var ok = new Button(panel, "OK");
@@ -530,7 +476,7 @@ public class ActivationTests
     [Fact]
     public void DismissActivatesCancel()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         _ = new Button(ui.App, "Body");
         var cancel = new Button(ui.App, "Cancel");
         var presses = 0;
@@ -547,7 +493,7 @@ public class ActivationTests
     [Fact]
     public void DisabledCancelLeavesDismissUnconsumed()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         _ = new Button(ui.App, "Body");
         var cancel = new Button(ui.App, "Cancel");
         var presses = 0;
@@ -565,7 +511,7 @@ public class ActivationTests
     [Fact]
     public void DismissUnconsumedWithoutCancel()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         _ = new Button(ui.App, "Save");
         ui.App.EnsureFocus();
         Assert.False(ui.Input(InputKind.Dismiss));
@@ -576,7 +522,7 @@ public class ActivationTests
     {
         // Activation is a Widget-level concept: an Activate shortcut on a
         // slider raises its Activated event like a button press would.
-        var ui = new TestUi();
+        var ui = new TestApp();
         var volume = new Slider(ui.App, "Volume", 50, 0, 100);
         var other = new Button(ui.App, "Other");
         var fired = 0;
@@ -594,9 +540,9 @@ public class ActivationTests
 
 public class ShortcutTests
 {
-    private static (TestUi Ui, Button Save, Group Options, CheckBox Wrap) DemoUi()
+    private static (TestApp Ui, Button Save, Group Options, CheckBox Wrap) DemoUi()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var save = new Button(ui.App, "Save");
         var options = new Group(ui.App, "Options");
         var wrap = new CheckBox(options, "Word Wrap");
@@ -687,7 +633,7 @@ public class ShortcutTests
     [Fact]
     public void FocusedWidgetBeatsShortcut()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes");
         var other = new Button(ui.App, "Other");
         other.AddShortcut(KeyCombo.Plain(Key.Char('x')));
@@ -708,7 +654,7 @@ public class ShortcutTests
     [Fact]
     public void FirstClaimantInTreeOrderWins()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var first = new Button(ui.App, "First");
         var second = new Button(ui.App, "Second");
         var combo = KeyCombo.WithCtrl(Key.Char('k'));
@@ -731,7 +677,7 @@ public class ShortcutTests
     [Fact]
     public void ShortcutsInLowerLayersAreInert()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var save = new Button(ui.App, "Save");
         var presses = 0;
         save.Activated += () => presses++;
@@ -770,7 +716,7 @@ public class ShortcutTests
     [Fact]
     public void ShortcutMatchingUsesThePhysicalCombo()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var arena = new CustomWidget(ui.App, "Arena");
         var wordDelete = new Button(ui.App, "Word delete");
         var fired = 0;
@@ -797,7 +743,7 @@ public class ShortcutTests
     [Fact]
     public void PlainLetterShortcutIgnoresShiftedTyping()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var arena = new CustomWidget(ui.App, "Arena");
         var other = new Button(ui.App, "Other");
         other.AddShortcut(KeyCombo.Plain(Key.Char('x')));
@@ -828,7 +774,7 @@ public class KeyBindingTests
     [Fact]
     public void BindKeyFiresOnlyWhileFocused()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var arena = new CustomWidget(ui.App, "Arena");
         var other = new Button(ui.App, "Other");
         var presses = 0;
@@ -849,7 +795,7 @@ public class KeyBindingTests
     [Fact]
     public void PressMatchesExactComboReleaseMatchesKeyAlone()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var arena = new CustomWidget(ui.App, "Arena");
         var q = KeyCombo.Plain(Key.Char('q'));
         var pressed = 0;
@@ -871,7 +817,7 @@ public class KeyBindingTests
     [Fact]
     public void ReleaseBindingWithModifiersThrows()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var arena = new CustomWidget(ui.App, "Arena");
         Assert.Throws<ArgumentException>(() => arena.BindKey(
             KeyCombo.WithShift(Key.Char('q')), KeyPhase.Release, () => { }));
@@ -880,7 +826,7 @@ public class KeyBindingTests
     [Fact]
     public void OpeningDialogReleasesHeldKeysIntoOldLayer()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var arena = new CustomWidget(ui.App, "Arena");
         var q = KeyCombo.Plain(Key.Char('q'));
         var released = 0;
@@ -906,7 +852,7 @@ public class KeyBindingTests
     [Fact]
     public void ClosingDialogReleasesHeldKeysIntoDialogLayer()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var arena = new CustomWidget(ui.App, "Arena");
         arena.Focus();
         ui.Drain();
@@ -938,7 +884,7 @@ public class KeyBindingTests
     [Fact]
     public void UnbindKeyRemovesEveryHandlerForTheCombo()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var arena = new CustomWidget(ui.App, "Arena");
         var presses = 0;
         var q = KeyCombo.Plain(Key.Char('q'));
@@ -959,7 +905,7 @@ public class DialogTests
     [Fact]
     public void LayerPopRestoresAndAnnouncesFocus()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var save = new Button(ui.App, "Save");
         save.Focus();
         ui.Drain();
@@ -977,7 +923,7 @@ public class DialogTests
     [Fact]
     public void AnnounceOpenedCollectsPrecedingLabels()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         _ = new Button(ui.App, "Body");
         ui.App.EnsureFocus();
         ui.Drain();
@@ -992,7 +938,7 @@ public class DialogTests
     [Fact]
     public void EscapeDismissesDialogWithoutCancelWidget()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var save = new Button(ui.App, "Save");
         save.Focus();
         ui.Drain();
@@ -1017,7 +963,7 @@ public class DialogTests
     [Fact]
     public void ClosingBuriedDialogClosesThoseAboveIt()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         _ = new Button(ui.App, "Root");
         ui.App.EnsureFocus();
         ui.Drain();
@@ -1039,7 +985,7 @@ public class DialogTests
     [Fact]
     public void DialogResultIsSpokenBeforeRestoredFocus()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var save = new Button(ui.App, "Save");
         save.Focus();
         ui.Drain();
@@ -1064,7 +1010,7 @@ public class DialogTests
     [Fact]
     public void ConfirmDialogRoutesChoices()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         _ = new Button(ui.App, "Root");
         ui.App.EnsureFocus();
         ui.Drain();
@@ -1091,9 +1037,9 @@ public class DialogTests
 
 public class ListBoxTests
 {
-    private static (TestUi Ui, ListBox Files) ListUi(bool numbered)
+    private static (TestApp Ui, ListBox Files) ListUi(bool numbered)
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var files = new ListBox(
             ui.App, "Files", ["alpha.txt", "bravo.txt", "charlie.txt"], numbered);
         files.Focus();
@@ -1104,7 +1050,7 @@ public class ListBoxTests
     [Fact]
     public void FocusAnnouncementIncludesValueAndPosition()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var files = new ListBox(
             ui.App, "Files", ["alpha.txt", "bravo.txt", "charlie.txt"], numbered: true);
         files.Focus();
@@ -1188,7 +1134,7 @@ public class ListBoxTests
     [Fact]
     public void TypeaheadFirstLetterCycles()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var files = new ListBox(ui.App, "Files", ["apple", "banana", "avocado"]);
         files.Focus();
         ui.Drain();
@@ -1208,7 +1154,7 @@ public class ListBoxTests
     [Fact]
     public void TypeaheadPrefixSearch()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var files = new ListBox(ui.App, "Files", ["banana", "berry", "cherry"]);
         files.Focus();
         ui.Drain();
@@ -1226,7 +1172,7 @@ public class ListBoxTests
     [Fact]
     public void TypeaheadTimesOut()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var files = new ListBox(ui.App, "Files", ["banana", "berry", "cat"]);
         files.Focus();
         ui.Drain();
@@ -1244,7 +1190,7 @@ public class ListBoxTests
     [Fact]
     public void EmptyListAnswersArrowsAndConsumesNothingElse()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var files = new ListBox(ui.App, "Files", Array.Empty<string>(), numbered: true);
         files.Focus();
         Assert.Equal(new[] { "Files list empty" }, ui.Spoken());
@@ -1275,7 +1221,7 @@ public class ListBoxTests
     [Fact]
     public void SetItemsSilentWhenUnfocused()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var files = new ListBox(ui.App, "Files", ["a"]);
         var other = new Button(ui.App, "Other");
         other.Focus();
@@ -1318,7 +1264,7 @@ public class EditBoxTests
     [Fact]
     public void FocusAnnouncement()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes");
         notes.Focus();
         Assert.Equal(new[] { "Notes edit blank" }, ui.Spoken());
@@ -1327,7 +1273,7 @@ public class EditBoxTests
     [Fact]
     public void TypingEchoesAndUpdatesState()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes");
         var changes = 0;
         notes.Changed += () => changes++;
@@ -1346,7 +1292,7 @@ public class EditBoxTests
     [Fact]
     public void WordEchoOnBoundary()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes");
         notes.Focus();
         foreach (var ch in "hey")
@@ -1359,7 +1305,7 @@ public class EditBoxTests
     [Fact]
     public void ArrowNavigationSpeaksChars()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         // Opted out of select-all-on-focus: this test is about bare
         // cursor movement from a known position.
         var notes = new EditBox(ui.App, "Notes", "ab") { SelectAllOnFocus = false };
@@ -1377,7 +1323,7 @@ public class EditBoxTests
     [Fact]
     public void EnterSingleLineFallsThroughToPrimary()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes");
         var ok = new Button(ui.App, "OK");
         var presses = 0;
@@ -1395,7 +1341,7 @@ public class EditBoxTests
     [Fact]
     public void EnterMultilineInsertsNewline()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes", multiline: true);
         notes.Focus();
         ui.Drain();
@@ -1415,7 +1361,7 @@ public class EditBoxTests
     [Fact]
     public void SelectAllAndCopyThroughInjectedClipboard()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         ui.App.SetClipboard(new MemClipboard());
         var notes = new EditBox(ui.App, "Notes", "hello");
         notes.Focus();
@@ -1437,7 +1383,7 @@ public class EditBoxTests
     [Fact]
     public void SetTextSpeaksNewValueWhenFocused()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes", "old");
         notes.Focus();
         ui.Drain();
@@ -1450,7 +1396,7 @@ public class EditBoxTests
     [Fact]
     public void ReadOnlyToggleSpeaksNewRoleTextWhenFocused()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes", "body");
         notes.Focus();
         ui.Drain();
@@ -1464,7 +1410,7 @@ public class EditBoxTests
     [Fact]
     public void ReadOnlyChangesRoleTextAndSwallowsTyping()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes", "body", multiline: true) { ReadOnly = true };
         notes.Focus();
         Assert.Equal(new[] { "Notes edit read only multi line body" }, ui.Spoken());
@@ -1477,7 +1423,7 @@ public class EditBoxTests
     [Fact]
     public void CursorPositionSpeaksLikeUserNavigation()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes", "abc");
         notes.Focus();
         ui.Drain();
@@ -1497,7 +1443,7 @@ public class EditBoxTests
     [Fact]
     public void CursorPositionSnapsToGraphemeBoundaries()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
 
         var astral = new EditBox(ui.App, "Astral", "a𐐷b"); // 𐐷 is astral: two UTF-16 units
         astral.CursorPosition = 2; // middle of the surrogate pair
@@ -1519,7 +1465,7 @@ public class EditBoxTests
     [Fact]
     public void SelectionEndpointsSnapToGraphemeBoundaries()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes", "a\r\nb", multiline: true);
         notes.Selection = (2, 4); // anchor between CR and LF
         Assert.Equal((1, 4), notes.Selection);
@@ -1529,7 +1475,7 @@ public class EditBoxTests
     [Fact]
     public void SetTextSnapsTheSurvivingCursorToAGraphemeBoundary()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes", "hello");
         notes.CursorPosition = 2;
 
@@ -1540,7 +1486,7 @@ public class EditBoxTests
     [Fact]
     public void SelectionSurfaceSpeaksAndReads()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes", "abcd");
         notes.Focus();
         ui.Drain();
@@ -1563,7 +1509,7 @@ public class EditBoxTests
     [Fact]
     public void InsertTextSpeaksLikeTypingWhenFocused()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes", "hello");
         notes.Focus();
         notes.CursorPosition = 5;
@@ -1583,7 +1529,7 @@ public class EditBoxTests
     [Fact]
     public void InsertTextReplacesSelectionLikeTyping()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes", "hello world");
         notes.Focus();
         notes.Selection = (0, 5);
@@ -1599,7 +1545,7 @@ public class EditBoxTests
     [Fact]
     public void InsertTextIsSilentUnfocusedAndIgnoresReadOnly()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes", "ab") { ReadOnly = true };
         notes.CursorPosition = 2;
 
@@ -1611,7 +1557,7 @@ public class EditBoxTests
     [Fact]
     public void InsertTextFlattensNewlinesInSingleLineEditors()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var single = new EditBox(ui.App, "Single", "");
         single.InsertText("a\r\nb");
         Assert.Equal("a b", single.Text);
@@ -1624,7 +1570,7 @@ public class EditBoxTests
     [Fact]
     public void ReplaceRangeSplicesSilentlyAndMapsTheCursor()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes", "one two three", multiline: true);
         notes.Focus();
         ui.Drain();
@@ -1655,7 +1601,7 @@ public class EditBoxTests
     [Fact]
     public void ReplaceRangeMapsSelectionEndpoints()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes", "abcdef");
         notes.Focus();
         notes.Selection = (1, 3);
@@ -1683,7 +1629,7 @@ public class EditBoxTests
     [Fact]
     public void ProgrammaticMovementSpeaksLikeTheKeys()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes", "hello world\nsecond line", multiline: true);
         notes.Focus();
         ui.Drain();
@@ -1711,7 +1657,7 @@ public class EditBoxTests
     [Fact]
     public void ProgrammaticMovementIsSilentWhenUnfocused()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes", "hello world");
 
         notes.MoveWordRight();
@@ -1722,7 +1668,7 @@ public class EditBoxTests
     [Fact]
     public void ProgrammaticArrowCollapsesSelectionLikeTheKey()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes", "abcd");
         notes.Focus();
         notes.Selection = (1, 3);
@@ -1737,7 +1683,7 @@ public class EditBoxTests
     [Fact]
     public void WordQueriesMirrorTheCtrlArrowFamily()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes", "hello world");
 
         Assert.Equal(6, notes.NextWordStart(0));
@@ -1751,7 +1697,7 @@ public class EditBoxTests
     [Fact]
     public void WordStartsAndExtentsDivergeOnPunctuation()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes", "foo.. bar");
 
         // Ctrl+arrow stops on the punctuation run; the extent (what
@@ -1765,7 +1711,7 @@ public class EditBoxTests
     [Fact]
     public void LineQueriesHandleCrlf()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes", "one\r\ntwo\nthree", multiline: true);
 
         Assert.Equal(5, notes.LineStartAt(6));
@@ -1779,7 +1725,7 @@ public class EditBoxTests
     [Fact]
     public void LineColumnConversionRoundTripsAndClamps()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes", "one\r\ntwo\nthree", multiline: true);
 
         Assert.Equal(3, notes.LineCount);
@@ -1796,7 +1742,7 @@ public class EditBoxTests
     [Fact]
     public void PositionAtSnapsOffSurrogateHalves()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes", "a\U00010437b");
         Assert.Equal(1, notes.PositionAt(0, 2)); // middle of the pair
     }
@@ -1807,7 +1753,7 @@ public class SliderTests
     [Fact]
     public void AdjustsAndAnnounces()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var vol = new Slider(ui.App, "Volume", 50, 0, 100, unit: "%");
         var changes = 0;
         vol.Changed += () => changes++;
@@ -1839,7 +1785,7 @@ public class SliderTests
     [Fact]
     public void ValueSetterSpeaksValueOnlyWhenFocused()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var progress = new Slider(ui.App, "Progress", 0, 0, 100, unit: "%");
         progress.Focus();
         ui.Drain();
@@ -1861,7 +1807,7 @@ public class SliderTests
     [Fact]
     public void ValueSetterSilentWhenUnfocused()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var progress = new Slider(ui.App, "Progress", 0, 0, 100);
         var other = new Button(ui.App, "Other");
         other.Focus();
@@ -1878,7 +1824,7 @@ public class TabControlTests
     [Fact]
     public void CyclesWithWraparound()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var tabs = new TabControl(ui.App, "Views", ["Files", "Playlist", "FX"]);
         tabs.Focus();
         Assert.Equal(new[] { "Views tab control Files" }, ui.Spoken());
@@ -1899,7 +1845,7 @@ public class TabControlTests
     [Fact]
     public void ActiveIndexSpeaksTabOnlyWhenFocused()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var tabs = new TabControl(ui.App, "Views", ["Files", "Playlist", "FX"]);
         tabs.Focus();
         ui.Drain();
@@ -1916,7 +1862,7 @@ public class TabControlTests
     [Fact]
     public void AttachedPanelsFollowTheActiveTab()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var tabs = new TabControl(ui.App, "Views", ["One", "Two"]);
         var one = new Group(ui.App, "One");
         var two = new Group(ui.App, "Two");
@@ -1941,7 +1887,7 @@ public class TabControlTests
     [Fact]
     public void AttachPanelsRequiresOnePerTab()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var tabs = new TabControl(ui.App, "Views", ["One", "Two"]);
         var only = new Group(ui.App, "One");
         Assert.Throws<ArgumentException>(() => tabs.AttachPanels(only));
@@ -1953,7 +1899,7 @@ public class ShortcutFieldTests
     [Fact]
     public void CapturesAndClears()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var field = new ShortcutField(ui.App, "Play shortcut");
         var changes = 0;
         field.Changed += () => changes++;
@@ -1983,7 +1929,7 @@ public class ShortcutFieldTests
     [Fact]
     public void ResistsFrameworkInterception()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var group = new Group(ui.App, "Options");
         var field = new ShortcutField(group, "Shortcut");
         var other = new Button(ui.App, "Other");
@@ -2013,7 +1959,7 @@ public class ShortcutFieldTests
     [Fact]
     public void CapturesThePhysicalComboNotTheCanonicalOne()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var field = new ShortcutField(ui.App, "Shortcut");
         field.Focus();
         ui.Drain();
@@ -2041,7 +1987,7 @@ public class ShortcutFieldTests
     [Fact]
     public void ComboSetterSpeaksNewValueWhenFocused()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var field = new ShortcutField(ui.App, "Play shortcut");
         field.Focus();
         ui.Drain();
@@ -2056,9 +2002,9 @@ public class ShortcutFieldTests
 
 public class FilterListBoxTests
 {
-    private static (TestUi Ui, FilterListBox List) FilterUi()
+    private static (TestApp Ui, FilterListBox List) FilterUi()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var list = new FilterListBox(ui.App, "Commands", ["Save File", "Open Editor", "Quit"]);
         list.Focus();
         ui.Drain();
@@ -2068,7 +2014,7 @@ public class FilterListBoxTests
     [Fact]
     public void FocusAnnouncementCarriesFilterState()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var list = new FilterListBox(ui.App, "Commands", ["Save File"]);
         list.Focus();
         Assert.Equal(new[] { "Commands list Save File no filter" }, ui.Spoken());
@@ -2089,7 +2035,7 @@ public class FilterListBoxTests
     [Fact]
     public void AnEmptyResultSetStaysSilentWhileThePoolIsFilling()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var list = new PendingFilterList(ui.App, "Commands", ["Save File"]) { Pending = true };
         list.Focus();
         ui.Drain();
@@ -2113,7 +2059,7 @@ public class FilterListBoxTests
     [Fact]
     public void TypingFiltersAndReports()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var list = new FilterListBox(
             ui.App, "Commands", ["Save File", "Settings", "Open Editor", "Quit"]);
         var changes = 0;
@@ -2193,7 +2139,7 @@ public class CheckBoxTests
     [Fact]
     public void TogglesOnSpace()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var wrap = new CheckBox(ui.App, "Word Wrap");
         var toggles = new List<bool>();
         wrap.Toggled += toggles.Add;
@@ -2214,7 +2160,7 @@ public class CheckBoxTests
     [Fact]
     public void CheckedSetterSpeaksWhenFocusedWithoutToggled()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var wrap = new CheckBox(ui.App, "Word Wrap");
         var toggles = 0;
         wrap.Toggled += _ => toggles++;
@@ -2242,7 +2188,7 @@ public class CustomWidgetTests
     [Fact]
     public void FocusesAndPassesInputThrough()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var before = new Button(ui.App, "Before");
         var arena = new CustomWidget(ui.App, "Arena");
         var ok = new Button(ui.App, "OK");
@@ -2271,7 +2217,7 @@ public class CustomWidgetTests
     [Fact]
     public void NamelessAnnouncementHasNoLeadingSpace()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var arena = new CustomWidget(ui.App, "") { Description = "the battle arena" };
         arena.Disabled = true;
         arena.Focus();
@@ -2284,7 +2230,7 @@ public class ClockTests
     [Fact]
     public void NowReadsBackTheInjectedClock()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         Assert.Equal(0ul, ui.App.Now);
         ui.App.SetNow(1234);
         Assert.Equal(1234ul, ui.App.Now);
@@ -2293,7 +2239,7 @@ public class ClockTests
     [Fact]
     public void PreciseNowFollowsTheEngineClockWhenHeadless()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         ui.App.SetNow(2500);
         Assert.Equal(TimeSpan.FromMilliseconds(2500), ui.App.PreciseNow);
     }
@@ -2304,7 +2250,7 @@ public class TickerTests
     [Fact]
     public void FiresOnClockAdvance()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var ticker = ui.App.StartTicker(100);
         var ticks = 0;
         ticker.Tick += () => ticks++;
@@ -2333,7 +2279,7 @@ public class TickerTests
     [Fact]
     public void StoppedTickerStopsFiring()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var a = ui.App.StartTicker(10);
         var b = ui.App.StartTicker(10);
         var aTicks = 0;
@@ -2353,7 +2299,7 @@ public class TickTests
     [Fact]
     public void TickDrainsQueuedEvents()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         ui.App.Announce("hello");
         Assert.True(ui.App.Tick());
         var announce = Assert.IsType<AccessibilityEvent.Announce>(ui.Reader.Events.Single());
@@ -2363,7 +2309,7 @@ public class TickTests
     [Fact]
     public void QuitTurnsTickFalse()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         Assert.True(ui.App.Tick());
         ui.App.Quit();
         // The final tick still delivers what was queued before Quit.
@@ -2375,7 +2321,7 @@ public class TickTests
     [Fact]
     public void TickFeedsTheEngineClockFromTheStopwatch()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         // An injected far-future clock is overwritten by real elapsed
         // time, which is nowhere near an hour this early in the test.
         ui.App.SetNow(3_600_000);
@@ -2386,7 +2332,7 @@ public class TickTests
     [Fact]
     public void TickersFireFromTick()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var ticker = ui.App.StartTicker(1);
         var ticks = 0;
         ticker.Tick += () => ticks++;
@@ -2401,8 +2347,8 @@ public class ReaderTests
     [Fact]
     public void EveryReaderHearsEveryAccessibilityEvent()
     {
-        var ui = new TestUi();
-        var second = new TestReader();
+        var ui = new TestApp();
+        var second = new RecordingReader();
         ui.App.AddReader(second);
         var save = new Button(ui.App, "Save");
         save.Focus();
@@ -2424,7 +2370,7 @@ public class ReaderTests
     [Fact]
     public void InterruptReachesReaders()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         ui.App.Interrupt();
         Assert.Equal(1, ui.Reader.Interrupts);
     }
@@ -2432,7 +2378,7 @@ public class ReaderTests
     [Fact]
     public void AppAnnouncesCarryNoSource()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         ui.App.Announce("hello");
         ui.App.DispatchEvents();
         var announce = Assert.IsType<AccessibilityEvent.Announce>(ui.Reader.Events.Single());
@@ -2442,7 +2388,7 @@ public class ReaderTests
     [Fact]
     public void CheckBoxTogglesAreStructured()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var mute = new CheckBox(ui.App, "Mute");
         mute.Focus();
         ui.Drain();
@@ -2458,7 +2404,7 @@ public class ReaderTests
     [Fact]
     public void EmptyEditorFeedbackIsStructured()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes");
         notes.Focus();
         ui.Drain();
@@ -2473,7 +2419,7 @@ public class ReaderTests
     [Fact]
     public void StructuredEventsCarryWidgetReferences()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var files = new ListBox(ui.App, "Files", ["a", "b"], numbered: true);
         files.Focus();
         ui.Drain();
@@ -2557,9 +2503,9 @@ public class WidgetAuthoringTests
         }
     }
 
-    private static (TestUi Ui, GridWidget Grid) GridUi()
+    private static (TestApp Ui, GridWidget Grid) GridUi()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var grid = new GridWidget(
             ui.App, "Board",
             [
@@ -2621,7 +2567,7 @@ public class FocusCauseTests
 {
     /// <summary>Deliver queued output and return the causes of the
     /// Focused events heard since the last call, in order.</summary>
-    private static List<FocusCause> Causes(TestUi ui)
+    private static List<FocusCause> Causes(TestApp ui)
     {
         ui.App.DispatchEvents();
         var causes = ui.Reader.Events
@@ -2635,7 +2581,7 @@ public class FocusCauseTests
     [Fact]
     public void UserNavigationIsAttributed()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         _ = new Button(ui.App, "Save");
         var options = new Group(ui.App, "Options");
         var wrap = new CheckBox(options, "Word Wrap");
@@ -2653,7 +2599,7 @@ public class FocusCauseTests
     [Fact]
     public void ShortcutJumpIsAttributed()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var save = new Button(ui.App, "Save");
         var target = new Button(ui.App, "Target");
         target.AddShortcut(KeyCombo.WithCtrl(Key.Char('j')));
@@ -2668,7 +2614,7 @@ public class FocusCauseTests
     [Fact]
     public void ProgrammaticFocusAndReannouncementAreAttributed()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         _ = new Button(ui.App, "Save");
         var other = new Button(ui.App, "Other");
         ui.Drain();
@@ -2683,7 +2629,7 @@ public class FocusCauseTests
     [Fact]
     public void RecoveryIsAttributed()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         _ = new Button(ui.App, "Save");
         var doomed = new Button(ui.App, "Doomed");
         doomed.Focus();
@@ -2696,7 +2642,7 @@ public class FocusCauseTests
     [Fact]
     public void DialogTransitionsNeverReadAsUserNavigation()
     {
-        var ui = new TestUi();
+        var ui = new TestApp();
         var open = new Button(ui.App, "Open");
         open.Focus();
         ui.Drain();
@@ -2719,7 +2665,7 @@ public class SelectAllOnFocusTests
     [Fact]
     public void TypingIntoASeededFieldReplacesInsteadOfConcatenating()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var first = new EditBox(ui.App, "Name");
         var gain = new EditBox(ui.App, "Gain") { Text = "0", SelectAllOnFocus = true };
         first.Focus();
@@ -2741,7 +2687,7 @@ public class SelectAllOnFocusTests
     [Fact]
     public void TheSelectionFoldsIntoTheFocusAnnouncement()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var first = new EditBox(ui.App, "Name");
         var gain = new EditBox(ui.App, "Gain") { Text = "0", SelectAllOnFocus = true };
         first.Focus();
@@ -2758,7 +2704,7 @@ public class SelectAllOnFocusTests
     [Fact]
     public void SingleLineDefaultsOnAndMultilineOff()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         Assert.True(new EditBox(ui.App, "Gain").SelectAllOnFocus);
         Assert.False(new EditBox(ui.App, "Notes", multiline: true).SelectAllOnFocus);
     }
@@ -2766,7 +2712,7 @@ public class SelectAllOnFocusTests
     [Fact]
     public void OptingOutKeepsThePriorSelection()
     {
-        using var ui = new TestUi();
+        using var ui = new TestApp();
         var first = new EditBox(ui.App, "Name");
         var notes = new EditBox(ui.App, "Notes", "alpha beta", multiline: true);
         notes.Focus();

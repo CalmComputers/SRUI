@@ -8,7 +8,7 @@ namespace Srui.Tests;
 internal sealed class MultiTestUi : IDisposable
 {
     public readonly MultiAppHost Host = MultiAppHost.Headless();
-    public readonly TestReader Reader = new();
+    public readonly RecordingReader Reader = new();
 
     public MultiTestUi() => Host.AddReader(Reader);
 
@@ -179,7 +179,7 @@ public class MultiAppHostTests
     public void PerAppReadersBypassTheSharedPolicy()
     {
         var (ui, notes, inbox, _, _) = TwoApps();
-        var direct = new TestReader();
+        var direct = new RecordingReader();
         inbox.App.AddReader(direct);
         ui.Host.Activate(notes);
         ui.Drain();
