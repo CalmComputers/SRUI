@@ -101,8 +101,10 @@ ui.Expect("Hello, stranger.");
 
 `Press` simulates a key tap the way a real host delivers it — physical key
 phases, the standard key mapping, typed characters — and `Wait` advances
-the clock, so timeouts and tickers elapse instantly. For anything beyond
-exact batches, `Spoken()` returns the utterances as a plain list to query
+the clock, so timeouts and tickers elapse instantly. Each of these is a
+step: `Expect` describes exactly what the last step spoke, and speech a
+test never asks about is simply ignored. For anything beyond exact
+batches, `Spoken()` returns the utterances as a plain list to query
 however the test likes. The package depends on no test framework; it works
 under xUnit, NUnit, MSTest, or a bare console.
 

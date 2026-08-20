@@ -59,7 +59,6 @@ public class KeyTapSimulationTests
         _ = new Button(ui.App, "One");
         var two = new Button(ui.App, "Two");
         ui.App.EnsureFocus();
-        ui.Drain();
 
         ui.Press("tab");
         Assert.True(two.IsFocused);
@@ -72,7 +71,6 @@ public class KeyTapSimulationTests
         using var ui = new TestApp();
         var edit = new EditBox(ui.App, "Name", "");
         edit.Focus();
-        ui.Drain();
 
         ui.Press("a");
         ui.Press("s+a");
@@ -86,7 +84,6 @@ public class KeyTapSimulationTests
         using var ui = new TestApp();
         var box = new CheckBox(ui.App, "Wrap");
         box.Focus();
-        ui.Drain();
 
         ui.Press("space");
         Assert.True(box.Checked);
@@ -100,7 +97,6 @@ public class KeyTapSimulationTests
         var two = new Button(ui.App, "Two");
         two.AddShortcut(ComboSpec.Parse("c+g"));
         ui.App.EnsureFocus();
-        ui.Drain();
 
         ui.Press("c+g");
         Assert.True(two.IsFocused);
@@ -115,7 +111,6 @@ public class KeyTapSimulationTests
         button.BindKey(KeyCombo.Plain(Key.Char('j')), KeyPhase.Press, () => phases.Add("press"));
         button.BindKey(KeyCombo.Plain(Key.Char('j')), KeyPhase.Release, () => phases.Add("release"));
         button.Focus();
-        ui.Drain();
 
         ui.Down("j");
         Assert.Equal(new[] { "press" }, phases);
@@ -134,7 +129,6 @@ public class KeyTapSimulationTests
         edit.BindKey(KeyCombo.Plain(Key.Char('x')), KeyPhase.Release,
             () => order.Add($"release:{edit.Text}"));
         edit.Focus();
-        ui.Drain();
 
         ui.Press("x");
         // The press phase sees the text before the typed character
@@ -153,7 +147,6 @@ public class KeyTapSimulationTests
 
         var before = ui.App.Now;
         ui.Wait(250);
-        ui.Drain();
         Assert.Equal(before + 250, ui.App.Now);
         Assert.True(ticks > 0);
     }
@@ -164,7 +157,6 @@ public class KeyTapSimulationTests
         using var ui = new TestApp();
         var edit = new EditBox(ui.App, "Name", "");
         edit.Focus();
-        ui.Drain();
 
         ui.Type("a\U0001F600b");
         Assert.Equal("a\U0001F600b", edit.Text);
@@ -211,5 +203,62 @@ public class ExpectTests
     {
         using var ui = new TestApp(app => _ = new Button(app, "Save"));
         ui.Expect("Save button");
+    }
+}
+
+public class StepTests
+{
+    [Fact]
+    public void AStepDiscardsThePreviousBatch()
+    {
+        using var ui = new TestApp(app =>
+        {
+            _ = new Button(app, "One");
+            _ = new Button(app, "Two");
+        });
+        // The focus announcement from construction is never asserted:
+        // the first step drops it, and Expect sees the step alone.
+        ui.Press("tab");
+        ui.Expect("Two button");
+    }
+
+    [Fact]
+    public void AStepDispatchesBeforeReturning()
+    {
+        using var ui = new TestApp();
+        var below = new Button(ui.App, "Below");
+        below.Focus();
+        var dialog = ui.App.OpenDialog();
+        new Button(dialog, "Inside").Focus();
+
+        // Closing a dialog restores focus at drain time; the step has
+        // drained by the time it returns, so state is assertable at once.
+        ui.Press("escape");
+        Assert.True(below.IsFocused);
+        ui.Expect("Below button");
+    }
+
+    [Fact]
+    public void TypingAStringIsOneStep()
+    {
+        using var ui = new TestApp();
+        new EditBox(ui.App, "Name").Focus();
+        ui.Type("ab");
+        ui.Expect("a", "b");
+    }
+
+    [Fact]
+    public void ProgrammaticMutationsShareABatchUntilDrained()
+    {
+        using var ui = new TestApp();
+        var save = new Button(ui.App, "Save");
+        save.Focus();
+        ui.Drain();
+
+        // No step separates these, so one batch holds both deltas —
+        // Drain is the boundary a mutation has to draw for itself.
+        save.Name = "Save All";
+        save.Description = "saves the file";
+        ui.Expect("Save All", "saves the file");
     }
 }

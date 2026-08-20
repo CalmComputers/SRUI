@@ -209,7 +209,6 @@ public class ListItemTests
         var list = new FilterListBox(ui.App, "Palette",
             [new Command("open file", 1), new Command("open recent", 5), new Command("hidden", 9)]);
         list.Focus();
-        ui.Drain();
 
         ui.Type('o');
         // "hidden" excludes itself (null); "open recent" outranks by score.
@@ -256,10 +255,8 @@ public class ListItemTests
         var list = new FilterListBox<Command>(ui.App, "Palette",
             [open, new Command("hidden", 9)]);
         list.Focus();
-        ui.Drain();
 
         ui.Type('o');
-        ui.Drain();
         Command? selected = list.SelectedItem; // typed — no cast
         Assert.Same(open, selected);
         Assert.Equal([open], list.Results);
@@ -271,10 +268,8 @@ public class ListItemTests
         var ui = new TestApp();
         var list = new FilterListBox(ui.App, "Palette", ["alpha"]);
         list.Focus();
-        ui.Drain();
 
         ui.Type('z');
-        ui.Drain(); // "no results"
 
         Assert.True(ui.Input(InputKind.MoveDown));
         Assert.Equal(new[] { "empty" }, ui.Spoken());

@@ -20,18 +20,15 @@ public class GreetTests
     public void GreetsTheTypedName()
     {
         using var ui = Start();
-        ui.Drain();
-        ui.Type("Ada");
-        ui.Drain();               // the character echoes are not the point here
+        ui.Type("Ada");           // its echoes go unasserted, so they are ignored
         ui.Press("enter");        // Enter anywhere presses Greet
-        ui.Expect("Hello, Ada.");
+        ui.Expect("Hello, Ada."); // exactly what the last step spoke
     }
 
     [Fact]
     public void GreetsTheStrangerWhenBlank()
     {
         using var ui = Start();
-        ui.Drain();
         ui.Press("enter");
         ui.Expect("Hello, stranger.");
     }

@@ -125,7 +125,6 @@ public class ScenarioRunTests
             _ = new Button(app, "One");
             app.StartTicker(100).Tick += () => app.Announce("tick");
         });
-        ui.Drain();
         ui.RunScenarioText("""
             wait 150
             say tick
@@ -143,7 +142,6 @@ public class ScenarioRunTests
             pad.BindKey(KeyCombo.Plain(Key.Char('j')), KeyPhase.Release,
                 () => app.Announce("released"));
         });
-        ui.Drain();
         ui.RunScenarioText("""
             down j
             say held
@@ -158,7 +156,6 @@ public class ScenarioRunTests
         ListBox list = null!;
         using var ui = new TestApp(app =>
             list = new ListBox(app, "Items", ["alpha", "beta"]));
-        ui.Drain();
         ui.RunScenarioText("down");
         Assert.Equal(1, list.SelectedIndex);
     }

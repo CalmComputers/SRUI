@@ -75,7 +75,6 @@ public class KeyHelpTests
         using var ui = new TestApp();
         var list = new ListBox(ui.App, "To-do", ["a"]) { KeyHelp = "Space marks done." };
         list.Focus();
-        ui.Drain();
 
         Assert.True(ui.Raw(KeyCombo.Plain(Key.F(1))));
         var spoken = ui.Spoken();
@@ -83,7 +82,6 @@ public class KeyHelpTests
 
         // Escape closes the dialog and focus returns to the list.
         ui.Input(InputKind.Dismiss);
-        ui.Drain();
         Assert.True(list.IsFocused);
     }
 
@@ -93,7 +91,6 @@ public class KeyHelpTests
         using var ui = new TestApp();
         var button = new Button(ui.App, "Roll");
         button.Focus();
-        ui.Drain();
         Assert.False(ui.Raw(KeyCombo.Plain(Key.F(1))));
     }
 
@@ -103,7 +100,6 @@ public class KeyHelpTests
         using var ui = new TestApp();
         var widget = new F1Eater(ui.App) { KeyHelp = "Never shown." };
         widget.Focus();
-        ui.Drain();
 
         Assert.True(ui.Raw(KeyCombo.Plain(Key.F(1))));
         Assert.Equal(new[] { "ate F1" }, ui.Spoken());

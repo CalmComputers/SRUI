@@ -39,7 +39,6 @@ public class FocusAndNavigationTests
     {
         var (ui, _, _, wrap) = DemoUi();
         ui.App.EnsureFocus();
-        ui.Drain();
 
         ui.Input(InputKind.NavigateNext);
         Assert.True(wrap.IsFocused);
@@ -100,7 +99,6 @@ public class FocusAndNavigationTests
     {
         var (ui, _, _, _) = DemoUi();
         ui.App.EnsureFocus();
-        ui.Drain();
 
         ui.Input(InputKind.SpeakFocus);
         Assert.Equal(new[] { "Save button" }, ui.Spoken());
@@ -140,7 +138,6 @@ public class FocusAndNavigationTests
         var (ui, save, _, wrap) = DemoUi();
         wrap.Disabled = true;
         save.Focus();
-        ui.Drain();
 
         ui.Input(InputKind.NavigateNext);
         Assert.True(wrap.IsFocused);
@@ -156,12 +153,10 @@ public class FocusAndNavigationTests
         wrap.Toggled += _ => toggles++;
         wrap.Disabled = true;
         wrap.Focus();
-        ui.Drain();
 
         // Space would toggle an enabled checkbox; here it falls through
         // the whole claim order unconsumed.
         Assert.False(ui.Type(' '));
-        ui.Drain();
         Assert.Equal(0, toggles);
         Assert.False(wrap.Checked);
     }
@@ -194,7 +189,6 @@ public class FocusAndNavigationTests
         options.Hidden = true;
         Assert.True(save.IsFocused);
         // The hidden subtree is no longer tab-reachable.
-        ui.Drain();
         ui.Input(InputKind.NavigateNext);
         Assert.True(save.IsFocused);
     }
@@ -335,11 +329,9 @@ public class ActivationTests
         var presses = 0;
         save.Activated += () => presses++;
         save.Focus();
-        ui.Drain();
 
         Assert.True(ui.Input(InputKind.Activate));
         Assert.True(ui.Type(' '));
-        ui.Drain();
         Assert.Equal(2, presses);
     }
 
@@ -351,10 +343,8 @@ public class ActivationTests
         var secondary = 0;
         save.SecondaryActivated += () => secondary++;
         save.Focus();
-        ui.Drain();
 
         Assert.True(ui.Input(InputKind.SecondaryActivate));
-        ui.Drain();
         Assert.Equal(1, secondary);
     }
 
@@ -371,10 +361,8 @@ public class ActivationTests
         ok.Activated += () => presses++;
         ui.App.SetPrimary(ok);
         files.Focus();
-        ui.Drain();
 
         Assert.True(ui.Input(InputKind.Activate));
-        ui.Drain();
         Assert.Equal(1, opens);
         Assert.Equal(0, presses);
     }
@@ -392,10 +380,8 @@ public class ActivationTests
         ok.Activated += () => presses++;
         ui.App.SetPrimary(ok);
         files.Focus();
-        ui.Drain();
 
         Assert.True(ui.Input(InputKind.Activate));
-        ui.Drain();
         Assert.Equal(0, opens);
         Assert.Equal(1, presses);
     }
@@ -410,10 +396,8 @@ public class ActivationTests
         ok.Activated += () => presses++;
         ui.App.SetPrimary(ok);
         wrap.Focus();
-        ui.Drain();
 
         Assert.True(ui.Input(InputKind.Activate));
-        ui.Drain();
         Assert.Equal(1, presses);
         Assert.False(wrap.Checked);
     }
@@ -429,10 +413,8 @@ public class ActivationTests
         ui.App.SetPrimary(ok);
         ok.Hidden = true;
         wrap.Focus();
-        ui.Drain();
 
         Assert.False(ui.Input(InputKind.Activate));
-        ui.Drain();
         Assert.Equal(0, presses);
     }
 
@@ -447,10 +429,8 @@ public class ActivationTests
         ui.App.SetPrimary(ok);
         ok.Disabled = true;
         wrap.Focus();
-        ui.Drain();
 
         Assert.False(ui.Input(InputKind.Activate));
-        ui.Drain();
         Assert.Equal(0, presses);
     }
 
@@ -466,10 +446,8 @@ public class ActivationTests
         ui.App.SetPrimary(ok);
         panel.Hidden = true;
         wrap.Focus();
-        ui.Drain();
 
         Assert.False(ui.Input(InputKind.Activate));
-        ui.Drain();
         Assert.Equal(0, presses);
     }
 
@@ -483,10 +461,8 @@ public class ActivationTests
         cancel.Activated += () => presses++;
         ui.App.SetCancel(cancel);
         ui.App.EnsureFocus();
-        ui.Drain();
 
         Assert.True(ui.Input(InputKind.Dismiss));
-        ui.Drain();
         Assert.Equal(1, presses);
     }
 
@@ -501,10 +477,8 @@ public class ActivationTests
         ui.App.SetCancel(cancel);
         cancel.Disabled = true;
         ui.App.EnsureFocus();
-        ui.Drain();
 
         Assert.False(ui.Input(InputKind.Dismiss));
-        ui.Drain();
         Assert.Equal(0, presses);
     }
 
@@ -529,10 +503,8 @@ public class ActivationTests
         volume.Activated += () => fired++;
         volume.AddShortcut(KeyCombo.WithCtrl(Key.Char('m')), ShortcutAction.Activate);
         other.Focus();
-        ui.Drain();
 
         Assert.True(ui.Raw(KeyCombo.WithCtrl(Key.Char('m'))));
-        ui.Drain();
         Assert.Equal(1, fired);
         Assert.True(other.IsFocused);
     }
@@ -555,7 +527,6 @@ public class ShortcutTests
         var (ui, _, _, wrap) = DemoUi();
         wrap.AddShortcut(KeyCombo.WithAlt(Key.Char('w')));
         ui.App.EnsureFocus();
-        ui.Drain();
 
         Assert.True(ui.Input(new InputEvent(InputKind.Shortcut, 'w', 0, Mods.None)));
         Assert.True(wrap.IsFocused);
@@ -567,7 +538,6 @@ public class ShortcutTests
         var (ui, save, _, wrap) = DemoUi();
         wrap.AddShortcut(KeyCombo.WithCtrl(Key.Char('w')));
         save.Focus();
-        ui.Drain();
 
         Assert.True(ui.Raw(KeyCombo.WithCtrl(Key.Char('w'))));
         Assert.True(wrap.IsFocused);
@@ -584,7 +554,6 @@ public class ShortcutTests
         save.Activated += () => presses++;
         save.AddShortcut(KeyCombo.WithCtrl(Key.Char('g')), ShortcutAction.Activate);
         wrap.Focus();
-        ui.Drain();
 
         Assert.True(ui.Raw(KeyCombo.WithCtrl(Key.Char('g'))));
         var spoken = ui.Spoken();
@@ -601,7 +570,6 @@ public class ShortcutTests
         save.Activated += () => presses++;
         save.AddShortcut(KeyCombo.WithCtrl(Key.Char('s')), ShortcutAction.JumpAndActivate);
         wrap.Focus();
-        ui.Drain();
 
         Assert.True(ui.Raw(KeyCombo.WithCtrl(Key.Char('s'))));
         var spoken = ui.Spoken();
@@ -638,14 +606,12 @@ public class ShortcutTests
         var other = new Button(ui.App, "Other");
         other.AddShortcut(KeyCombo.Plain(Key.Char('x')));
         other.Focus();
-        ui.Drain();
         // Jumping to the already-focused widget is a consumed no-op.
         Assert.True(ui.Type('x'));
         Assert.True(other.IsFocused);
 
         // ...but an edit box consumes the keystroke first.
         notes.Focus();
-        ui.Drain();
         Assert.True(ui.Type('x'));
         Assert.True(notes.IsFocused);
         Assert.Equal("x", notes.Text);
@@ -661,7 +627,6 @@ public class ShortcutTests
         second.AddShortcut(combo);
         first.AddShortcut(combo);
         second.Focus();
-        ui.Drain();
 
         Assert.True(ui.Raw(combo));
         Assert.True(first.IsFocused);
@@ -689,15 +654,11 @@ public class ShortcutTests
         var dialog = ui.App.OpenDialog();
         _ = new Button(dialog, "Confirm");
         ui.App.EnsureFocus();
-        ui.Drain();
         Assert.False(ui.Raw(combo));
-        ui.Drain();
         Assert.Equal(0, presses);
 
         dialog.Close();
-        ui.Drain();
         Assert.True(ui.Raw(combo));
-        ui.Drain();
         Assert.Equal(1, presses);
     }
 
@@ -723,7 +684,6 @@ public class ShortcutTests
         wordDelete.Activated += () => fired++;
         wordDelete.AddShortcut(KeyCombo.WithShift(Key.Backspace), ShortcutAction.Activate);
         arena.Focus();
-        ui.Drain();
 
         // ctrl+backspace and plain backspace are different combos even
         // where kinds overlap: no match.
@@ -748,7 +708,6 @@ public class ShortcutTests
         var other = new Button(ui.App, "Other");
         other.AddShortcut(KeyCombo.Plain(Key.Char('x')));
         arena.Focus();
-        ui.Drain();
 
         // 'X' with shift carries (x, shift): not the plain-x shortcut.
         Assert.False(ui.Input(
@@ -1001,7 +960,6 @@ public class DialogTests
         };
         ui.App.SetPrimary(create);
         dialog.AnnounceOpened();
-        ui.Drain();
 
         Assert.True(ui.Input(InputKind.Activate));
         Assert.Equal(new[] { "Created playlist Untitled.", "Save button" }, ui.Spoken());
@@ -1022,15 +980,12 @@ public class DialogTests
 
         // Enter presses Yes (the dialog's primary).
         Assert.True(ui.Input(InputKind.Activate));
-        ui.Drain();
         Assert.Equal("yes", outcome);
 
         // Escape counts as no.
         outcome = null;
         ui.App.Confirm("Again?", onYes: () => outcome = "yes", onNo: () => outcome = "no");
-        ui.Drain();
         Assert.True(ui.Input(InputKind.Dismiss));
-        ui.Drain();
         Assert.Equal("no", outcome);
     }
 }
@@ -1089,7 +1044,6 @@ public class ListBoxTests
         Assert.Equal(0, files.SelectedIndex);
 
         ui.Input(InputKind.MoveToDocEnd);
-        ui.Drain();
         ui.Input(InputKind.MoveDown);
         Assert.Equal(new[] { "bottom, charlie.txt 3 of 3" }, ui.Spoken());
     }
@@ -1116,10 +1070,8 @@ public class ListBoxTests
         open.Activated += () => chosen = files.SelectedItem?.Text;
         ui.App.SetPrimary(open);
         ui.Input(InputKind.MoveDown);
-        ui.Drain();
 
         Assert.True(ui.Input(InputKind.Activate));
-        ui.Drain();
         Assert.Equal("bravo.txt", chosen);
     }
 
@@ -1278,14 +1230,12 @@ public class EditBoxTests
         var changes = 0;
         notes.Changed += () => changes++;
         notes.Focus();
-        ui.Drain();
 
         Assert.True(ui.Type('h'));
         Assert.Equal(new[] { "h" }, ui.Spoken());
         Assert.Equal(1, changes);
 
         ui.Type('i');
-        ui.Drain();
         Assert.Equal("hi", notes.Text);
     }
 
@@ -1297,7 +1247,6 @@ public class EditBoxTests
         notes.Focus();
         foreach (var ch in "hey")
             ui.Type(ch);
-        ui.Drain();
         ui.Type(' ');
         Assert.Equal(new[] { "hey space" }, ui.Spoken());
     }
@@ -1310,7 +1259,6 @@ public class EditBoxTests
         // cursor movement from a known position.
         var notes = new EditBox(ui.App, "Notes", "ab") { SelectAllOnFocus = false };
         notes.Focus();
-        ui.Drain();
 
         // Cursor at 0; left is the top boundary.
         Assert.True(ui.Input(InputKind.MoveLeft));
@@ -1330,10 +1278,8 @@ public class EditBoxTests
         ok.Activated += () => presses++;
         ui.App.SetPrimary(ok);
         notes.Focus();
-        ui.Drain();
 
         Assert.True(ui.Input(InputKind.Activate));
-        ui.Drain();
         Assert.Equal(1, presses);
         Assert.Equal("", notes.Text);
     }
@@ -1344,7 +1290,6 @@ public class EditBoxTests
         var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes", multiline: true);
         notes.Focus();
-        ui.Drain();
 
         Assert.True(ui.Input(InputKind.Activate));
         Assert.Equal(new[] { "new line" }, ui.Spoken());
@@ -1365,7 +1310,6 @@ public class EditBoxTests
         ui.App.SetClipboard(new MemClipboard());
         var notes = new EditBox(ui.App, "Notes", "hello");
         notes.Focus();
-        ui.Drain();
 
         ui.Input(InputKind.SelectAll);
         Assert.Equal(new[] { "hello selected" }, ui.Spoken());
@@ -1376,7 +1320,6 @@ public class EditBoxTests
         // Paste at the end doubles the text via the injected clipboard.
         ui.Input(InputKind.MoveToDocEnd);
         ui.Input(InputKind.Paste);
-        ui.Drain();
         Assert.Equal("hellohello", notes.Text);
     }
 
@@ -1872,7 +1815,6 @@ public class TabControlTests
         Assert.True(two.Hidden);
 
         tabs.Focus();
-        ui.Drain();
         ui.Input(InputKind.MoveRight);
         ui.App.DispatchEvents(); // user-driven switches sync at drain
         Assert.True(one.Hidden);
@@ -1935,7 +1877,6 @@ public class ShortcutFieldTests
         var other = new Button(ui.App, "Other");
         other.AddShortcut(KeyCombo.WithAlt(Key.Char('o')));
         field.Focus();
-        ui.Drain();
 
         // Alt+Up would be hierarchy navigation; the field captures it.
         ui.Input(InputKind.TreeUp);
@@ -1962,7 +1903,6 @@ public class ShortcutFieldTests
         var ui = new TestApp();
         var field = new ShortcutField(ui.App, "Shortcut");
         field.Focus();
-        ui.Drain();
 
         // shift+backspace arrives as the same logical kind as the bare
         // clear gesture; the provenance tells the field to capture it.
@@ -2038,7 +1978,6 @@ public class FilterListBoxTests
         var ui = new TestApp();
         var list = new PendingFilterList(ui.App, "Commands", ["Save File"]) { Pending = true };
         list.Focus();
-        ui.Drain();
 
         // No verdict yet: an async source may still deliver.
         ui.Type('x');
@@ -2046,7 +1985,6 @@ public class FilterListBoxTests
 
         // A match still reports normally while pending.
         ui.Input(InputKind.DeleteBackward);
-        ui.Drain();
         ui.Type('s');
         Assert.Equal(new[] { "Save File 1 of 1" }, ui.Spoken());
 
@@ -2065,7 +2003,6 @@ public class FilterListBoxTests
         var changes = 0;
         list.Changed += () => changes++;
         list.Focus();
-        ui.Drain();
 
         ui.Type('s');
         // Equal scores rank the shorter target first: Settings.
@@ -2090,7 +2027,6 @@ public class FilterListBoxTests
     {
         var (ui, list) = FilterUi();
         ui.Type('e');
-        ui.Drain();
 
         ui.Input(InputKind.MoveDown);
         var spoken = ui.Spoken();
@@ -2113,10 +2049,8 @@ public class FilterListBoxTests
         open.Activated += () => chosen = list.SelectedItem?.Text;
         ui.App.SetPrimary(open);
         ui.Type('q');
-        ui.Drain();
 
         Assert.True(ui.Input(InputKind.Activate));
-        ui.Drain();
         Assert.Equal("Quit", chosen);
     }
 
@@ -2144,7 +2078,6 @@ public class CheckBoxTests
         var toggles = new List<bool>();
         wrap.Toggled += toggles.Add;
         wrap.Focus();
-        ui.Drain();
 
         ui.Type(' ');
         Assert.Equal(new[] { "checked" }, ui.Spoken());
@@ -2196,7 +2129,6 @@ public class CustomWidgetTests
         ok.Activated += () => presses++;
         ui.App.SetPrimary(ok);
         before.Focus();
-        ui.Drain();
 
         // In the tab ring, announced by bare name.
         ui.Input(InputKind.NavigateNext);
@@ -2208,7 +2140,6 @@ public class CustomWidgetTests
         Assert.False(ui.Type('q'));
         Assert.False(ui.Input(InputKind.MoveUp));
         Assert.True(ui.Input(InputKind.Activate));
-        ui.Drain();
         Assert.Equal(1, presses);
     }
 
@@ -2391,7 +2322,6 @@ public class ReaderTests
         var ui = new TestApp();
         var mute = new CheckBox(ui.App, "Mute");
         mute.Focus();
-        ui.Drain();
 
         ui.Type(' ');
         ui.App.DispatchEvents();
@@ -2407,7 +2337,6 @@ public class ReaderTests
         var ui = new TestApp();
         var notes = new EditBox(ui.App, "Notes");
         notes.Focus();
-        ui.Drain();
 
         ui.Input(InputKind.DeleteBackward);
         ui.App.DispatchEvents();
@@ -2422,7 +2351,6 @@ public class ReaderTests
         var ui = new TestApp();
         var files = new ListBox(ui.App, "Files", ["a", "b"], numbered: true);
         files.Focus();
-        ui.Drain();
 
         ui.Input(InputKind.MoveDown);
         ui.App.DispatchEvents();
@@ -2542,7 +2470,6 @@ public class WidgetAuthoringTests
         string? chosen = null;
         grid.CellChosen += cell => chosen = cell;
         Assert.True(ui.Input(InputKind.Activate));
-        ui.Drain();
         Assert.Equal("b2", chosen);
 
         // It reserves its interaction keys for bind-dialog warnings...
@@ -2552,7 +2479,6 @@ public class WidgetAuthoringTests
 
         // ...and unclaimed input still falls through to the framework.
         var after = new Button(ui.App, "After");
-        ui.Drain();
         ui.Input(InputKind.NavigateNext);
         Assert.True(after.IsFocused);
         Assert.Equal(new[] { "After button" }, ui.Spoken());
@@ -2604,7 +2530,6 @@ public class FocusCauseTests
         var target = new Button(ui.App, "Target");
         target.AddShortcut(KeyCombo.WithCtrl(Key.Char('j')));
         save.Focus();
-        ui.Drain();
 
         ui.Raw(KeyCombo.WithCtrl(Key.Char('j')));
         Assert.True(target.IsFocused);
@@ -2669,7 +2594,6 @@ public class SelectAllOnFocusTests
         var first = new EditBox(ui.App, "Name");
         var gain = new EditBox(ui.App, "Gain") { Text = "0", SelectAllOnFocus = true };
         first.Focus();
-        ui.Drain();
 
         // Tab in: everything is selected, so a digit replaces the seed.
         ui.Input(InputKind.NavigateNext);
@@ -2691,7 +2615,6 @@ public class SelectAllOnFocusTests
         var first = new EditBox(ui.App, "Name");
         var gain = new EditBox(ui.App, "Gain") { Text = "0", SelectAllOnFocus = true };
         first.Focus();
-        ui.Drain();
 
         // One utterance: the focus announcement reads the value as
         // selected. No separate selection event follows.
@@ -2718,7 +2641,6 @@ public class SelectAllOnFocusTests
         notes.Focus();
         notes.SetSelectionSilently(0, 5);                    // "alpha"
         first.Focus();
-        ui.Drain();
 
         // Focus returns; the working selection is exactly as left.
         ui.Input(InputKind.NavigateNext);

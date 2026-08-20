@@ -75,7 +75,6 @@ public class TreeViewTests
         var (ui, tree, _, _, _) = Build();
         ui.Input(InputKind.MoveRight);                       // open Vanilla, land on Joker
         ui.Input(InputKind.MoveDown);                        // Blueprint
-        ui.Drain();
 
         // The branch is a room: down from its last child wraps to its
         // first, never to Extra Credit outside.
@@ -89,7 +88,6 @@ public class TreeViewTests
     {
         var (ui, tree, vanilla, _, _) = Build();
         ui.Input(InputKind.MoveRight);                       // open Vanilla, land on Joker
-        ui.Drain();
 
         // On a leaf, left is the recovery move: up to the parent.
         ui.Input(InputKind.MoveLeft);
@@ -133,7 +131,6 @@ public class TreeViewTests
         extra.Expanded = true;
         // Stand inside Extra Credit: its own Joker outranks Vanilla's.
         tree.SelectNode(extra.Children[0]);                  // Turtle
-        ui.Drain();
 
         ui.Type('j');
         Assert.Same(extra.Children[1], tree.SelectedNode);
@@ -151,7 +148,6 @@ public class TreeViewTests
         var madness = new TreeNode("Madness");
         var tree = new TreeView(ui.App, "Jokers", [mystic, madness]);
         tree.Focus();
-        ui.Drain();
 
         ui.Type('m');
         Assert.Same(madness, tree.SelectedNode);
@@ -219,7 +215,6 @@ public class TreeViewTests
         var visible = new TreeNode("Joker A");
         var tree = new TreeView(ui.App, "Jokers", [visible, crate]);
         tree.Focus();
-        ui.Drain();
 
         ui.Type('j');                                        // only hidden Joker B matches
         Assert.Equal("Joker B", tree.SelectedNode!.Text);
@@ -238,7 +233,6 @@ public class TreeViewTests
         var (ui, tree, crate, _) = BuildCrates();
         ui.Type('a');                                        // Apple, Crate opens
         ui.Input(InputKind.MoveUp);                          // engagement: this is the place
-        ui.Drain();
 
         // A fresh search leaving later finds the reveal accepted.
         ui.App.SetNow(1000);
@@ -273,7 +267,6 @@ public class TreeViewTests
         var crate = new TreeNode("Crate", new TreeNode("Apple"), new TreeNode("Apricot"));
         var tree = new TreeView(ui.App, "Pantry", [crate, new TreeNode("Zed")]);
         tree.Focus();
-        ui.Drain();
 
         // "a" lands on hidden Apple; "apr" refines to its sibling —
         // the crate stays open, the landing merely moved rooms inside.
@@ -296,7 +289,6 @@ public class TreeViewTests
         var (ui, tree, vanilla, extra, _) = Build();
         extra.Expanded = true;
         tree.SelectNode(extra.Children[0]);                  // Turtle
-        ui.Drain();
 
         // 'j' matches Extra Credit's visible Joker and Vanilla's hidden
         // one; visible wins even though the hidden bearer exists.
@@ -328,7 +320,6 @@ public class TreeViewTests
         TreeNode? activated = null;
         tree.Activated += () => activated = tree.SelectedNode;
         ui.Input(InputKind.Activate);
-        ui.Drain();
         Assert.Same(vanilla, activated);
     }
 
@@ -350,7 +341,6 @@ public class TreeViewTests
         var (ui, tree, _, _, _) = Build();
         tree.SetRoots([new TreeNode("Alpha"), new TreeNode("Beta")]);
         Assert.Equal("Alpha", tree.SelectedNode!.Text);
-        ui.Drain();
 
         ui.Input(InputKind.MoveDown);
         Assert.Equal(new[] { "Beta" }, ui.Spoken());
@@ -389,7 +379,6 @@ public class TreeViewTests
         var ui = new TestApp();
         var tree = new TreeView(ui.App, "Nothing", Array.Empty<TreeNode>());
         tree.Focus();
-        ui.Drain();
 
         ui.Input(InputKind.MoveDown);
         Assert.Equal(new[] { "empty" }, ui.Spoken());
@@ -414,7 +403,6 @@ public class TreeViewTests
         Assert.Empty(tree.CheckedNodes);
 
         ui.Input(InputKind.MoveRight);                       // open, land on Joker
-        ui.Drain();
         ui.Type(' ');
         Assert.Equal(new[] { "checked" }, ui.Spoken());
         Assert.True(tree.IsChecked(vanilla.Children[0]));
@@ -461,7 +449,6 @@ public class TreeViewTests
         { Checkable = true };
         var tree = new TreeView(ui.App, "Config", [joker], multiSelect: true);
         tree.Focus();
-        ui.Drain();
 
         ui.Type(' ');
         Assert.True(tree.IsChecked(joker));                  // branch opted in
@@ -469,7 +456,6 @@ public class TreeViewTests
 
         ui.Input(InputKind.MoveRight);                       // open, land on Foil
         ui.Input(InputKind.MoveDown);                        // payout
-        ui.Drain();
         ui.Type(' ');
         Assert.False(tree.IsChecked(joker.Children[1]));     // leaf opted out
         Assert.Equal(new[] { "Checks apply to items, not groups." }, ui.Spoken());
@@ -483,7 +469,6 @@ public class TreeViewTests
         tree.NodeToggled += (node, expanded) => toggles.Add((node, expanded));
 
         ui.Input(InputKind.MoveRight);                       // user expands
-        ui.Drain();
         Assert.Equal([(vanilla, true)], toggles);
 
         vanilla.Expanded = false;                            // programmatic: silent, unreported

@@ -61,7 +61,6 @@ public class InputMatchTests
         using var ui = new TestApp();
         var box = new CheckBox(ui.App, "Wrap");
         box.Focus();
-        ui.Drain();
 
         ui.Input(new InputEvent(InputKind.TypeChar, 0x10020, 0, Mods.None));
         Assert.False(box.Checked);
@@ -76,10 +75,8 @@ public class InputMatchTests
         var pressed = 0;
         button.Activated += () => pressed++;
         button.Focus();
-        ui.Drain();
 
         ui.Input(new InputEvent(InputKind.TypeChar, 0x10020, 0, Mods.None));
-        ui.Drain();
         Assert.Equal(0, pressed);
     }
 }

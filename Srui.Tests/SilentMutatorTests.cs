@@ -81,7 +81,6 @@ public class SilentMutatorTests
         var changed = 0;
         list.Changed += () => changed++;
         list.Focus();
-        ui.Drain();
 
         ui.Type(' ');
         Assert.Equal(new[] { "Done." }, ui.Spoken());
@@ -99,10 +98,8 @@ public class SilentMutatorTests
         using var ui = new TestApp();
         var list = new ToggleList(ui.App, ["alpha", "beta"]);
         list.Focus();
-        ui.Drain();
 
         ui.Type(' ');
-        ui.Drain();
         ui.Input(InputKind.SpeakFocus);
         var spoken = Assert.Single(ui.Spoken());
         Assert.Contains("alpha, done", spoken);
@@ -164,7 +161,6 @@ public class SilentMutatorTests
         using var ui = new TestApp();
         var box = new RecallBox(ui.App);
         box.Focus();
-        ui.Drain();
 
         ui.Input(InputKind.MoveUp);
         Assert.Equal(new[] { "recalled entry" }, ui.Spoken());
@@ -196,7 +192,6 @@ public class SilentMutatorTests
         using var ui = new TestApp();
         var box = new RecallBox(ui.App);
         box.Focus();
-        ui.Drain();
 
         ui.Input(InputKind.MoveUp);
         ui.App.DispatchEvents();

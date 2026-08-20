@@ -25,7 +25,6 @@ public class InputFilterTests
         ui.App.UnhandledInput = _ => unhandledRan = true;
 
         Assert.True(ui.Input(InputKind.Activate));
-        ui.Drain();
         Assert.False(activated);
         Assert.False(unhandledRan);
         Assert.Equal([InputKind.Activate], seen);
@@ -43,7 +42,6 @@ public class InputFilterTests
 
         ui.App.InputFilter = _ => false;
         Assert.True(ui.Input(InputKind.Activate));
-        ui.Drain();
         Assert.True(activated);
     }
 
@@ -66,7 +64,6 @@ public class InputFilterTests
         // documented HasOpenDialog idiom.
         ui.App.InputFilter = _ => !ui.App.HasOpenDialog;
         Assert.True(ui.Input(InputKind.Activate));
-        ui.Drain();
         Assert.True(insideActivated);
     }
 }

@@ -68,7 +68,6 @@ public class LiveFilterTests
                 : new[] { new Item($"result for {filter}", 2), new Item("runner-up", 1) },
         };
         list.Focus();
-        ui.Drain();
 
         ui.Type('x');
         var spoken = ui.Spoken();
@@ -90,7 +89,6 @@ public class LiveFilterTests
         };
         list.Focus();
         ui.Type('x');
-        ui.Drain();
 
         ui.Input(InputKind.DeleteBackward);
         var spoken = ui.Spoken();

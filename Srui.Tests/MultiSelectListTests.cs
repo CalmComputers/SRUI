@@ -97,7 +97,6 @@ public class MultiSelectListTests
 
         ui.Input(InputKind.Activate);
         ui.Input(InputKind.Activate);
-        ui.Drain();
         Assert.Equal([("apple", true), ("apple", false)], toggles);
     }
 
@@ -293,7 +292,6 @@ public class MultiSelectListTests
         var activated = false;
         list.Activated += () => activated = true;
         ui.Input(InputKind.Activate);
-        ui.Drain();
         Assert.True(activated);
     }
 }

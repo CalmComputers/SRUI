@@ -12,7 +12,14 @@ public class SruiAssertException : Exception
 
 /// <summary>A headless app with a recording reader — the harness for
 /// behavioral tests: build widgets, push input, assert what the reader
-/// hears. Input methods simulate a real host faithfully: <see cref="Press(KeyCombo)"/>
+/// hears. Every input method (and <see cref="Wait"/>) is a step: it
+/// discards whatever the previous step spoke, runs, and dispatches —
+/// so deferred work has happened and state can be asserted when it
+/// returns, <see cref="Expect"/> always describes the last step alone,
+/// and speech a test never asks about is out of its scope: the same
+/// discipline as a scenario file. Only programmatic mutations, which
+/// open no step, need an explicit <see cref="Drain"/> between them.
+/// Input methods simulate a real host faithfully: <see cref="Press(KeyCombo)"/>
 /// runs the same physical-to-logical mapping the SDL host runs, delivers
 /// the physical key phases around the logical input in host order, and
 /// synthesizes the TypeChar an unmodified printable key produces.
@@ -32,7 +39,7 @@ public sealed class TestApp : IDisposable
 
     /// <summary>Build the UI and establish initial focus, leaving the
     /// focus announcement queued as the first speech batch — assert it,
-    /// or let the first input flush it.</summary>
+    /// or let the first step discard it.</summary>
     public TestApp(Action<SruiApp> build) : this()
     {
         build(App);
@@ -57,15 +64,28 @@ public sealed class TestApp : IDisposable
         return result;
     }
 
-    /// <summary>Deliver queued output, discarding it.</summary>
+    /// <summary>Deliver queued output, discarding it. Every input step
+    /// does this on entry; call it yourself only to open a batch after
+    /// a programmatic mutation, which has no step to open one.</summary>
     public void Drain()
     {
         App.DispatchEvents();
         Reader.Events.Clear();
     }
 
+    /// <summary>One step: discard the previous batch, run the input,
+    /// dispatch what it queued. The reader keeps what the dispatch
+    /// delivered for the next assertion.</summary>
+    private bool Step(Func<bool> input)
+    {
+        Drain();
+        var handled = input();
+        App.DispatchEvents();
+        return handled;
+    }
+
     /// <summary>Assert that exactly these utterances were spoken since
-    /// the last delivery, in order. No arguments asserts silence
+    /// the last step (or delivery), in order. No arguments asserts silence
     /// (equivalent to <see cref="ExpectNoSpeech"/>).</summary>
     public void Expect(params string[] utterances)
     {
@@ -76,7 +96,7 @@ public sealed class TestApp : IDisposable
             $"expected {Describe(utterances)} but heard {Describe(spoken)}");
     }
 
-    /// <summary>Assert that nothing was spoken since the last delivery.</summary>
+    /// <summary>Assert that nothing was spoken since the last step (or delivery).</summary>
     public void ExpectNoSpeech()
     {
         var spoken = Spoken();
@@ -93,31 +113,33 @@ public sealed class TestApp : IDisposable
     // ── Logical input ──
 
     /// <summary>Dispatch one logical input kind. True when consumed.</summary>
-    public bool Input(InputKind kind) => App.HandleInput(InputEvent.Simple(kind));
+    public bool Input(InputKind kind) => Input(InputEvent.Simple(kind));
 
     /// <summary>Dispatch one logical input event. True when consumed.</summary>
-    public bool Input(InputEvent ev) => App.HandleInput(ev);
+    public bool Input(InputEvent ev) => Step(() => App.HandleInput(ev));
 
     /// <summary>Type one character. True when consumed.</summary>
-    public bool Type(char c) => App.HandleInput(InputEvent.TypeChar(c));
+    public bool Type(char c) => Input(InputEvent.TypeChar(c));
 
     /// <summary>Type a string, one codepoint at a time (astral characters
-    /// arrive whole, as they would from a real host).</summary>
-    public void Type(string text)
+    /// arrive whole, as they would from a real host). One step: the
+    /// echoes of every character land in the same batch.</summary>
+    public void Type(string text) => Step(() =>
     {
         foreach (var rune in text.EnumerateRunes())
             App.HandleInput(new InputEvent(InputKind.TypeChar, (uint)rune.Value, 0, Mods.None));
-    }
+        return true;
+    });
 
     /// <summary>Dispatch a combo as a bare RawKey input, bypassing the
     /// host mapping — for driving widget shortcuts directly. True when
     /// consumed. <see cref="Press(KeyCombo)"/> is the full key-tap
     /// simulation; prefer it for user-fidelity tests.</summary>
-    public bool Raw(KeyCombo combo)
+    public bool Raw(KeyCombo combo) => Step(() =>
     {
         var (key, mods) = combo.ToFlat();
         return App.HandleInput(InputEvent.RawKey(key, mods));
-    }
+    });
 
     // ── Key-tap simulation ──
 
@@ -126,14 +148,14 @@ public sealed class TestApp : IDisposable
     /// TypeChar an unmodified printable produces, uppercased and
     /// symbol-shifted under a US layout when Shift is held), then the
     /// physical Release phase. True when any stage consumed something.</summary>
-    public bool Press(KeyCombo combo)
+    public bool Press(KeyCombo combo) => Step(() =>
     {
         var (key, mods) = combo.ToFlat();
         var handled = App.HandleKey(new KeyInput(key, mods, KeyPhase.Press));
         handled |= HandleLogical(combo);
         handled |= App.HandleKey(new KeyInput(key, mods, KeyPhase.Release));
         return handled;
-    }
+    });
 
     /// <summary>Tap a key combo given as a string — config form
     /// ("ctrl+shift+t") or compact initials ("cs+t").</summary>
@@ -143,23 +165,23 @@ public sealed class TestApp : IDisposable
     /// logical input the keydown produces, matching a real host. The key
     /// stays held until <see cref="Up(KeyCombo)"/>. Auto-repeat is not
     /// simulated. True when any stage consumed something.</summary>
-    public bool Down(KeyCombo combo)
+    public bool Down(KeyCombo combo) => Step(() =>
     {
         var (key, mods) = combo.ToFlat();
         var handled = App.HandleKey(new KeyInput(key, mods, KeyPhase.Press));
         return HandleLogical(combo) | handled;
-    }
+    });
 
     /// <summary>Hold a key down, combo given as a string.</summary>
     public bool Down(string combo) => Down(ComboSpec.Parse(combo));
 
     /// <summary>Release a held key: the physical Release phase.
     /// True when a handler consumed it.</summary>
-    public bool Up(KeyCombo combo)
+    public bool Up(KeyCombo combo) => Step(() =>
     {
         var (key, mods) = combo.ToFlat();
         return App.HandleKey(new KeyInput(key, mods, KeyPhase.Release));
-    }
+    });
 
     /// <summary>Release a held key, combo given as a string.</summary>
     public bool Up(string combo) => Up(ComboSpec.Parse(combo));
@@ -204,8 +226,13 @@ public sealed class TestApp : IDisposable
 
     /// <summary>Advance the engine clock by the given milliseconds —
     /// typeahead timeouts elapse and tickers fire, instantly and
-    /// deterministically.</summary>
-    public void Wait(ulong milliseconds) => App.SetNow(App.Now + milliseconds);
+    /// deterministically. A step: what the elapsed time speaks is the
+    /// next batch.</summary>
+    public void Wait(ulong milliseconds) => Step(() =>
+    {
+        App.SetNow(App.Now + milliseconds);
+        return true;
+    });
 
     // ── Scenarios ──
 
