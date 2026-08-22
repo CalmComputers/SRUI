@@ -29,6 +29,16 @@ public readonly record struct Key(uint Code)
     public static readonly Key MediaPreviousTrack = new(17);
     public static readonly Key MediaStop = new(18);
 
+    /// <summary>The modifier keys as physical keys, left and right
+    /// folded into one. They appear in the physical key stream only —
+    /// a press of Shift on its own is a gesture an app may bind
+    /// (<see cref="Widget.BindKey"/>, <see cref="SruiApp.UnhandledKey"/>)
+    /// — and never in the logical stream: a modifier keydown maps to no
+    /// input, and no <see cref="KeyCombo"/> has one as its key.</summary>
+    public static readonly Key Shift = new(19);
+    public static readonly Key Ctrl = new(20);
+    public static readonly Key Alt = new(21);
+
     /// <summary>A character key. Callers normalize to ASCII lowercase where
     /// the input map does (typing, shortcuts).</summary>
     public static Key Char(char c) => new(CharBase | c);

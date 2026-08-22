@@ -73,6 +73,12 @@ public sealed class MultiAppHost : IDisposable
     /// reader; null when headless.</summary>
     public Speech? Voice => _speechReader?.Voice;
 
+    /// <summary>The shared speech reader's verbosity — one stream, so
+    /// one setting, which every hosted app's
+    /// <see cref="SruiApp.SpeechVerbosity"/> resolves to. Null when
+    /// headless.</summary>
+    public SpeechVerbosity? Verbosity => _speechReader?.Verbosity;
+
     public void Dispose()
     {
         foreach (var hosted in _apps)
@@ -126,6 +132,7 @@ public sealed class MultiAppHost : IDisposable
         var app = SruiApp.Headless();
         app.IsForeground = false;
         app.AudioSource = () => Audio;
+        app.VerbositySource = () => Verbosity;
         app.HostReservations = SwitchReservation;
         Host?.ProvideClipboard(app);
         var hosted = new HostedApp(this, name, app);

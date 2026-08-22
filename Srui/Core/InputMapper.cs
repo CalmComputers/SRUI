@@ -53,7 +53,10 @@ internal sealed class InputMapper
                 else if (!IsModifierKey(ev.Key))
                     _altClean = false;
 
-                var mapped = MapKeyDown(ev.Key, ev.Mod);
+                // A modifier on its own is a physical key (the host's
+                // key stream reports its press) but never a logical
+                // input — the host would otherwise see it as a RawKey.
+                var mapped = IsModifierKey(ev.Key) ? null : MapKeyDown(ev.Key, ev.Mod);
                 // A suppressed printable arrives next as TextInput;
                 // remember the physical key so the TypeChar carries it.
                 if (!IsModifierKey(ev.Key))
@@ -285,6 +288,9 @@ internal sealed class InputMapper
             Sdl3.KeyMediaNextTrack => Key.MediaNextTrack,
             Sdl3.KeyMediaPreviousTrack => Key.MediaPreviousTrack,
             Sdl3.KeyMediaStop => Key.MediaStop,
+            Sdl3.KeyLShift or Sdl3.KeyRShift => Key.Shift,
+            Sdl3.KeyLCtrl or Sdl3.KeyRCtrl => Key.Ctrl,
+            Sdl3.KeyLAlt or Sdl3.KeyRAlt => Key.Alt,
             _ => null,
         };
     }

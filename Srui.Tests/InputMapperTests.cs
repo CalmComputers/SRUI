@@ -74,6 +74,24 @@ public class InputMapperTests
     }
 
     [Fact]
+    public void ModifierKeysAreInThePhysicalStreamOnly()
+    {
+        // A bare Shift press is a physical key a game may bind (the
+        // host reports it through the key stream)...
+        var physical = InputMapper.PhysicalCombo(Sdl3.KeyLShift, Sdl3.KmodShift);
+        Assert.Equal(Key.Shift.Code, physical?.Key);
+        Assert.Equal(Key.Shift.Code, InputMapper.PhysicalCombo(Sdl3.KeyRShift, 0)?.Key);
+        Assert.Equal(Key.Ctrl.Code, InputMapper.PhysicalCombo(Sdl3.KeyLCtrl, 0)?.Key);
+        Assert.Equal(Key.Alt.Code, InputMapper.PhysicalCombo(Sdl3.KeyRAlt, 0)?.Key);
+
+        // ...and never a logical input: the keydown maps to nothing,
+        // not to a RawKey the host's bindings would have to ignore.
+        var mapper = new InputMapper();
+        Assert.Null(mapper.Map(KeyDown(Sdl3.KeyLShift, Sdl3.KmodShift)));
+        Assert.Null(mapper.Map(KeyDown(Sdl3.KeyLCtrl, Sdl3.KmodCtrl)));
+    }
+
+    [Fact]
     public void SemanticInputsCarryTheirCombos()
     {
         var mapper = new InputMapper();
