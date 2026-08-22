@@ -93,8 +93,25 @@ public sealed class MultiAppHost : IDisposable
     public HostedApp? Active => _active;
 
     /// <summary>The set of hosted apps changed: one was added, or one
-    /// closed. A task-list UI refreshes from <see cref="Apps"/> here.</summary>
+    /// closed. A task-list UI refreshes from <see cref="Apps"/> here.
+    /// A subscriber the host outlives — an app's handler — must
+    /// unsubscribe on its own close, or the host keeps the app alive;
+    /// <see cref="AppsVersion"/> is the poll-friendly alternative.</summary>
     public event Action? AppsChanged;
+
+    /// <summary>Advances every time the set of hosted apps changes: one
+    /// was added, or one closed. For a task-list UI that polls from
+    /// its own ticker — remember the value, refresh when it differs —
+    /// so it holds no handler in the host and needs no unsubscribe.
+    /// Counts changes, so two that cancel out within one poll still
+    /// read as a change.</summary>
+    public long AppsVersion { get; private set; }
+
+    /// <summary>One loop iteration finished: input routed, the shared
+    /// audio advanced, messages delivered, every app ticked. The host
+    /// program's own per-iteration work — a shell polling the things
+    /// it owns on behalf of apps that are not running.</summary>
+    public Action? Ticked { get; set; }
 
     /// <summary>Create a hosted app: a headless <see cref="SruiApp"/>
     /// pre-wired to the shared window services — system clipboard, the
@@ -114,6 +131,7 @@ public sealed class MultiAppHost : IDisposable
         var hosted = new HostedApp(this, name, app);
         app.AddReader(new Forwarder(hosted));
         _apps.Add(hosted);
+        AppsVersion++;
         AppsChanged?.Invoke();
         return hosted;
     }
@@ -135,6 +153,7 @@ public sealed class MultiAppHost : IDisposable
         }
         hosted.App.Dispose();
         hosted.RaiseClosed();
+        AppsVersion++;
         AppsChanged?.Invoke();
     }
 
@@ -341,9 +360,10 @@ public sealed class MultiAppHost : IDisposable
     }
 
     /// <summary>One loop iteration: pump and route window input,
-    /// advance the shared audio, deliver queued messages, then tick
-    /// every hosted app (clock, tickers, drain). Returns false once
-    /// the window has closed or <see cref="Quit"/> was called. A
+    /// advance the shared audio, deliver queued messages, tick every
+    /// hosted app (clock, tickers, drain), then run <see cref="Ticked"/>.
+    /// Returns false once the window has closed or <see cref="Quit"/>
+    /// was called. A
     /// hosted app's own Quit closes that app
     /// (<see cref="HostedApp.Close"/>) instead of stopping the host —
     /// an app's exit path works the same standalone and hosted.</summary>
@@ -391,6 +411,7 @@ public sealed class MultiAppHost : IDisposable
             if (!hosted.App.Tick())
                 hosted.Close();
         }
+        Ticked?.Invoke();
         return !_quit;
     }
 

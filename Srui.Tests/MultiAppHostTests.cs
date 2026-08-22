@@ -491,6 +491,36 @@ public class HostedAppLifecycleTests
         app.Close();
         Assert.Equal(2, changes);
     }
+
+    [Fact]
+    public void AppsVersionAdvancesOnAddAndClose()
+    {
+        var ui = new MultiTestUi();
+        var seen = ui.Host.AppsVersion;
+        var app = ui.Host.Add("One");
+        Assert.NotEqual(seen, ui.Host.AppsVersion);
+        seen = ui.Host.AppsVersion;
+        app.Close();
+        Assert.NotEqual(seen, ui.Host.AppsVersion);
+    }
+
+    [Fact]
+    public void TickedRunsOncePerIterationAfterTheApps()
+    {
+        var ui = new MultiTestUi();
+        var order = new List<string>();
+        var app = ui.Host.Add("One");
+        app.App.StartTicker(1).Tick += () => order.Add("app");
+        ui.Host.Ticked = () => order.Add("host");
+
+        Thread.Sleep(5);
+        ui.Host.Tick();
+        // Each app ticks (and drains its own ticker events) first; the
+        // host hook sees the iteration's settled state.
+        Assert.Equal(new[] { "app", "host" }, order);
+        ui.Host.Tick();
+        Assert.Equal(2, order.Count(s => s == "host"));
+    }
 }
 
 public class HostReservationTests
