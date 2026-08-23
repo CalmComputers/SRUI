@@ -1,24 +1,83 @@
 namespace Srui.Core;
 
-/// <summary>Fuzzy matching and scoring for list filtering.</summary>
-internal static class Fuzzy
+/// <summary>
+/// Matching and scoring for list filtering: the default behind
+/// <see cref="IListItem.FilterScore"/>, and the scorer an item type
+/// composes its own ranking from.
+///
+/// A score is a tier plus detail, and the tiers are far apart so that
+/// how well the query matches always decides before anything else
+/// does. From the top: the query appears contiguously at the start of
+/// the target (<see cref="SubstringTier"/> + <see cref="PrefixBonus"/>),
+/// contiguously at the start of a word (+ <see cref="WordStartBonus"/>),
+/// contiguously anywhere (<see cref="SubstringTier"/> alone), or only
+/// as a subsequence - every character in order, with other characters
+/// between (<see cref="FuzzyTier"/>). Within a tier, a small detail
+/// score prefers earlier positions, longer consecutive runs and word
+/// starts; it never reaches <see cref="DetailLimit"/>.
+///
+/// An item type that ranks on more than match quality - a recently
+/// used command, a result from a preferred source - adds its own
+/// bonus to this score. Keep it under <see cref="BonusLimit"/>: such a
+/// bonus then reorders only among matches of the same kind, above the
+/// detail and below the tiers, and can never lift a scattered match
+/// over a prefix one.
+/// </summary>
+public static class Fuzzy
 {
-    /// <summary>Returns a score if all characters of the query appear in
-    /// the target in order (case-insensitive); null if the query doesn't
-    /// match. An empty query always scores 0. Uses two-pass matching
-    /// (forward greedy + backward greedy) and takes the better score,
-    /// catching alignments later in the string that forward-only matching
-    /// would miss.
-    ///
-    /// Scoring per match position: +10 consecutive match, +8 word-boundary
-    /// match (position 0, after space/underscore/dash/dot/slash, or
-    /// camelCase), +5 first query char at target position 0, -1 per gap
-    /// character between matches.</summary>
+    /// <summary>The query appears contiguously in the target.</summary>
+    public const int SubstringTier = 200_000;
+
+    /// <summary>The query's characters appear in order but not
+    /// contiguously.</summary>
+    public const int FuzzyTier = 100_000;
+
+    /// <summary>Added in the substring tier when the match starts the
+    /// target.</summary>
+    public const int PrefixBonus = 20_000;
+
+    /// <summary>Added in the substring tier when the match starts a
+    /// word (but not the target).</summary>
+    public const int WordStartBonus = 10_000;
+
+    /// <summary>The detail score within a tier stays below this, so a
+    /// consumer's bonus outranks it.</summary>
+    public const int DetailLimit = 1_000;
+
+    /// <summary>A consumer's own bonuses stay below this, so they sort
+    /// within a match kind and never across kinds: a bonus and the
+    /// detail together fit inside the gap between kinds.</summary>
+    public const int BonusLimit = WordStartBonus - DetailLimit;
+
+    /// <summary>Scores the target against the query, or null if the
+    /// query's characters do not all appear in the target in order
+    /// (case-insensitive). An empty query scores 0 against anything.
+    /// See the class summary for the tiers.</summary>
     public static int? FuzzyScore(string query, string target)
     {
         if (query.Length == 0)
             return 0;
 
+        var at = target.IndexOf(query, StringComparison.OrdinalIgnoreCase);
+        if (at >= 0)
+        {
+            var kind = at == 0 ? PrefixBonus
+                : IsWordBoundary(target, at) ? WordStartBonus
+                : 0;
+            return SubstringTier + kind + Math.Max(0, 100 - at);
+        }
+
+        return SubsequenceScore(query, target) is { } detail ? FuzzyTier + detail : null;
+    }
+
+    /// <summary>Subsequence detail: two-pass matching (forward greedy
+    /// and backward greedy), taking the better alignment, which catches
+    /// one later in the string that forward-only matching would miss.
+    /// Per matched position: +10 consecutive, +8 at a word boundary,
+    /// +5 for the first query character at position 0, -1 per skipped
+    /// character between matches. Null if not a subsequence.</summary>
+    private static int? SubsequenceScore(string query, string target)
+    {
         var targetChars = target.ToCharArray();
         var targetLower = new char[targetChars.Length];
         for (var i = 0; i < targetChars.Length; i++)
@@ -109,15 +168,18 @@ internal static class Fuzzy
         return score;
     }
 
-    private static bool IsWordBoundary(char[] chars, int pos)
+    private static bool IsWordBoundary(string text, int pos) =>
+        pos == 0 || IsBoundaryBefore(text[pos - 1], text[pos]);
+
+    private static bool IsWordBoundary(char[] chars, int pos) =>
+        pos == 0 || IsBoundaryBefore(chars[pos - 1], chars[pos]);
+
+    private static bool IsBoundaryBefore(char prev, char current)
     {
-        if (pos == 0)
-            return true;
-        var prev = chars[pos - 1];
-        if (prev is ' ' or '_' or '-' or '.' or '/')
+        if (prev is ' ' or '_' or '-' or '.' or '/' or '\\' or ':')
             return true;
         // camelCase: previous is lowercase, current is uppercase.
-        return char.IsLower(prev) && char.IsUpper(chars[pos]);
+        return char.IsLower(prev) && char.IsUpper(current);
     }
 
     /// <summary>True if all characters of the query appear in the target

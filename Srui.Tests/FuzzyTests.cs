@@ -123,4 +123,58 @@ public class FuzzyTests
         var wrapped = ListBox.Wrap(items);
         Assert.Equal("Find, control f", Fuzzy.FilterItems("find", wrapped)[0].Text);
     }
+
+    [Fact]
+    public void ContiguousOutranksScattered()
+    {
+        // "get" starts "Get programs" and sits inside "widget": the
+        // contiguous one is a substring-tier match either way, but the
+        // scattered g-e-t of "Gadget tree" is a tier below both.
+        var prefix = Fuzzy.FuzzyScore("get", "Get programs")!.Value;
+        var inside = Fuzzy.FuzzyScore("get", "Announce widget type")!.Value;
+        var scattered = Fuzzy.FuzzyScore("get", "Go eat tea")!.Value;
+        Assert.True(prefix >= Fuzzy.SubstringTier);
+        Assert.True(inside >= Fuzzy.SubstringTier);
+        Assert.True(scattered < Fuzzy.SubstringTier);
+        Assert.True(scattered >= Fuzzy.FuzzyTier);
+        Assert.True(prefix > inside);
+    }
+
+    [Fact]
+    public void PrefixOutranksWordStartOutranksMidWord()
+    {
+        var prefix = Fuzzy.FuzzyScore("c", @"c:\")!.Value;
+        var wordStart = Fuzzy.FuzzyScore("c", "my code")!.Value;
+        var midWord = Fuzzy.FuzzyScore("c", "Wick")!.Value;
+        Assert.True(prefix > wordStart);
+        Assert.True(wordStart > midWord);
+        // By at least a consumer's whole bonus range: a bonus cannot
+        // lift a mid-word match over a word start, nor that over a prefix.
+        Assert.True(prefix - wordStart >= Fuzzy.BonusLimit);
+        Assert.True(wordStart - midWord >= Fuzzy.BonusLimit);
+    }
+
+    [Fact]
+    public void TheTiersLeaveRoomForBonusesAndDetail()
+    {
+        Assert.True(Fuzzy.PrefixBonus - Fuzzy.WordStartBonus >= Fuzzy.BonusLimit + Fuzzy.DetailLimit);
+        Assert.True(Fuzzy.WordStartBonus >= Fuzzy.BonusLimit + Fuzzy.DetailLimit);
+        Assert.True(Fuzzy.SubstringTier - Fuzzy.FuzzyTier
+            > Fuzzy.BonusLimit + Fuzzy.DetailLimit);
+        // Detail: a match at the very start of a long target, and a
+        // scattered match with every bonus the subsequence pass gives.
+        Assert.True(Fuzzy.FuzzyScore("a", "a") - Fuzzy.SubstringTier - Fuzzy.PrefixBonus
+            < Fuzzy.DetailLimit);
+        Assert.True(Fuzzy.FuzzyScore("abcdefgh", "a b c d e f g h") - Fuzzy.FuzzyTier
+            < Fuzzy.DetailLimit);
+    }
+
+    [Fact]
+    public void EarlierSubstringsScoreHigherWithinAKind()
+    {
+        var early = Fuzzy.FuzzyScore("log", "viewer log.txt")!.Value;
+        var late = Fuzzy.FuzzyScore("log", "viewer of the log.txt")!.Value;
+        Assert.True(early > late);
+        Assert.True(early - late < Fuzzy.BonusLimit);
+    }
 }
