@@ -263,6 +263,15 @@ public sealed class MultiAppHost : IDisposable
     /// <see cref="SruiApp.AltTap"/> runs instead.</summary>
     public Action? AltTap { get; set; }
 
+    /// <summary>An app's own code threw - a widget handler, a message
+    /// handler, a ticker - while the host was delivering input, a key,
+    /// messages, or a tick to it. The host decides what becomes of the
+    /// app: close it, report it, both. Unset, the exception propagates
+    /// out of the host as any unhandled exception would, which is
+    /// right for a single-app program and wrong for a shell hosting
+    /// many.</summary>
+    public Action<HostedApp, Exception>? AppFailed { get; set; }
+
     // ── Switching combos ──
 
     /// <summary>Cycle to the next app (default ctrl+tab). Checked
@@ -311,8 +320,19 @@ public sealed class MultiAppHost : IDisposable
             Cycle(-1);
             return true;
         }
-        if (_active?.App.HandleInput(input) == true)
-            return true;
+        if (_active is { } active)
+        {
+            try
+            {
+                if (active.App.HandleInput(input))
+                    return true;
+            }
+            catch (Exception e) when (AppFailed is { } failed)
+            {
+                failed(active, e);
+                return true;
+            }
+        }
         return UnhandledInput?.Invoke(input) == true;
     }
 
@@ -321,9 +341,40 @@ public sealed class MultiAppHost : IDisposable
     /// claimed it.</summary>
     public bool HandleKey(in KeyInput key)
     {
-        if (_active?.App.HandleKey(key) == true)
-            return true;
+        if (_active is { } active)
+        {
+            try
+            {
+                if (active.App.HandleKey(key))
+                    return true;
+            }
+            catch (Exception e) when (AppFailed is { } failed)
+            {
+                failed(active, e);
+                return true;
+            }
+        }
         return UnhandledKey?.Invoke(key) == true;
+    }
+
+    /// <summary>One app's share of the loop, under <see cref="AppFailed"/>
+    /// when it is set. Static lambdas only: the idle loop allocates
+    /// nothing.</summary>
+    private void Guarded(HostedApp hosted, Action<HostedApp> work)
+    {
+        if (AppFailed is not { } failed)
+        {
+            work(hosted);
+            return;
+        }
+        try
+        {
+            work(hosted);
+        }
+        catch (Exception e)
+        {
+            failed(hosted, e);
+        }
     }
 
     /// <summary>Deliver queued messages to their apps, then drain every
@@ -335,9 +386,9 @@ public sealed class MultiAppHost : IDisposable
         // mid-drain. A shifted slot at worst skips one app until the
         // next drain.
         for (var i = 0; i < _apps.Count; i++)
-            _apps[i].DeliverMessages();
+            Guarded(_apps[i], static hosted => hosted.DeliverMessages());
         for (var i = 0; i < _apps.Count; i++)
-            _apps[i].App.DispatchEvents();
+            Guarded(_apps[i], static hosted => hosted.App.DispatchEvents());
     }
 
     // ── The loop ──
@@ -411,13 +462,13 @@ public sealed class MultiAppHost : IDisposable
         // By index, not foreach: handlers may Add or Close apps
         // mid-iteration (see DispatchEvents).
         for (var i = 0; i < _apps.Count; i++)
-            _apps[i].DeliverMessages();
+            Guarded(_apps[i], static hosted => hosted.DeliverMessages());
         for (var i = 0; i < _apps.Count; i++)
-        {
-            var hosted = _apps[i];
-            if (!hosted.App.Tick())
-                hosted.Close();
-        }
+            Guarded(_apps[i], static hosted =>
+            {
+                if (!hosted.App.Tick())
+                    hosted.Close();
+            });
         Ticked?.Invoke();
         return !_quit;
     }

@@ -601,4 +601,67 @@ public class HostReservationTests
         Assert.True(ui.Host.RequestQuit());
         Assert.False(ui.Host.Tick());
     }
+
+    /// <summary>An app whose button throws when activated: the failure
+    /// reaches the host's hook at drain time, with the app it came
+    /// from, and the host carries on.</summary>
+    [Fact]
+    public void AHandlerThatThrowsReachesAppFailedWithItsApp()
+    {
+        using var ui = new MultiTestUi();
+        var boom = ui.Host.Add("Boom");
+        var button = new Button(boom.App, "Go");
+        button.Activated += () => throw new InvalidOperationException("kaboom");
+        var failures = new List<(HostedApp App, Exception Error)>();
+        ui.Host.AppFailed = (app, error) => failures.Add((app, error));
+        ui.Host.Activate(boom);
+        ui.Drain();
+
+        Assert.True(ui.Host.HandleInput(InputEvent.Simple(InputKind.Activate)));
+        ui.Host.DispatchEvents();
+        var (app, error) = Assert.Single(failures);
+        Assert.Same(boom, app);
+        Assert.Equal("kaboom", error.Message);
+        // The host is still usable.
+        Assert.True(ui.Host.Tick());
+    }
+
+    [Fact]
+    public void WithoutAppFailedAHandlerThatThrowsPropagates()
+    {
+        using var ui = new MultiTestUi();
+        var boom = ui.Host.Add("Boom");
+        var button = new Button(boom.App, "Go");
+        button.Activated += () => throw new InvalidOperationException("kaboom");
+        ui.Host.Activate(boom);
+        ui.Drain();
+
+        ui.Host.HandleInput(InputEvent.Simple(InputKind.Activate));
+        Assert.Throws<InvalidOperationException>(() => ui.Host.DispatchEvents());
+    }
+
+    [Fact]
+    public void AnInputHandlerThatThrowsReachesAppFailed()
+    {
+        using var ui = new MultiTestUi();
+        var boom = ui.Host.Add("Boom");
+        _ = new ThrowingWidget(boom.App);
+        HostedApp? failed = null;
+        ui.Host.AppFailed = (app, _) => failed = app;
+        ui.Host.Activate(boom);
+        ui.Drain();
+
+        Assert.True(ui.Host.HandleInput(InputEvent.TypeChar('x')));
+        Assert.Same(boom, failed);
+    }
+
+    private sealed class ThrowingWidget : CustomWidget
+    {
+        public ThrowingWidget(SruiApp app) : base(app, "Thrower")
+        {
+        }
+
+        protected override bool OnInput(in InputEvent input) =>
+            throw new InvalidOperationException("kaboom");
+    }
 }
