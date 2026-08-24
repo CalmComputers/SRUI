@@ -276,7 +276,8 @@ public sealed class MultiAppHost : IDisposable
 
     /// <summary>Cycle to the next app (default ctrl+tab). Checked
     /// before the active app sees the input, so no app can trap the
-    /// user. Reserved in every hosted app: their
+    /// user. Apps with <see cref="HostedApp.ExcludedFromCycling"/> are
+    /// never a destination. Reserved in every hosted app: their
     /// <see cref="SruiApp.ReservedReasonFor"/> refuses the current
     /// value with a spoken reason. Null disables.</summary>
     public KeyCombo? NextAppCombo { get; set; } = KeyCombo.WithCtrl(Key.Tab);
@@ -294,13 +295,21 @@ public sealed class MultiAppHost : IDisposable
 
     private void Cycle(int direction)
     {
-        // With nowhere to go, switching is silent — re-activating the
-        // only app would just re-announce it.
-        if (_apps.Count < 2)
+        // Excluded apps are never a destination, and with nowhere to
+        // go, switching is silent — re-activating the only candidate
+        // would just re-announce it.
+        if (_apps.Count == 0)
             return;
         var index = _active is { } active ? _apps.IndexOf(active) : 0;
-        index = (index + direction + _apps.Count) % _apps.Count;
-        Activate(_apps[index]);
+        for (var step = 0; step < _apps.Count; step++)
+        {
+            index = (index + direction + _apps.Count) % _apps.Count;
+            var candidate = _apps[index];
+            if (candidate.ExcludedFromCycling || ReferenceEquals(candidate, _active))
+                continue;
+            Activate(candidate);
+            return;
+        }
     }
 
     // ── Driving (Run does this; headless hosts do it themselves) ──
@@ -544,6 +553,13 @@ public sealed class HostedApp
 
     /// <summary>Whether this is the app the user is in.</summary>
     public bool IsActive => ReferenceEquals(Owner.Active, this);
+
+    /// <summary>The switching combos never land here; the app is still
+    /// reachable through <see cref="MultiAppHost.Activate"/> and
+    /// anything that calls it — a task list, a shell's own combo. For
+    /// an app the user goes to on purpose rather than passes through,
+    /// like a shell's launcher.</summary>
+    public bool ExcludedFromCycling { get; set; }
 
     /// <summary>Whether <see cref="Close"/> has run (directly, or via
     /// the app's own Quit).</summary>

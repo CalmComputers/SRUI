@@ -120,6 +120,72 @@ public class MultiAppHostTests
     }
 
     [Fact]
+    public void CyclingSkipsAnExcludedApp()
+    {
+        var ui = new MultiTestUi();
+        var launcher = ui.Host.Add("Launcher");
+        launcher.ExcludedFromCycling = true;
+        _ = new ListBox(launcher.App, "Programs", Array.Empty<string>());
+        var notes = ui.Host.Add("Notes");
+        _ = new EditBox(notes.App, "Note");
+        var inbox = ui.Host.Add("Inbox");
+        _ = new ListBox(inbox.App, "Messages", Array.Empty<string>());
+        ui.Host.Activate(notes);
+        ui.Drain();
+
+        // The cycle runs Notes → Inbox → Notes, in both directions;
+        // the launcher is never a destination.
+        Assert.True(ui.Combo(KeyCombo.WithCtrl(Key.Tab)));
+        Assert.True(inbox.IsActive);
+        Assert.True(ui.Combo(KeyCombo.WithCtrl(Key.Tab)));
+        Assert.True(notes.IsActive);
+        Assert.True(ui.Combo(KeyCombo.CtrlShift(Key.Tab)));
+        Assert.True(inbox.IsActive);
+
+        // From the excluded app itself, the cycle leaves for the next
+        // candidate.
+        ui.Host.Activate(launcher);
+        ui.Drain();
+        Assert.True(ui.Combo(KeyCombo.WithCtrl(Key.Tab)));
+        Assert.True(notes.IsActive);
+    }
+
+    [Fact]
+    public void CtrlTabWithOnlyAnExcludedNeighborIsSilent()
+    {
+        var ui = new MultiTestUi();
+        var launcher = ui.Host.Add("Launcher");
+        launcher.ExcludedFromCycling = true;
+        _ = new ListBox(launcher.App, "Programs", Array.Empty<string>());
+        var notes = ui.Host.Add("Notes");
+        _ = new EditBox(notes.App, "Note");
+        ui.Host.Activate(notes);
+        ui.Drain();
+
+        // Consumed, but there is nowhere to go: nothing is spoken and
+        // nothing moves.
+        Assert.True(ui.Combo(KeyCombo.WithCtrl(Key.Tab)));
+        Assert.True(ui.Combo(KeyCombo.CtrlShift(Key.Tab)));
+        Assert.Empty(ui.Spoken());
+        Assert.True(notes.IsActive);
+    }
+
+    [Fact]
+    public void CtrlTabInAnExcludedAppAloneIsSilent()
+    {
+        var ui = new MultiTestUi();
+        var launcher = ui.Host.Add("Launcher");
+        launcher.ExcludedFromCycling = true;
+        _ = new ListBox(launcher.App, "Programs", Array.Empty<string>());
+        ui.Host.Activate(launcher);
+        ui.Drain();
+
+        Assert.True(ui.Combo(KeyCombo.WithCtrl(Key.Tab)));
+        Assert.Empty(ui.Spoken());
+        Assert.True(launcher.IsActive);
+    }
+
+    [Fact]
     public void SwitchingCombosAreConfigurable()
     {
         var (ui, notes, inbox, _, _) = TwoApps();
