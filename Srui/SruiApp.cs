@@ -460,6 +460,25 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
         // and audio automation advances at the tick cadence. A shared
         // manager is the host's to tick, once for all apps.
         Engine.SetNow((ulong)_clock.ElapsedMilliseconds);
+        return TickBody();
+    }
+
+    /// <summary>The headless half of <see cref="Tick"/> at a clock the
+    /// caller owns: the engine clock moves to <paramref name="now"/>
+    /// (tickers and timeouts fire), queued events drain to the readers,
+    /// and the result says whether <see cref="Quit"/> was called. For a
+    /// host that stamps one clock across every app it runs, and for
+    /// tests that advance time by hand. A windowed app's pump is the
+    /// part this skips, so it is the hosted, headless app's whole
+    /// iteration.</summary>
+    public bool TickAt(ulong now)
+    {
+        Engine.SetNow(now);
+        return TickBody();
+    }
+
+    private bool TickBody()
+    {
         if (!_sharedAudio)
             _audio?.Tick();
         if (Host is SdlHost host)

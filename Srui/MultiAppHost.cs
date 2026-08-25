@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Srui.Audio;
 
 namespace Srui;
@@ -50,6 +51,8 @@ public sealed class MultiAppHost : IDisposable
     private SoundManager? _audio;
     private uint _audioPeriodFrames;
     private bool _quit;
+    private readonly Stopwatch _clock = Stopwatch.StartNew();
+    private ulong _now;
 
     /// <summary>A windowed host: SDL window and a speech reader over
     /// Prism, shared by every app it will run.</summary>
@@ -136,6 +139,9 @@ public sealed class MultiAppHost : IDisposable
         app.HostReservations = SwitchReservation;
         Host?.ProvideClipboard(app);
         var hosted = new HostedApp(this, name, app);
+        // Every app runs on the host's one clock from the moment it
+        // joins: a ticker it starts now measures from now, not from 0.
+        app.SetNow(_now);
         app.AddReader(new Forwarder(hosted));
         _apps.Add(hosted);
         AppsVersion++;
@@ -386,6 +392,25 @@ public sealed class MultiAppHost : IDisposable
         }
     }
 
+    /// <summary>As <see cref="Guarded(HostedApp, Action{HostedApp})"/>,
+    /// with a value threaded through so the lambda can stay static.</summary>
+    private void Guarded<T>(HostedApp hosted, T state, Action<HostedApp, T> work)
+    {
+        if (AppFailed is not { } failed)
+        {
+            work(hosted, state);
+            return;
+        }
+        try
+        {
+            work(hosted, state);
+        }
+        catch (Exception e)
+        {
+            failed(hosted, e);
+        }
+    }
+
     /// <summary>Deliver queued messages to their apps, then drain every
     /// app's events to its readers — the deterministic drain for
     /// headless hosts; <see cref="Tick"/> does this every iteration.</summary>
@@ -426,15 +451,49 @@ public sealed class MultiAppHost : IDisposable
         return true;
     }
 
-    /// <summary>One loop iteration: pump and route window input,
-    /// advance the shared audio, deliver queued messages, tick every
-    /// hosted app (clock, tickers, drain), then run <see cref="Ticked"/>.
-    /// Returns false once the window has closed or <see cref="Quit"/>
-    /// was called. A
-    /// hosted app's own Quit closes that app
-    /// (<see cref="HostedApp.Close"/>) instead of stopping the host —
-    /// an app's exit path works the same standalone and hosted.</summary>
+    /// <summary>The host's clock in milliseconds: what the last
+    /// <see cref="Tick"/> read from its stopwatch, or what the last
+    /// <see cref="TickAt"/> was given. Every hosted app's
+    /// <see cref="SruiApp.Now"/> is this.</summary>
+    public ulong Now => _now;
+
+    /// <summary>One loop iteration: pump and route window input, then
+    /// <see cref="TickAt"/> at the stopwatch. Returns false once the
+    /// window has closed or <see cref="Quit"/> was called.</summary>
     public bool Tick()
+    {
+        Pump();
+        return TickAt((ulong)_clock.ElapsedMilliseconds);
+    }
+
+    /// <summary>One loop iteration at a clock the caller owns, with no
+    /// window pump: the shared audio advances, queued messages are
+    /// delivered, every hosted app's clock moves to
+    /// <paramref name="now"/> (its tickers fire) and its events drain,
+    /// then <see cref="Ticked"/> runs. A hosted app's own Quit closes
+    /// that app (<see cref="HostedApp.Close"/>) instead of stopping the
+    /// host — an app's exit path works the same standalone and hosted.
+    /// This is how a headless host is driven deterministically: time
+    /// is whatever the caller says it is.</summary>
+    public bool TickAt(ulong now)
+    {
+        _now = now;
+        _audio?.Tick();
+        // By index, not foreach: handlers may Add or Close apps
+        // mid-iteration (see DispatchEvents).
+        for (var i = 0; i < _apps.Count; i++)
+            Guarded(_apps[i], static hosted => hosted.DeliverMessages());
+        for (var i = 0; i < _apps.Count; i++)
+            Guarded(_apps[i], now, static (hosted, now) =>
+            {
+                if (!hosted.App.TickAt(now))
+                    hosted.Close();
+            });
+        Ticked?.Invoke();
+        return !_quit;
+    }
+
+    private void Pump()
     {
         if (Host is { } host)
         {
@@ -467,19 +526,6 @@ public sealed class MultiAppHost : IDisposable
                 }
             }
         }
-        _audio?.Tick();
-        // By index, not foreach: handlers may Add or Close apps
-        // mid-iteration (see DispatchEvents).
-        for (var i = 0; i < _apps.Count; i++)
-            Guarded(_apps[i], static hosted => hosted.DeliverMessages());
-        for (var i = 0; i < _apps.Count; i++)
-            Guarded(_apps[i], static hosted =>
-            {
-                if (!hosted.App.Tick())
-                    hosted.Close();
-            });
-        Ticked?.Invoke();
-        return !_quit;
     }
 
     /// <summary>Run until <see cref="Quit"/> or the window closes,

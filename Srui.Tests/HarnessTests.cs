@@ -262,3 +262,140 @@ public class StepTests
         ui.Expect("Save All", "saves the file");
     }
 }
+
+public class TestHostTests
+{
+    private static (TestHost Ui, HostedApp A, HostedApp B) TwoApps()
+    {
+        var ui = new TestHost();
+        var a = ui.Host.Add("Alpha");
+        _ = new Button(a.App, "First");
+        var b = ui.Host.Add("Beta");
+        _ = new Button(b.App, "Second");
+        ui.Host.Activate(a);
+        return (ui, a, b);
+    }
+
+    [Fact]
+    public void PressReachesTheHostSoSwitchingCombosWork()
+    {
+        var (ui, _, _) = TwoApps();
+        using var _ = ui;
+        ui.Press("ctrl+tab");
+        ui.Expect("Beta", "Second button");
+    }
+
+    [Fact]
+    public void WaitAdvancesEveryAppsClockAndFiresTickers()
+    {
+        var (ui, a, b) = TwoApps();
+        using var _ = ui;
+        var ticks = 0;
+        b.App.StartTicker(100).Tick += () => ticks++;
+        ui.Wait(250);
+        Assert.Equal(250UL, ui.Host.Now);
+        Assert.Equal(250UL, a.App.Now);
+        Assert.Equal(250UL, b.App.Now);
+        Assert.True(ticks > 0);
+    }
+
+    [Fact]
+    public void AnAppAddedLaterJoinsTheHostsClock()
+    {
+        var (ui, _, _) = TwoApps();
+        using var _ = ui;
+        ui.Wait(1000);
+        var late = ui.Host.Add("Gamma");
+        Assert.Equal(1000UL, late.App.Now);
+    }
+
+    [Fact]
+    public void TickFoldsAHostedQuitIntoClose()
+    {
+        var (ui, a, b) = TwoApps();
+        using var _ = ui;
+        ui.Drain();
+        a.App.Quit();
+        ui.Tick();
+        Assert.True(a.IsClosed);
+        Assert.Same(b, ui.Host.Active);
+        ui.Expect("Beta", "Second button");
+    }
+
+    [Fact]
+    public void TickRunsTheHostsOwnWork()
+    {
+        var (ui, _, _) = TwoApps();
+        using var _ = ui;
+        var ran = 0;
+        ui.Host.Ticked = () => ran++;
+        ui.Tick();
+        Assert.Equal(1, ran);
+    }
+
+    [Fact]
+    public void UntilReturnsWhenTheConditionHoldsAndKeepsWhatWasSpoken()
+    {
+        var (ui, a, _) = TwoApps();
+        using var _ = ui;
+        var landed = false;
+        var ticker = a.App.StartTicker(1);
+        ticker.Tick += () =>
+        {
+            if (landed)
+                return;
+            landed = true;
+            a.App.Announce("landed");
+        };
+        ui.Until(() => landed, "the ticker");
+        ui.Expect("landed");
+    }
+
+    [Fact]
+    public void UntilTimesOutNamingWhatItWaitedFor()
+    {
+        var (ui, a, _) = TwoApps();
+        using var _ = ui;
+        var said = false;
+        a.App.StartTicker(1).Tick += () =>
+        {
+            if (!said)
+                a.App.Announce("still here");
+            said = true;
+        };
+        var e = Assert.Throws<SruiAssertException>(
+            () => ui.Until(() => false, "a result that never comes", timeoutMs: 20));
+        Assert.Equal(
+            "timed out after 20 ms waiting for a result that never comes; heard \"still here\"",
+            e.Message);
+    }
+
+    [Fact]
+    public void UntilHeardWatchesTheBatch()
+    {
+        var (ui, a, _) = TwoApps();
+        using var _ = ui;
+        var count = 0;
+        a.App.StartTicker(1).Tick += () =>
+        {
+            if (++count == 3)
+                a.App.Announce("third");
+        };
+        ui.UntilHeard(u => u == "third", "the third tick");
+        ui.Expect("third");
+    }
+
+    [Fact]
+    public void ScenariosRunAgainstAHost()
+    {
+        var (ui, _, _) = TwoApps();
+        using var _ = ui;
+        ui.RunScenarioText("""
+            say Alpha
+            say First button
+            ctrl+tab
+            say Beta
+            say Second button
+            """);
+    }
+}

@@ -9,9 +9,9 @@ public sealed class ScenarioException : SruiAssertException
 }
 
 /// <summary>A parsed scenario: a plain-text recording of an exchange with
-/// an app, run against a <see cref="TestApp"/> (see
-/// <see cref="TestApp.RunScenario"/>) or re-recorded from one (see
-/// <see cref="TestApp.RecordScenario"/>).
+/// an app, run against a <see cref="Harness"/> (see
+/// <see cref="Harness.RunScenario"/>) or re-recorded from one (see
+/// <see cref="Harness.RecordScenario"/>).
 ///
 /// The format is line-oriented, one step per line. A bare line taps a key
 /// combo (<see cref="ComboSpec"/> syntax: "enter", "cas+f4"). The verbs:
@@ -113,7 +113,7 @@ internal sealed class Scenario
 
     /// <summary>Replay against the harness from its current state,
     /// throwing on the first failed assertion.</summary>
-    public void Run(TestApp ui)
+    public void Run(Harness ui)
     {
         // The batch pending before the first input is assertable too —
         // say lines above all inputs freeze startup speech.
@@ -166,7 +166,7 @@ internal sealed class Scenario
     /// verbatim, assertion lines are regenerated — a say per utterance,
     /// nospeech for a silent batch. Startup speech, when present, is
     /// recorded as say lines above the first input.</summary>
-    public string Record(TestApp ui)
+    public string Record(Harness ui)
     {
         var output = new List<string>();
         var startup = ui.Spoken();
@@ -202,7 +202,7 @@ internal sealed class Scenario
         return string.Join("\n", output) + "\n";
     }
 
-    private static void Execute(TestApp ui, Step step)
+    private static void Execute(Harness ui, Step step)
     {
         switch (step)
         {

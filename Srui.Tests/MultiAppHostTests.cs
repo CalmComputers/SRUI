@@ -1,55 +1,17 @@
+using Srui.Testing;
 using Srui;
 using Xunit;
 
 namespace Srui.Tests;
 
-/// <summary>A headless multi-app host with a recording shared reader:
-/// build apps, activate and switch, assert what the shared stream hears.</summary>
-internal sealed class MultiTestUi : IDisposable
-{
-    public readonly MultiAppHost Host = MultiAppHost.Headless();
-    public readonly RecordingReader Reader = new();
-
-    public MultiTestUi() => Host.AddReader(Reader);
-
-    public void Dispose() => Host.Dispose();
-
-    /// <summary>Deliver queued messages and output, returning the
-    /// utterances the shared reader heard since the last call.</summary>
-    public List<string> Spoken()
-    {
-        Host.DispatchEvents();
-        var result = Reader.Events
-            .Select(SpeechRenderer.RenderEvent)
-            .Where(s => s is not null)
-            .Select(s => s!)
-            .ToList();
-        Reader.Events.Clear();
-        return result;
-    }
-
-    /// <summary>Deliver queued messages and output, discarding it.</summary>
-    public void Drain()
-    {
-        Host.DispatchEvents();
-        Reader.Events.Clear();
-    }
-
-    public bool Combo(KeyCombo combo)
-    {
-        var (key, mods) = combo.ToFlat();
-        return Host.HandleInput(InputEvent.RawKey(key, mods));
-    }
-}
-
 public class MultiAppHostTests
 {
     private sealed record Fixture(
-        MultiTestUi Ui, HostedApp Notes, HostedApp Inbox, EditBox NoteBox, ListBox MessageList);
+        TestHost Ui, HostedApp Notes, HostedApp Inbox, EditBox NoteBox, ListBox MessageList);
 
     private static Fixture TwoApps()
     {
-        var ui = new MultiTestUi();
+        var ui = new TestHost();
         var notes = ui.Host.Add("Notes");
         var noteBox = new EditBox(notes.App, "Note");
         var inbox = ui.Host.Add("Inbox");
@@ -91,21 +53,21 @@ public class MultiAppHostTests
         ui.Host.Activate(notes);
         ui.Drain();
 
-        Assert.True(ui.Combo(KeyCombo.WithCtrl(Key.Tab)));
+        Assert.True(ui.Raw(KeyCombo.WithCtrl(Key.Tab)));
         Assert.True(inbox.IsActive);
         Assert.Contains("Inbox", ui.Spoken());
 
-        Assert.True(ui.Combo(KeyCombo.WithCtrl(Key.Tab)));
+        Assert.True(ui.Raw(KeyCombo.WithCtrl(Key.Tab)));
         Assert.True(notes.IsActive);
 
-        Assert.True(ui.Combo(KeyCombo.CtrlShift(Key.Tab)));
+        Assert.True(ui.Raw(KeyCombo.CtrlShift(Key.Tab)));
         Assert.True(inbox.IsActive);
     }
 
     [Fact]
     public void CtrlTabWithOneAppIsASilentNoOp()
     {
-        var ui = new MultiTestUi();
+        var ui = new TestHost();
         var only = ui.Host.Add("Notes");
         _ = new EditBox(only.App, "Note");
         ui.Host.Activate(only);
@@ -113,8 +75,8 @@ public class MultiAppHostTests
 
         // Still consumed — the combo stays reserved — but nothing is
         // re-announced and the app stays active.
-        Assert.True(ui.Combo(KeyCombo.WithCtrl(Key.Tab)));
-        Assert.True(ui.Combo(KeyCombo.CtrlShift(Key.Tab)));
+        Assert.True(ui.Raw(KeyCombo.WithCtrl(Key.Tab)));
+        Assert.True(ui.Raw(KeyCombo.CtrlShift(Key.Tab)));
         Assert.Empty(ui.Spoken());
         Assert.True(only.IsActive);
     }
@@ -122,7 +84,7 @@ public class MultiAppHostTests
     [Fact]
     public void CyclingSkipsAnExcludedApp()
     {
-        var ui = new MultiTestUi();
+        var ui = new TestHost();
         var launcher = ui.Host.Add("Launcher");
         launcher.ExcludedFromCycling = true;
         _ = new ListBox(launcher.App, "Programs", Array.Empty<string>());
@@ -135,25 +97,25 @@ public class MultiAppHostTests
 
         // The cycle runs Notes → Inbox → Notes, in both directions;
         // the launcher is never a destination.
-        Assert.True(ui.Combo(KeyCombo.WithCtrl(Key.Tab)));
+        Assert.True(ui.Raw(KeyCombo.WithCtrl(Key.Tab)));
         Assert.True(inbox.IsActive);
-        Assert.True(ui.Combo(KeyCombo.WithCtrl(Key.Tab)));
+        Assert.True(ui.Raw(KeyCombo.WithCtrl(Key.Tab)));
         Assert.True(notes.IsActive);
-        Assert.True(ui.Combo(KeyCombo.CtrlShift(Key.Tab)));
+        Assert.True(ui.Raw(KeyCombo.CtrlShift(Key.Tab)));
         Assert.True(inbox.IsActive);
 
         // From the excluded app itself, the cycle leaves for the next
         // candidate.
         ui.Host.Activate(launcher);
         ui.Drain();
-        Assert.True(ui.Combo(KeyCombo.WithCtrl(Key.Tab)));
+        Assert.True(ui.Raw(KeyCombo.WithCtrl(Key.Tab)));
         Assert.True(notes.IsActive);
     }
 
     [Fact]
     public void CtrlTabWithOnlyAnExcludedNeighborIsSilent()
     {
-        var ui = new MultiTestUi();
+        var ui = new TestHost();
         var launcher = ui.Host.Add("Launcher");
         launcher.ExcludedFromCycling = true;
         _ = new ListBox(launcher.App, "Programs", Array.Empty<string>());
@@ -164,8 +126,8 @@ public class MultiAppHostTests
 
         // Consumed, but there is nowhere to go: nothing is spoken and
         // nothing moves.
-        Assert.True(ui.Combo(KeyCombo.WithCtrl(Key.Tab)));
-        Assert.True(ui.Combo(KeyCombo.CtrlShift(Key.Tab)));
+        Assert.True(ui.Raw(KeyCombo.WithCtrl(Key.Tab)));
+        Assert.True(ui.Raw(KeyCombo.CtrlShift(Key.Tab)));
         Assert.Empty(ui.Spoken());
         Assert.True(notes.IsActive);
     }
@@ -173,14 +135,14 @@ public class MultiAppHostTests
     [Fact]
     public void CtrlTabInAnExcludedAppAloneIsSilent()
     {
-        var ui = new MultiTestUi();
+        var ui = new TestHost();
         var launcher = ui.Host.Add("Launcher");
         launcher.ExcludedFromCycling = true;
         _ = new ListBox(launcher.App, "Programs", Array.Empty<string>());
         ui.Host.Activate(launcher);
         ui.Drain();
 
-        Assert.True(ui.Combo(KeyCombo.WithCtrl(Key.Tab)));
+        Assert.True(ui.Raw(KeyCombo.WithCtrl(Key.Tab)));
         Assert.Empty(ui.Spoken());
         Assert.True(launcher.IsActive);
     }
@@ -193,13 +155,13 @@ public class MultiAppHostTests
         ui.Drain();
         ui.Host.NextAppCombo = KeyCombo.WithCtrl(Key.F(6));
 
-        Assert.False(ui.Combo(KeyCombo.WithCtrl(Key.Tab)));
+        Assert.False(ui.Raw(KeyCombo.WithCtrl(Key.Tab)));
         Assert.True(notes.IsActive);
-        Assert.True(ui.Combo(KeyCombo.WithCtrl(Key.F(6))));
+        Assert.True(ui.Raw(KeyCombo.WithCtrl(Key.F(6))));
         Assert.True(inbox.IsActive);
 
         ui.Host.NextAppCombo = null;
-        Assert.False(ui.Combo(KeyCombo.WithCtrl(Key.F(6))));
+        Assert.False(ui.Raw(KeyCombo.WithCtrl(Key.F(6))));
     }
 
     [Fact]
@@ -321,15 +283,15 @@ public class MultiAppHostTests
         };
 
         // An edit box consumes typing; a raw F9 falls all the way through.
-        Assert.True(ui.Combo(KeyCombo.Plain(Key.F(9))));
+        Assert.True(ui.Raw(KeyCombo.Plain(Key.F(9))));
         Assert.NotNull(fell);
     }
 
     [Fact]
     public void ActivateRejectsAForeignApp()
     {
-        using var a = new MultiTestUi();
-        using var b = new MultiTestUi();
+        using var a = new TestHost();
+        using var b = new TestHost();
         var foreign = b.Host.Add("Elsewhere");
         Assert.Throws<ArgumentException>(() => a.Host.Activate(foreign));
     }
@@ -397,9 +359,9 @@ public class MultiAppHostTests
 
 public class HostedAppLifecycleTests
 {
-    private static (MultiTestUi Ui, HostedApp A, HostedApp B, HostedApp C) ThreeApps()
+    private static (TestHost Ui, HostedApp A, HostedApp B, HostedApp C) ThreeApps()
     {
-        var ui = new MultiTestUi();
+        var ui = new TestHost();
         var a = ui.Host.Add("Alpha");
         _ = new Button(a.App, "A");
         var b = ui.Host.Add("Beta");
@@ -442,7 +404,7 @@ public class HostedAppLifecycleTests
     [Fact]
     public void ClosingTheLastAppLeavesNoActive()
     {
-        var ui = new MultiTestUi();
+        var ui = new TestHost();
         var only = ui.Host.Add("Only");
         _ = new Button(only.App, "O");
         ui.Host.Activate(only);
@@ -549,7 +511,7 @@ public class HostedAppLifecycleTests
     [Fact]
     public void AppsChangedFiresOnAddAndClose()
     {
-        var ui = new MultiTestUi();
+        var ui = new TestHost();
         var changes = 0;
         ui.Host.AppsChanged += () => changes++;
         var app = ui.Host.Add("One");
@@ -561,7 +523,7 @@ public class HostedAppLifecycleTests
     [Fact]
     public void AppsVersionAdvancesOnAddAndClose()
     {
-        var ui = new MultiTestUi();
+        var ui = new TestHost();
         var seen = ui.Host.AppsVersion;
         var app = ui.Host.Add("One");
         Assert.NotEqual(seen, ui.Host.AppsVersion);
@@ -573,7 +535,7 @@ public class HostedAppLifecycleTests
     [Fact]
     public void TickedRunsOncePerIterationAfterTheApps()
     {
-        var ui = new MultiTestUi();
+        var ui = new TestHost();
         var order = new List<string>();
         var app = ui.Host.Add("One");
         app.App.StartTicker(1).Tick += () => order.Add("app");
@@ -594,7 +556,7 @@ public class HostReservationTests
     [Fact]
     public void HostedAppsRefuseTheSwitchingCombos()
     {
-        var ui = new MultiTestUi();
+        var ui = new TestHost();
         var app = ui.Host.Add("One").App;
 
         Assert.Equal(
@@ -609,7 +571,7 @@ public class HostReservationTests
     [Fact]
     public void ReservationFollowsReconfiguredCombos()
     {
-        var ui = new MultiTestUi();
+        var ui = new TestHost();
         var app = ui.Host.Add("One").App;
         ui.Host.NextAppCombo = KeyCombo.WithCtrl(Key.F(6));
 
@@ -620,7 +582,7 @@ public class HostReservationTests
     [Fact]
     public void FrameworkReservationsStillApply()
     {
-        var ui = new MultiTestUi();
+        var ui = new TestHost();
         var app = ui.Host.Add("One").App;
         Assert.Equal(
             KeyCombo.Plain(Key.Tab).ReservedReason,
@@ -637,7 +599,7 @@ public class HostReservationTests
     [Fact]
     public void RequestQuitConsultsTheHandler()
     {
-        using var ui = new MultiTestUi();
+        using var ui = new TestHost();
         _ = ui.Host.Add("Notes");
 
         var consent = false;
@@ -662,7 +624,7 @@ public class HostReservationTests
     [Fact]
     public void RequestQuitWithoutAHandlerQuits()
     {
-        using var ui = new MultiTestUi();
+        using var ui = new TestHost();
         _ = ui.Host.Add("Notes");
         Assert.True(ui.Host.RequestQuit());
         Assert.False(ui.Host.Tick());
@@ -674,7 +636,7 @@ public class HostReservationTests
     [Fact]
     public void AHandlerThatThrowsReachesAppFailedWithItsApp()
     {
-        using var ui = new MultiTestUi();
+        using var ui = new TestHost();
         var boom = ui.Host.Add("Boom");
         var button = new Button(boom.App, "Go");
         button.Activated += () => throw new InvalidOperationException("kaboom");
@@ -695,7 +657,7 @@ public class HostReservationTests
     [Fact]
     public void WithoutAppFailedAHandlerThatThrowsPropagates()
     {
-        using var ui = new MultiTestUi();
+        using var ui = new TestHost();
         var boom = ui.Host.Add("Boom");
         var button = new Button(boom.App, "Go");
         button.Activated += () => throw new InvalidOperationException("kaboom");
@@ -709,7 +671,7 @@ public class HostReservationTests
     [Fact]
     public void AnInputHandlerThatThrowsReachesAppFailed()
     {
-        using var ui = new MultiTestUi();
+        using var ui = new TestHost();
         var boom = ui.Host.Add("Boom");
         _ = new ThrowingWidget(boom.App);
         HostedApp? failed = null;
