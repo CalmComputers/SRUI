@@ -17,10 +17,89 @@ internal sealed class EditorState
     public bool Multiline;
     public bool ReadOnly;
 
+    /// <summary>Undo history. Recording rides <see cref="Splice"/>, so
+    /// every mutation path participates; <see cref="SetText"/> clears it.</summary>
+    public readonly UndoHistory History = new();
+
+    /// <summary>Operation-scope nesting (a selection delete inside an
+    /// insert); only the outermost scope reaches the history.</summary>
+    private int _opDepth;
+
     public EditorState(string text, bool multiline)
     {
         Rope = new Rope(text);
         Multiline = multiline;
+    }
+
+    // ── The splice chokepoint ──
+
+    private void BeginOp(bool bulk)
+    {
+        if (_opDepth++ == 0)
+            History.BeginOp(Cursor, Selection, bulk);
+    }
+
+    private void EndOp()
+    {
+        if (--_opDepth == 0)
+            History.EndOp(Cursor, Selection);
+    }
+
+    /// <summary>Replace [start, end) with text — the single rope
+    /// mutation point for edits, recording into the history. Must run
+    /// inside an operation scope (the history throws otherwise).
+    /// Returns the removed text.</summary>
+    private string Splice(int start, int end, string text)
+    {
+        if (start == end && text.Length == 0)
+            return "";
+        var removed = start == end ? "" : Rope.Substring(start, end);
+        if (start != end)
+            Rope.Remove(start, end);
+        if (text.Length != 0)
+            Rope.Insert(start, text);
+        History.RecordSplice(start, removed, text);
+        return removed;
+    }
+
+    /// <summary>Undo the most recent unit: reverse its splices and
+    /// restore the cursor and selection from before it — a selection
+    /// delete comes back selected. False with nothing to undo.</summary>
+    public bool Undo()
+    {
+        if (History.PopUndo() is not UndoHistory.Unit unit)
+            return false;
+        for (var i = unit.Splices.Count - 1; i >= 0; i--)
+        {
+            var splice = unit.Splices[i];
+            if (splice.Inserted.Length != 0)
+                Rope.Remove(splice.Start, splice.Start + splice.Inserted.Length);
+            if (splice.Removed.Length != 0)
+                Rope.Insert(splice.Start, splice.Removed);
+        }
+        Cursor = unit.CursorBefore;
+        Selection = unit.SelectionBefore;
+        PreferredColumn = null;
+        return true;
+    }
+
+    /// <summary>Reapply the most recently undone unit, restoring the
+    /// cursor and selection from after it. False with nothing to redo.</summary>
+    public bool Redo()
+    {
+        if (History.PopRedo() is not UndoHistory.Unit unit)
+            return false;
+        foreach (var splice in unit.Splices)
+        {
+            if (splice.Removed.Length != 0)
+                Rope.Remove(splice.Start, splice.Start + splice.Removed.Length);
+            if (splice.Inserted.Length != 0)
+                Rope.Insert(splice.Start, splice.Inserted);
+        }
+        Cursor = unit.CursorAfter;
+        Selection = unit.SelectionAfter;
+        PreferredColumn = null;
+        return true;
     }
 
     /// <summary>Current content as a string — O(n).</summary>
@@ -65,13 +144,21 @@ internal sealed class EditorState
     {
         if (ReadOnly)
             return "";
-        var hadSelection = DeleteSelectionSilent();
-        Rope.Insert(Cursor, s);
-        Cursor += s.Length;
-        Selection = null;
-        PreferredColumn = null;
-        var charSpeech = SpeechRenderer.SpeakChar(s);
-        return hadSelection ? $"selection removed, {charSpeech}" : charSpeech;
+        BeginOp(bulk: HasSelection);
+        try
+        {
+            var hadSelection = DeleteSelectionSilent();
+            Splice(Cursor, Cursor, s);
+            Cursor += s.Length;
+            Selection = null;
+            PreferredColumn = null;
+            var charSpeech = SpeechRenderer.SpeakChar(s);
+            return hadSelection ? $"selection removed, {charSpeech}" : charSpeech;
+        }
+        finally
+        {
+            EndOp();
+        }
     }
 
     /// <summary>Insert a newline at the cursor (multiline only).</summary>
@@ -79,13 +166,21 @@ internal sealed class EditorState
     {
         if (!Multiline || ReadOnly)
             return "";
-        var hadSelection = DeleteSelectionSilent();
-        Rope.Insert(Cursor, "\n");
-        Cursor += 1;
-        Selection = null;
-        PreferredColumn = null;
-        var speech = SpeechRenderer.SpeakChar("\n");
-        return hadSelection ? $"selection removed, {speech}" : speech;
+        BeginOp(bulk: HasSelection);
+        try
+        {
+            var hadSelection = DeleteSelectionSilent();
+            Splice(Cursor, Cursor, "\n");
+            Cursor += 1;
+            Selection = null;
+            PreferredColumn = null;
+            var speech = SpeechRenderer.SpeakChar("\n");
+            return hadSelection ? $"selection removed, {speech}" : speech;
+        }
+        finally
+        {
+            EndOp();
+        }
     }
 
     /// <summary>Delete the grapheme before the cursor. Returns speech for
@@ -94,18 +189,26 @@ internal sealed class EditorState
     {
         if (ReadOnly)
             return null;
-        if (DeleteSelectionSilent())
-            return "deleted";
-        if (Cursor == 0)
-            return null;
-        if (TextNav.PrevGrapheme(Rope, Cursor) is not int prev)
-            return null;
-        if (TextNav.GraphemeAt(Rope, prev) is not string deleted)
-            return null;
-        Rope.Remove(prev, Cursor);
-        Cursor = prev;
-        PreferredColumn = null;
-        return SpeechRenderer.SpeakChar(deleted);
+        BeginOp(bulk: HasSelection);
+        try
+        {
+            if (DeleteSelectionSilent())
+                return "deleted";
+            if (Cursor == 0)
+                return null;
+            if (TextNav.PrevGrapheme(Rope, Cursor) is not int prev)
+                return null;
+            if (TextNav.GraphemeAt(Rope, prev) is not string deleted)
+                return null;
+            Splice(prev, Cursor, "");
+            Cursor = prev;
+            PreferredColumn = null;
+            return SpeechRenderer.SpeakChar(deleted);
+        }
+        finally
+        {
+            EndOp();
+        }
     }
 
     /// <summary>Delete the grapheme after the cursor.</summary>
@@ -113,15 +216,23 @@ internal sealed class EditorState
     {
         if (ReadOnly)
             return null;
-        if (DeleteSelectionSilent())
-            return "deleted";
-        if (TextNav.NextGrapheme(Rope, Cursor) is not int next)
-            return null;
-        if (TextNav.GraphemeAt(Rope, Cursor) is not string deleted)
-            return null;
-        Rope.Remove(Cursor, next);
-        PreferredColumn = null;
-        return SpeechRenderer.SpeakChar(deleted);
+        BeginOp(bulk: HasSelection);
+        try
+        {
+            if (DeleteSelectionSilent())
+                return "deleted";
+            if (TextNav.NextGrapheme(Rope, Cursor) is not int next)
+                return null;
+            if (TextNav.GraphemeAt(Rope, Cursor) is not string deleted)
+                return null;
+            Splice(Cursor, next, "");
+            PreferredColumn = null;
+            return SpeechRenderer.SpeakChar(deleted);
+        }
+        finally
+        {
+            EndOp();
+        }
     }
 
     /// <summary>Delete the word before the cursor (Notepad-style: word +
@@ -130,16 +241,23 @@ internal sealed class EditorState
     {
         if (ReadOnly)
             return null;
-        if (DeleteSelectionSilent())
-            return "deleted";
-        if (Cursor == 0)
-            return null;
-        var target = TextNav.PrevWordExtent(Rope, Cursor);
-        var deleted = Rope.Substring(target, Cursor);
-        Rope.Remove(target, Cursor);
-        Cursor = target;
-        PreferredColumn = null;
-        return deleted;
+        BeginOp(bulk: true);
+        try
+        {
+            if (DeleteSelectionSilent())
+                return "deleted";
+            if (Cursor == 0)
+                return null;
+            var target = TextNav.PrevWordExtent(Rope, Cursor);
+            var deleted = Splice(target, Cursor, "");
+            Cursor = target;
+            PreferredColumn = null;
+            return deleted;
+        }
+        finally
+        {
+            EndOp();
+        }
     }
 
     /// <summary>Delete the word after the cursor (Notepad-style).</summary>
@@ -147,15 +265,22 @@ internal sealed class EditorState
     {
         if (ReadOnly)
             return null;
-        if (DeleteSelectionSilent())
-            return "deleted";
-        if (Cursor >= Length)
-            return null;
-        var target = TextNav.NextWordExtent(Rope, Cursor);
-        var deleted = Rope.Substring(Cursor, target);
-        Rope.Remove(Cursor, target);
-        PreferredColumn = null;
-        return deleted;
+        BeginOp(bulk: true);
+        try
+        {
+            if (DeleteSelectionSilent())
+                return "deleted";
+            if (Cursor >= Length)
+                return null;
+            var target = TextNav.NextWordExtent(Rope, Cursor);
+            var deleted = Splice(Cursor, target, "");
+            PreferredColumn = null;
+            return deleted;
+        }
+        finally
+        {
+            EndOp();
+        }
     }
 
     // ── Movement operations ──
@@ -469,14 +594,79 @@ internal sealed class EditorState
     {
         if (ReadOnly)
             return "";
-        var hadSelection = DeleteSelectionSilent();
-        if (!Multiline)
-            text = text.Replace('\n', ' ').Replace("\r", "");
-        Rope.Insert(Cursor, text);
-        Cursor += text.Length;
-        Selection = null;
-        PreferredColumn = null;
-        return hadSelection ? "selection removed, pasted" : "pasted";
+        BeginOp(bulk: true);
+        try
+        {
+            var hadSelection = DeleteSelectionSilent();
+            if (!Multiline)
+                text = text.Replace('\n', ' ').Replace("\r", "");
+            Splice(Cursor, Cursor, text);
+            Cursor += text.Length;
+            Selection = null;
+            PreferredColumn = null;
+            return hadSelection ? "selection removed, pasted" : "pasted";
+        }
+        finally
+        {
+            EndOp();
+        }
+    }
+
+    /// <summary>Programmatic insert at the cursor, replacing an active
+    /// selection: one undo unit. Ignores ReadOnly, like the widget
+    /// surface it backs. Returns whether a selection was replaced.</summary>
+    public bool ProgrammaticInsert(string text)
+    {
+        BeginOp(bulk: true);
+        try
+        {
+            var hadSelection = DeleteSelectionSilent();
+            if (text.Length != 0)
+            {
+                Splice(Cursor, Cursor, text);
+                Cursor += text.Length;
+            }
+            PreferredColumn = null;
+            return hadSelection;
+        }
+        finally
+        {
+            EndOp();
+        }
+    }
+
+    /// <summary>Programmatic range replacement (from ≤ to, both on
+    /// grapheme boundaries): one undo unit, cursor and selection mapped
+    /// through the edit. Ignores ReadOnly.</summary>
+    public void ProgrammaticReplace(int from, int to, string text)
+    {
+        if (from == to && text.Length == 0)
+            return;
+        BeginOp(bulk: true);
+        try
+        {
+            Splice(from, to, text);
+
+            int Map(int position) => position <= from ? position
+                : position >= to ? position + text.Length - (to - from)
+                : from + text.Length;
+            if (Selection is (var anchor, var cursor))
+            {
+                var mappedAnchor = Map(anchor);
+                var mappedCursor = Map(cursor);
+                Selection = mappedAnchor == mappedCursor ? null : (mappedAnchor, mappedCursor);
+                Cursor = mappedCursor;
+            }
+            else
+            {
+                Cursor = Map(Cursor);
+            }
+            PreferredColumn = null;
+        }
+        finally
+        {
+            EndOp();
+        }
     }
 
     // ── Internal helpers ──
@@ -500,19 +690,27 @@ internal sealed class EditorState
     /// was deleted.</summary>
     public bool DeleteSelectionSilent()
     {
-        if (Selection is (var anchor, var cursor))
+        if (Selection is not (var anchor, var cursor))
+            return false;
+        var start = Math.Min(anchor, cursor);
+        var end = Math.Max(anchor, cursor);
+        if (start >= end)
         {
             Selection = null;
-            var start = Math.Min(anchor, cursor);
-            var end = Math.Max(anchor, cursor);
-            if (start < end)
-            {
-                Rope.Remove(start, end);
-                Cursor = start;
-                return true;
-            }
+            return false;
         }
-        return false;
+        BeginOp(bulk: true);
+        try
+        {
+            Selection = null;
+            Splice(start, end, "");
+            Cursor = start;
+            return true;
+        }
+        finally
+        {
+            EndOp();
+        }
     }
 
     private string DescribeSelection()
@@ -527,7 +725,8 @@ internal sealed class EditorState
 
     /// <summary>Replace the content (cursor clamped onto a grapheme
     /// boundary, selection cleared). No-op when the text already matches
-    /// — chunk compare, no rope materialization.</summary>
+    /// — chunk compare, no rope materialization. Clears the undo
+    /// history: this is a different document, not an edit.</summary>
     public void SetText(string text)
     {
         if (!Rope.ContentEquals(text))
@@ -535,6 +734,7 @@ internal sealed class EditorState
             Rope = new Rope(text);
             Cursor = TextNav.SnapToGraphemeBoundary(Rope, Cursor);
             Selection = null;
+            History.Clear();
         }
     }
 

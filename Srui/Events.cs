@@ -56,6 +56,8 @@ public enum EditNoopKind
     NothingToDelete,
     SelectedToTop,
     SelectedToBottom,
+    NothingToUndo,
+    NothingToRedo,
 }
 
 /// <summary>The label property a LabelChange event names.</summary>
@@ -192,6 +194,13 @@ public abstract record AccessibilityEvent
 
     /// <summary>Clipboard operation completed.</summary>
     public sealed record Clipboard(Widget Widget, ClipboardOp Op) : AccessibilityEvent;
+
+    /// <summary>An undo or redo was applied in an editor. Context is
+    /// the spoken value at the restored state — the restored selection
+    /// or the current line, the same words the focus announcement's
+    /// value field uses.</summary>
+    public sealed record UndoRedo(Widget Widget, string Context, bool Redo)
+        : AccessibilityEvent;
 
     /// <summary>An editor input with nothing to act on: navigation or
     /// selection in an empty editor, a delete with nothing beside the

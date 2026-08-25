@@ -3,7 +3,9 @@ using Srui.Core;
 namespace Srui;
 
 /// <summary>Single- or multi-line text editor with full cursor
-/// navigation, selection, clipboard, and typing echo. Enter inserts a
+/// navigation, selection, clipboard, typing echo, and multi-level undo
+/// (Ctrl+Z, redo on Ctrl+Y or Ctrl+Shift+Z; see <see cref="Undo"/>).
+/// Enter inserts a
 /// newline in multiline editors and falls through to the layer's primary
 /// widget in single-line (and read-only) ones. Positions on this surface
 /// (<see cref="CursorPosition"/>, <see cref="Selection"/>) are UTF-16
@@ -36,8 +38,9 @@ public class EditBox : Widget
     public bool Multiline => _editor.Multiline;
 
     /// <summary>The full text. Setting replaces the content (cursor
-    /// clamped onto a grapheme boundary, selection cleared) and speaks
-    /// the new value when focused.</summary>
+    /// clamped onto a grapheme boundary, selection cleared, undo
+    /// history dropped — this is a new document, not an edit) and
+    /// speaks the new value when focused.</summary>
     public string Text
     {
         get => _editor.Text();
@@ -171,12 +174,9 @@ public class EditBox : Widget
     {
         if (!Multiline)
             text = text.Replace('\n', ' ').Replace("\r", "");
-        var hadSelection = _editor.DeleteSelectionSilent();
-        if (!hadSelection && text.Length == 0)
+        if (!_editor.HasSelection && text.Length == 0)
             return;
-        _editor.Rope.Insert(_editor.Cursor, text);
-        _editor.Cursor += text.Length;
-        _editor.PreferredColumn = null;
+        var hadSelection = _editor.ProgrammaticInsert(text);
         if (!IsFocused)
             return;
         if (hadSelection)
@@ -201,26 +201,7 @@ public class EditBox : Widget
             (from, to) = (to, from);
         if (!Multiline)
             text = text.Replace('\n', ' ').Replace("\r", "");
-        if (from == to && text.Length == 0)
-            return;
-        _editor.Rope.Remove(from, to);
-        _editor.Rope.Insert(from, text);
-
-        int Map(int position) => position <= from ? position
-            : position >= to ? position + text.Length - (to - from)
-            : from + text.Length;
-        if (_editor.Selection is (var anchor, var cursor))
-        {
-            var mappedAnchor = Map(anchor);
-            var mappedCursor = Map(cursor);
-            _editor.Selection = mappedAnchor == mappedCursor ? null : (mappedAnchor, mappedCursor);
-            _editor.Cursor = mappedCursor;
-        }
-        else
-        {
-            _editor.Cursor = Map(_editor.Cursor);
-        }
-        _editor.PreferredColumn = null;
+        _editor.ProgrammaticReplace(from, to, text);
     }
 
     // ── Announced movement ──
@@ -228,15 +209,20 @@ public class EditBox : Widget
     // programmatic move speaks exactly what the user-driven one would —
     // when the widget is focused; unfocused, it moves silently.
 
-    /// <summary>Run a user-equivalent navigation input against the
-    /// editor, speaking its feedback when focused.</summary>
+    /// <summary>Run a user-equivalent input against the editor,
+    /// speaking its feedback when focused and raising Changed when it
+    /// edited.</summary>
     private void Nav(InputKind kind)
     {
-        var result = EditBoxCore.Handle(this, InputEvent.Simple(kind), _editor, Engine.Clipboard);
-        if (!IsFocused)
-            return;
-        foreach (var ev in result.Events)
-            Promulgate(ev);
+        var result = EditBoxCore.Handle(
+            this, InputEvent.Simple(kind), _editor, Engine.Clipboard, NowMs);
+        if (IsFocused)
+        {
+            foreach (var ev in result.Events)
+                Promulgate(ev);
+        }
+        if (result.Changed)
+            PostChanged();
     }
 
     /// <summary>Move left one character, announcing like Left arrow (an
@@ -274,6 +260,34 @@ public class EditBox : Widget
 
     /// <summary>Move to the text end, announcing like Ctrl+End.</summary>
     public void MoveToDocEnd() => Nav(InputKind.MoveToDocEnd);
+
+    // ── Undo ──
+
+    /// <summary>Undo the most recent edit, announcing like Ctrl+Z: the
+    /// value at the restored state — the selection that came back, or
+    /// the current line — or "Nothing to undo". One undo step is a
+    /// typing sequence or one bulk operation (paste, cut, a selection
+    /// delete or replace, a word delete, InsertText, ReplaceRange). A
+    /// typing sequence ends only when the cursor is not where typing
+    /// left it as the next edit arrives, or when ten seconds pass
+    /// between edits; backspace and delete ride in the sequence.
+    /// Setting <see cref="Text"/> clears the history.</summary>
+    public void Undo() => Nav(InputKind.Undo);
+
+    /// <summary>Redo the most recently undone edit, announcing like
+    /// Ctrl+Y. Any new edit discards the redo steps.</summary>
+    public void Redo() => Nav(InputKind.Redo);
+
+    /// <summary>Undo memory: the retained-character budget (UTF-16 code
+    /// units of removed plus inserted text summed over held undo
+    /// steps). Past it the oldest steps are evicted; the newest is
+    /// always kept, even alone over budget. A smaller budget applies
+    /// from the next edit.</summary>
+    public int UndoMemory
+    {
+        get => _editor.History.MaxChars;
+        set => _editor.History.MaxChars = Math.Max(value, 0);
+    }
 
     /// <summary>Replace the text without any announcement — the
     /// counterpart of the <see cref="Text"/> setter for subclass input
@@ -384,15 +398,18 @@ public class EditBox : Widget
                 || combo.Key == Key.Home || combo.Key == Key.End) return true;
             if (combo.Key == Key.Backspace || combo.Key == Key.Delete) return true;
         }
-        // Ctrl+clipboard/select-all.
+        // Ctrl+clipboard/select-all/undo/redo.
         if (combo.Ctrl && !combo.Alt && !combo.Shift && combo.Key.IsChar(out var c)
-            && c is 'c' or 'x' or 'v' or 'a') return true;
+            && c is 'c' or 'x' or 'v' or 'a' or 'z' or 'y') return true;
+        // Ctrl+Shift+Z (redo).
+        if (combo.Ctrl && !combo.Alt && combo.Shift
+            && combo.Key.IsChar(out var rz) && rz == 'z') return true;
         return base.ReservesKey(combo);
     }
 
     protected override bool OnInput(in InputEvent input)
     {
-        var result = EditBoxCore.Handle(this, input, _editor, Engine.Clipboard);
+        var result = EditBoxCore.Handle(this, input, _editor, Engine.Clipboard, NowMs);
         if (!result.Consumed)
             return false;
         foreach (var ev in result.Events)

@@ -47,6 +47,8 @@ public enum InputKind : uint
     SpeakFocus = 40,
     Dismiss = 41,
     RawKey = 42,
+    Undo = 43,
+    Redo = 44,
 }
 
 [Flags]

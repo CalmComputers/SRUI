@@ -163,9 +163,17 @@ public static class SpeechRenderer
                     EditNoopKind.NoText => "No text",
                     EditNoopKind.NothingToSelect => "Nothing to select",
                     EditNoopKind.NothingToDelete => "Nothing to delete",
+                    EditNoopKind.NothingToUndo => "Nothing to undo",
+                    EditNoopKind.NothingToRedo => "Nothing to redo",
                     EditNoopKind.SelectedToTop => $"Already selected to top, {context}",
                     _ => $"Already selected to bottom, {context}",
                 };
+
+            // Where the user now stands — the selection that came back,
+            // or the line as it now reads. The words say what changed;
+            // "Nothing to undo" already covers the failure case.
+            case AccessibilityEvent.UndoRedo(_, var undoContext, _):
+                return undoContext;
 
             case AccessibilityEvent.Announce(var text, _):
                 return text;

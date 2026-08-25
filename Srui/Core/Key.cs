@@ -245,6 +245,8 @@ public readonly record struct KeyCombo(Key Key, bool Ctrl, bool Alt, bool Shift)
             InputKind.DeleteWordBackward => WithCtrl(Key.Backspace),
             InputKind.DeleteWordForward => WithCtrl(Key.Delete),
 
+            InputKind.Undo => WithCtrl(Key.Char('z')),
+            InputKind.Redo => WithCtrl(Key.Char('y')),
             InputKind.Copy => WithCtrl(Key.Char('c')),
             InputKind.Cut => WithCtrl(Key.Char('x')),
             InputKind.Paste => WithCtrl(Key.Char('v')),

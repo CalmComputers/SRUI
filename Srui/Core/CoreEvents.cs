@@ -34,8 +34,8 @@ internal static class Coalesce
     /// settled one. The label deltas key per property (and per state
     /// flag), so a rename and a description change in one batch both
     /// survive while two renames collapse to the settled name. Action
-    /// events (Typing, TextNav, Clipboard, EditNoop, Announce) and all
-    /// Activated/Callback/Tick events keep emission order. The
+    /// events (Typing, TextNav, Clipboard, UndoRedo, EditNoop, Announce)
+    /// and all Activated/Callback/Tick events keep emission order. The
     /// surviving Focused event is additionally delivered last in the
     /// batch: focus describes where the user is now, and everything else
     /// in the batch describes what just happened — so a handler that

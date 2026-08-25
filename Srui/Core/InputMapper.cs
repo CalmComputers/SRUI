@@ -180,6 +180,9 @@ internal sealed class InputMapper
             if (!shift && key == Key.Char('x')) return InputEvent.Simple(InputKind.Cut);
             if (!shift && key == Key.Char('v')) return InputEvent.Simple(InputKind.Paste);
             if (!shift && key == Key.Char('a')) return InputEvent.Simple(InputKind.SelectAll);
+            if (!shift && key == Key.Char('z')) return InputEvent.Simple(InputKind.Undo);
+            if (!shift && key == Key.Char('y')) return InputEvent.Simple(InputKind.Redo);
+            if (shift && key == Key.Char('z')) return InputEvent.Simple(InputKind.Redo);
 
             if (key == Key.Left)
                 return InputEvent.Simple(shift ? InputKind.SelectWordLeft : InputKind.MoveWordLeft);

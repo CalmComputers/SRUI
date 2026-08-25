@@ -227,9 +227,13 @@ internal static class EditBoxCore
 
     /// <summary>Handle input for a focused edit box. Reads and writes the
     /// editor state directly; sets Changed on the result when text is
-    /// modified.</summary>
-    public static Result Handle(Widget widget, in InputEvent input, EditorState editor, IClipboard clipboard)
+    /// modified. nowMs is the engine clock, which the undo history reads
+    /// for the typing-sequence timeout.</summary>
+    public static Result Handle(
+        Widget widget, in InputEvent input, EditorState editor, IClipboard clipboard,
+        ulong nowMs = 0)
     {
+        editor.History.Now = nowMs;
         var prevCursor = editor.Cursor;
         var prevSelection = editor.Selection;
         var hadSelection = editor.HasSelection;
@@ -458,6 +462,23 @@ internal static class EditBoxCore
                 editor.Paste(text);
                 var result = new Result { Consumed = true, Changed = true };
                 result.Events.Add(new AccessibilityEvent.Clipboard(widget, ClipboardOp.Paste));
+                return result;
+            }
+            case InputKind.Undo:
+            case InputKind.Redo:
+            {
+                // Read-only swallows undo like it swallows typing.
+                if (editor.ReadOnly)
+                    return Result.JustConsumed();
+                var redo = input.Kind == InputKind.Redo;
+                if (!(redo ? editor.Redo() : editor.Undo()))
+                {
+                    return Result.Noop(widget,
+                        redo ? EditNoopKind.NothingToRedo : EditNoopKind.NothingToUndo);
+                }
+                var result = new Result { Consumed = true, Changed = true };
+                result.Events.Add(new AccessibilityEvent.UndoRedo(
+                    widget, LabelValue(editor), redo));
                 return result;
             }
             default:
