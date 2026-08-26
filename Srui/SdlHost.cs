@@ -125,7 +125,10 @@ public sealed class SdlHost : IDisposable, ISystemHotkeys
         while (Sdl3.SDL_PollEvent(out ev))
             Dispatch(in ev, result);
         // Alt tap resolves only after the whole batch is seen, so a
-        // FocusLost in the same batch can cancel it.
+        // FocusLost in the same batch can cancel it - as does a hotkey
+        // the OS consumed, which SDL never saw as a key.
+        if (FiredHotkeys.Count > 0)
+            _mapper.CancelAltTap();
         if (_mapper.TakeAltTap())
             result.Add(new HostEvent.AltTap());
         return DrainDeferred(result);

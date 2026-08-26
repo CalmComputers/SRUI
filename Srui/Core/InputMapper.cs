@@ -49,10 +49,12 @@ internal sealed class InputMapper
                 _modifiersHeld = ctrl || alt || win;
 
                 // Track clean Alt tap: Alt down with nothing else → clean.
-                // Any non-modifier key while Alt is held → dirty.
-                if (ev.Key is Sdl3.KeyLAlt or Sdl3.KeyRAlt && !ctrl)
+                // Any non-modifier key while Alt is held → dirty, and so
+                // is the Windows key: Win+Alt is the system-hotkey range,
+                // and the OS eats the key that would otherwise dirty it.
+                if (ev.Key is Sdl3.KeyLAlt or Sdl3.KeyRAlt && !ctrl && !win)
                     _altClean = true;
-                else if (!IsModifierKey(ev.Key))
+                else if (!IsModifierKey(ev.Key) || ev.Key is Sdl3.KeyLGui or Sdl3.KeyRGui)
                     _altClean = false;
 
                 // A modifier on its own is a physical key (the host's
@@ -126,6 +128,14 @@ internal sealed class InputMapper
 
     /// <summary>Consume the deferred Alt tap, if any. Call after draining
     /// all events in the pump cycle so FocusLost can cancel it.</summary>
+    /// <summary>A system-wide hotkey fired: whatever Alt is doing, it
+    /// was part of that combo, not a tap.</summary>
+    public void CancelAltTap()
+    {
+        _altClean = false;
+        _altTapPending = false;
+    }
+
     public bool TakeAltTap()
     {
         var pending = _altTapPending;
