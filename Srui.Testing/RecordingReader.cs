@@ -7,7 +7,7 @@ namespace Srui.Testing;
 public sealed class RecordingReader : IReader
 {
     /// <summary>The events heard, in delivery order. Consumers that
-    /// assert in batches (see <see cref="TestApp.Spoken"/>) clear the
+    /// assert in batches (see <see cref="Harness.Spoken"/>) clear the
     /// list between batches.</summary>
     public List<AccessibilityEvent> Events { get; } = new();
 

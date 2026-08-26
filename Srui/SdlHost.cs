@@ -41,6 +41,11 @@ public sealed class SdlHost : IDisposable, ISystemHotkeys
     /// announcement of the window finishes first; spoken at once, ours
     /// is cut off by it. A focus lost in the meantime drops it.</summary>
     private long? _refocusAt;
+
+    /// <summary>Whether the window has gained focus before. The first
+    /// gain is the window opening, which the app already announces, so
+    /// only later ones - the user coming back - get the readout.</summary>
+    private bool _focusedBefore;
     private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
     private const long RefocusDelayMs = 50;
 
@@ -188,7 +193,11 @@ public sealed class SdlHost : IDisposable, ISystemHotkeys
         if (_mapper.Map(in ev) is InputEvent input)
         {
             if (input.Kind == InputKind.SpeakFocus)
-                _refocusAt = _clock.ElapsedMilliseconds;
+            {
+                if (_focusedBefore)
+                    _refocusAt = _clock.ElapsedMilliseconds;
+                _focusedBefore = true;
+            }
             else
                 output.Add(new HostEvent.Input(input));
         }
