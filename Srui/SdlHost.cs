@@ -35,6 +35,15 @@ public sealed class SdlHost : IDisposable, ISystemHotkeys
     private readonly InputMapper _mapper = new();
     private readonly HashSet<int> _hotkeys = new();
 
+    /// <summary>When the window last gained focus, or null when nothing
+    /// is pending. The focus readout is held for
+    /// <see cref="RefocusDelayMs"/> so the screen reader's own
+    /// announcement of the window finishes first; spoken at once, ours
+    /// is cut off by it. A focus lost in the meantime drops it.</summary>
+    private long? _refocusAt;
+    private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
+    private const long RefocusDelayMs = 50;
+
     /// <summary>Hotkey ids the message hook saw since the last pump.
     /// Static because the hook is an unmanaged function pointer with no
     /// instance; one windowed host per process (SDL's event queue is
@@ -107,7 +116,9 @@ public sealed class SdlHost : IDisposable, ISystemHotkeys
         // while SDL pumps messages inside the wait - so a wait that
         // timed out may still have a batch to deliver.
         if (!Sdl3.SDL_WaitEventTimeout(out var ev, (int)timeoutMs))
-            return FiredHotkeys.Count == 0 ? EmptyBatch : DrainHotkeys(new List<HostEvent>());
+            return FiredHotkeys.Count == 0 && !RefocusDue()
+                ? EmptyBatch
+                : DrainDeferred(new List<HostEvent>());
 
         var result = new List<HostEvent>();
         Dispatch(in ev, result);
@@ -117,7 +128,20 @@ public sealed class SdlHost : IDisposable, ISystemHotkeys
         // FocusLost in the same batch can cancel it.
         if (_mapper.TakeAltTap())
             result.Add(new HostEvent.AltTap());
-        return DrainHotkeys(result);
+        return DrainDeferred(result);
+    }
+
+    private bool RefocusDue() =>
+        _refocusAt is { } at && _clock.ElapsedMilliseconds - at >= RefocusDelayMs;
+
+    private List<HostEvent> DrainDeferred(List<HostEvent> output)
+    {
+        if (RefocusDue())
+        {
+            _refocusAt = null;
+            output.Add(new HostEvent.Input(InputEvent.Simple(InputKind.SpeakFocus)));
+        }
+        return DrainHotkeys(output);
     }
 
     private static List<HostEvent> DrainHotkeys(List<HostEvent> output)
@@ -153,12 +177,18 @@ public sealed class SdlHost : IDisposable, ISystemHotkeys
                     output.Add(new HostEvent.Key(new KeyInput(upKey, upMods, KeyPhase.Release)));
                 break;
             case Sdl3.EventWindowFocusLost:
+                _refocusAt = null;
                 output.Add(new HostEvent.FocusLost());
                 break;
         }
 
         if (_mapper.Map(in ev) is InputEvent input)
-            output.Add(new HostEvent.Input(input));
+        {
+            if (input.Kind == InputKind.SpeakFocus)
+                _refocusAt = _clock.ElapsedMilliseconds;
+            else
+                output.Add(new HostEvent.Input(input));
+        }
     }
 
     // ── System-wide hotkeys (Windows) ──
