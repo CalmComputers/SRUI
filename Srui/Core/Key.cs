@@ -38,6 +38,7 @@ public readonly record struct Key(uint Code)
     public static readonly Key Shift = new(19);
     public static readonly Key Ctrl = new(20);
     public static readonly Key Alt = new(21);
+    public static readonly Key Win = new(22);
 
     /// <summary>A character key. Callers normalize to ASCII lowercase where
     /// the input map does (typing, shortcuts).</summary>
@@ -99,6 +100,10 @@ public readonly record struct Key(uint Code)
             16 => "next track",
             17 => "previous track",
             18 => "stop",
+            19 => "shift",
+            20 => "control",
+            21 => "alt",
+            22 => "windows",
             _ => "?",
         };
     }
@@ -171,7 +176,7 @@ public readonly record struct Key(uint Code)
 /// <summary>A key combined with modifier state. Carries both string forms
 /// (spoken and config) and the framework's reservation verdict, so a bind
 /// dialog needs nothing else.</summary>
-public readonly record struct KeyCombo(Key Key, bool Ctrl, bool Alt, bool Shift)
+public readonly record struct KeyCombo(Key Key, bool Ctrl, bool Alt, bool Shift, bool Win = false)
 {
     public static KeyCombo Plain(Key key) => new(key, false, false, false);
     public static KeyCombo WithCtrl(Key key) => new(key, true, false, false);
@@ -180,16 +185,29 @@ public readonly record struct KeyCombo(Key Key, bool Ctrl, bool Alt, bool Shift)
     public static KeyCombo CtrlShift(Key key) => new(key, true, false, true);
     public static KeyCombo AltShift(Key key) => new(key, false, true, true);
 
+    /// <summary>The Windows key plus a key. Inside a window the OS
+    /// claims many of these before any program sees them (Win+letter
+    /// is the Windows shortcut range); their home is a system-wide
+    /// hotkey (<see cref="ISystemHotkeys"/>), where Win+Alt is the range
+    /// the OS leaves almost empty.</summary>
+    public static KeyCombo WithWin(Key key) => new(key, false, false, false, true);
+    public static KeyCombo WinAlt(Key key) => new(key, false, true, false, true);
+
+    /// <summary>Whether any modifier is held.</summary>
+    public bool HasModifier => Ctrl || Alt || Shift || Win;
+
     /// <summary>From the flat (key, mods) encoding used by RawKey inputs.</summary>
     public static KeyCombo FromFlat(uint key, Mods mods) => new(
         new Key(key),
         (mods & Mods.Ctrl) != 0,
         (mods & Mods.Alt) != 0,
-        (mods & Mods.Shift) != 0);
+        (mods & Mods.Shift) != 0,
+        (mods & Mods.Win) != 0);
 
     public (uint Key, Mods Mods) ToFlat() => (
         Key.Code,
-        (Ctrl ? Mods.Ctrl : Mods.None) | (Alt ? Mods.Alt : Mods.None) | (Shift ? Mods.Shift : Mods.None));
+        (Ctrl ? Mods.Ctrl : Mods.None) | (Alt ? Mods.Alt : Mods.None)
+        | (Shift ? Mods.Shift : Mods.None) | (Win ? Mods.Win : Mods.None));
 
     /// <summary>The combo behind a logical input. Inputs from a real
     /// keyboard carry their physical provenance (the host stamps the
@@ -264,11 +282,13 @@ public readonly record struct KeyCombo(Key Key, bool Ctrl, bool Alt, bool Shift)
     /// <summary>Whether this combo matches the given logical input.</summary>
     public bool MatchesInput(in InputEvent input) => FromInput(input) == this;
 
-    /// <summary>Spoken form: "control alt shift s". Modifier order:
-    /// control, alt, shift, then the key. Space-separated, lowercase.</summary>
+    /// <summary>Spoken form: "windows control alt shift s". Modifier
+    /// order: windows, control, alt, shift, then the key. Space-separated,
+    /// lowercase.</summary>
     public string DisplayName()
     {
         var result = new System.Text.StringBuilder();
+        if (Win) result.Append("windows ");
         if (Ctrl) result.Append("control ");
         if (Alt) result.Append("alt ");
         if (Shift) result.Append("shift ");
@@ -278,11 +298,13 @@ public readonly record struct KeyCombo(Key Key, bool Ctrl, bool Alt, bool Shift)
 
     public override string ToString() => DisplayName();
 
-    /// <summary>Compact config form: "ctrl+shift+s", "alt+f2", "enter".
-    /// Modifier order: ctrl, alt, shift, then key. Plus-separated, lowercase.</summary>
+    /// <summary>Compact config form: "win+ctrl+shift+s", "alt+f2",
+    /// "enter". Modifier order: win, ctrl, alt, shift, then key.
+    /// Plus-separated, lowercase.</summary>
     public string ToConfigString()
     {
         var result = new System.Text.StringBuilder();
+        if (Win) result.Append("win+");
         if (Ctrl) result.Append("ctrl+");
         if (Alt) result.Append("alt+");
         if (Shift) result.Append("shift+");
@@ -295,7 +317,7 @@ public readonly record struct KeyCombo(Key Key, bool Ctrl, bool Alt, bool Shift)
     public static bool TryParseConfig(string s, out KeyCombo combo)
     {
         combo = default;
-        bool ctrl = false, alt = false, shift = false;
+        bool ctrl = false, alt = false, shift = false, win = false;
         string? keyPart = null;
 
         foreach (var raw in s.Split('+'))
@@ -306,6 +328,7 @@ public readonly record struct KeyCombo(Key Key, bool Ctrl, bool Alt, bool Shift)
                 case "ctrl" or "control": ctrl = true; break;
                 case "alt": alt = true; break;
                 case "shift": shift = true; break;
+                case "win" or "windows": win = true; break;
                 default:
                     if (keyPart is not null)
                         return false; // multiple key parts
@@ -319,7 +342,7 @@ public readonly record struct KeyCombo(Key Key, bool Ctrl, bool Alt, bool Shift)
         var key = Key.FromConfigName(keyPart);
         if (key is null)
             return false;
-        combo = new KeyCombo(key.Value, ctrl, alt, shift);
+        combo = new KeyCombo(key.Value, ctrl, alt, shift, win);
         return true;
     }
 

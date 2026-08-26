@@ -58,6 +58,8 @@ public enum Mods : uint
     Ctrl = 1,
     Alt = 2,
     Shift = 4,
+    /// <summary>The Windows key (GUI/Super on other platforms).</summary>
+    Win = 8,
 }
 
 /// <summary>Physical key encoding for RawKey inputs.</summary>

@@ -27,10 +27,13 @@ internal static class Sdl3
     public const ushort KmodRCtrl = 0x0080;
     public const ushort KmodLAlt = 0x0100;
     public const ushort KmodRAlt = 0x0200;
+    public const ushort KmodLGui = 0x0400;
+    public const ushort KmodRGui = 0x0800;
 
     public const ushort KmodShift = KmodLShift | KmodRShift;
     public const ushort KmodCtrl = KmodLCtrl | KmodRCtrl;
     public const ushort KmodAlt = KmodLAlt | KmodRAlt;
+    public const ushort KmodGui = KmodLGui | KmodRGui;
 
     // SDL_Keycode values the mapper names. Printable keys are their
     // ASCII codepoint; the rest are scancode | 0x40000000.
@@ -54,9 +57,11 @@ internal static class Sdl3
     public const uint KeyLCtrl = 0x400000E0;
     public const uint KeyLShift = 0x400000E1;
     public const uint KeyLAlt = 0x400000E2;
+    public const uint KeyLGui = 0x400000E3;
     public const uint KeyRCtrl = 0x400000E4;
     public const uint KeyRShift = 0x400000E5;
     public const uint KeyRAlt = 0x400000E6;
+    public const uint KeyRGui = 0x400000E7;
     public const uint KeyMediaPlay = 0x40000106;
     public const uint KeyMediaPause = 0x40000107;
     public const uint KeyMediaNextTrack = 0x4000010B;
@@ -107,6 +112,34 @@ internal static class Sdl3
     [DllImport(Dll)]
     [return: MarshalAs(UnmanagedType.I1)]
     public static extern bool SDL_PollEvent(out Event ev);
+
+    // ── Windows-only: the native window handle and the message hook ──
+    // SDL_PropertiesID is a Uint32; the property name is
+    // SDL_PROP_WINDOW_WIN32_HWND_POINTER from SDL_video.h.
+    public const string PropWindowWin32Hwnd = "SDL.window.win32.hwnd";
+
+    [DllImport(Dll)]
+    public static extern uint SDL_GetWindowProperties(IntPtr window);
+
+    [DllImport(Dll)]
+    public static extern IntPtr SDL_GetPointerProperty(
+        uint props, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, IntPtr defaultValue);
+
+    /// <summary>SDL_WindowsMessageHook: <c>bool (SDLCALL *)(void *userdata,
+    /// MSG *msg)</c>, called from inside SDL's message pump for every
+    /// message before SDL handles it; true lets SDL see it, false drops
+    /// it. Runs on the thread pumping events, which is the app thread.</summary>
+    [DllImport(Dll)]
+    public static unsafe extern void SDL_SetWindowsMessageHook(
+        delegate* unmanaged[Cdecl]<IntPtr, IntPtr, byte> callback, IntPtr userdata);
+
+    [DllImport(Dll)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    public static extern bool SDL_RaiseWindow(IntPtr window);
+
+    [DllImport(Dll)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    public static extern bool SDL_RestoreWindow(IntPtr window);
 
     [DllImport(Dll)]
     public static extern IntPtr SDL_GetClipboardText();

@@ -176,4 +176,26 @@ public class KeyComboTests
     {
         Assert.False(KeyCombo.TryParseConfig("a+b", out _));
     }
+
+    [Fact]
+    public void WindowsKeyLeadsBothForms()
+    {
+        var combo = KeyCombo.WinAlt(Key.Space);
+        Assert.Equal("windows alt space", combo.DisplayName());
+        Assert.Equal("win+alt+space", combo.ToConfigString());
+        Assert.True(KeyCombo.TryParseConfig("win+alt+space", out var parsed));
+        Assert.Equal(combo, parsed);
+        Assert.True(KeyCombo.TryParseConfig("windows+ctrl+shift+f2", out var full));
+        Assert.Equal(new KeyCombo(Key.F(2), true, false, true, true), full);
+    }
+
+    [Fact]
+    public void WindowsKeyRidesTheFlatEncoding()
+    {
+        var combo = KeyCombo.WithWin(Key.Char('k'));
+        var (key, mods) = combo.ToFlat();
+        Assert.Equal(Mods.Win, mods);
+        Assert.Equal(combo, KeyCombo.FromFlat(key, mods));
+        Assert.NotEqual(KeyCombo.Plain(Key.Char('k')), combo);
+    }
 }

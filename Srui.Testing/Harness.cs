@@ -219,7 +219,7 @@ public abstract class Harness : IDisposable
     /// a US-layout uppercase/symbol shift. Null for everything else.</summary>
     private static char? TypedChar(KeyCombo combo)
     {
-        if (combo.Ctrl || combo.Alt)
+        if (combo.Ctrl || combo.Alt || combo.Win)
             return null;
         if (combo.Key == Key.Space)
             return ' ';

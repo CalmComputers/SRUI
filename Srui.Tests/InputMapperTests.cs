@@ -116,3 +116,54 @@ public class InputMapperTests
         Assert.Equal(0u, stray?.Key);
     }
 }
+
+/// <summary>The Windows key: never semantic, always a host binding, and
+/// a text suppressor like Ctrl and Alt.</summary>
+public class WindowsKeyMappingTests
+{
+    private static Sdl3.Event KeyDown(uint key, ushort mod) => new()
+    {
+        Type = Sdl3.EventKeyDown,
+        Key = key,
+        Mod = mod,
+    };
+
+    [Fact]
+    public void WinCombosAreRawKeysCarryingTheModifier()
+    {
+        var mapper = new InputMapper();
+        var left = mapper.Map(KeyDown(Sdl3.KeyLeft, Sdl3.KmodLGui));
+        Assert.Equal(InputKind.RawKey, left?.Kind);
+        Assert.Equal(KeyCombo.WithWin(Key.Left), KeyCombo.FromInput(left!.Value));
+
+        var mnemonic = mapper.Map(KeyDown('s', (ushort)(Sdl3.KmodRGui | Sdl3.KmodLAlt)));
+        Assert.Equal(InputKind.RawKey, mnemonic?.Kind);
+        Assert.Equal(KeyCombo.WinAlt(Key.Char('s')), KeyCombo.FromInput(mnemonic!.Value));
+    }
+
+    [Fact]
+    public void WinPlusPrintableNeverTypes()
+    {
+        var mapper = new InputMapper();
+        var down = mapper.Map(KeyDown('k', Sdl3.KmodLGui));
+        Assert.Equal(InputKind.RawKey, down?.Kind);
+        // Some platforms still send TextInput for the key; it is dropped.
+        var ptr = System.Runtime.InteropServices.Marshal.StringToCoTaskMemUTF8("k");
+        try
+        {
+            Assert.Null(mapper.Map(new Sdl3.Event { Type = Sdl3.EventTextInput, TextPtr = ptr }));
+        }
+        finally
+        {
+            System.Runtime.InteropServices.Marshal.FreeCoTaskMem(ptr);
+        }
+    }
+
+    [Fact]
+    public void TheWindowsKeyItselfIsPhysicalOnly()
+    {
+        var mapper = new InputMapper();
+        Assert.Null(mapper.Map(KeyDown(Sdl3.KeyLGui, Sdl3.KmodLGui)));
+        Assert.Equal((Key.Win.Code, Mods.Win), InputMapper.PhysicalCombo(Sdl3.KeyLGui, Sdl3.KmodLGui));
+    }
+}

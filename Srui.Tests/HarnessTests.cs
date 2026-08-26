@@ -399,3 +399,14 @@ public class TestHostTests
             """);
     }
 }
+
+public class WindowsKeyComboSpecTests
+{
+    [Fact]
+    public void CompactInitialsIncludeWin()
+    {
+        Assert.Equal(KeyCombo.WinAlt(Key.Space), ComboSpec.Parse("wa+space"));
+        Assert.Equal(KeyCombo.WithWin(Key.Char('k')), ComboSpec.Parse("win+k"));
+        Assert.Equal(new KeyCombo(Key.F(1), true, false, false, true), ComboSpec.Parse("windows+ctrl+f1"));
+    }
+}

@@ -44,6 +44,15 @@ public sealed class MultiAppHost : IDisposable
     /// <summary>The SDL window and event pump; null when headless.</summary>
     public SdlHost? Host { get; }
 
+    /// <summary>System-wide hotkey registration against the window;
+    /// null when headless. A press arrives through
+    /// <see cref="HotkeyPressed"/>.</summary>
+    public ISystemHotkeys? SystemHotkeys => Host;
+
+    /// <summary>Bring the window to the front (see
+    /// <see cref="SdlHost.RaiseWindow"/>); nothing when headless.</summary>
+    public void RaiseWindow() => Host?.RaiseWindow();
+
     private readonly SpeechReader? _speechReader;
     private readonly List<IReader> _readers = new();
     private readonly List<HostedApp> _apps = new();
@@ -268,6 +277,13 @@ public sealed class MultiAppHost : IDisposable
     /// <summary>A clean Alt tap. When unset, the active app's own
     /// <see cref="SruiApp.AltTap"/> runs instead.</summary>
     public Action? AltTap { get; set; }
+
+    /// <summary>A system-wide hotkey fired, by the id it was registered
+    /// under (<see cref="SystemHotkeys"/>). Runs on the app thread
+    /// during the pump, whether or not the window has focus; the
+    /// handler decides what to run and whether to
+    /// <see cref="RaiseWindow"/>.</summary>
+    public Action<int>? HotkeyPressed { get; set; }
 
     /// <summary>An app's own code threw - a widget handler, a message
     /// handler, a ticker - while the host was delivering input, a key,
@@ -519,6 +535,9 @@ public sealed class MultiAppHost : IDisposable
                     case HostEvent.FocusLost:
                         _active?.App.FocusLost?.Invoke();
                         FocusLost?.Invoke();
+                        break;
+                    case HostEvent.Hotkey(var id):
+                        HotkeyPressed?.Invoke(id);
                         break;
                     case HostEvent.Input(var input):
                         HandleInput(input);

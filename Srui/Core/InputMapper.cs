@@ -33,7 +33,8 @@ internal sealed class InputMapper
     private static bool IsModifierKey(uint keycode) => keycode
         is Sdl3.KeyLCtrl or Sdl3.KeyRCtrl
         or Sdl3.KeyLAlt or Sdl3.KeyRAlt
-        or Sdl3.KeyLShift or Sdl3.KeyRShift;
+        or Sdl3.KeyLShift or Sdl3.KeyRShift
+        or Sdl3.KeyLGui or Sdl3.KeyRGui;
 
     /// <summary>Map an SDL3 event to a logical input, if applicable.</summary>
     public InputEvent? Map(in Sdl3.Event ev)
@@ -44,7 +45,8 @@ internal sealed class InputMapper
             {
                 var ctrl = (ev.Mod & Sdl3.KmodCtrl) != 0;
                 var alt = (ev.Mod & Sdl3.KmodAlt) != 0;
-                _modifiersHeld = ctrl || alt;
+                var win = (ev.Mod & Sdl3.KmodGui) != 0;
+                _modifiersHeld = ctrl || alt || win;
 
                 // Track clean Alt tap: Alt down with nothing else → clean.
                 // Any non-modifier key while Alt is held → dirty.
@@ -62,7 +64,7 @@ internal sealed class InputMapper
                 if (!IsModifierKey(ev.Key))
                 {
                     _pendingTypedKey = null;
-                    if (mapped is null && !ctrl && !alt
+                    if (mapped is null && !ctrl && !alt && !win
                         && PhysicalCombo(ev.Key, ev.Mod) is (var key, var mods)
                         && (new Key(key).IsChar(out _) || new Key(key) == Key.Space))
                         _pendingTypedKey = (key, mods);
@@ -74,7 +76,7 @@ internal sealed class InputMapper
             {
                 var ctrl = (ev.Mod & Sdl3.KmodCtrl) != 0;
                 var alt = (ev.Mod & Sdl3.KmodAlt) != 0;
-                _modifiersHeld = ctrl || alt;
+                _modifiersHeld = ctrl || alt || (ev.Mod & Sdl3.KmodGui) != 0;
 
                 // Alt released and nothing else was pressed → defer the
                 // tap. Not emitted immediately because FocusLost (from
@@ -160,6 +162,14 @@ internal sealed class InputMapper
     private static InputEvent? MapComboInner(KeyCombo combo)
     {
         var (key, ctrl, alt, shift) = (combo.Key, combo.Ctrl, combo.Alt, combo.Shift);
+
+        // The Windows key has no semantic mapping of its own and turns
+        // any combo into a host binding: win+left is not "move left".
+        if (combo.Win)
+        {
+            var (winKey, winMods) = combo.ToFlat();
+            return InputEvent.RawKey(winKey, winMods);
+        }
 
         // Alt+arrow → tree navigation; Alt+letter → widget mnemonic.
         if (alt && !ctrl && !shift)
@@ -254,7 +264,8 @@ internal sealed class InputMapper
             return null;
         var mods = ((keymod & Sdl3.KmodCtrl) != 0 ? Mods.Ctrl : Mods.None)
             | ((keymod & Sdl3.KmodAlt) != 0 ? Mods.Alt : Mods.None)
-            | ((keymod & Sdl3.KmodShift) != 0 ? Mods.Shift : Mods.None);
+            | ((keymod & Sdl3.KmodShift) != 0 ? Mods.Shift : Mods.None)
+            | ((keymod & Sdl3.KmodGui) != 0 ? Mods.Win : Mods.None);
         return (key.Code, mods);
     }
 
@@ -294,6 +305,7 @@ internal sealed class InputMapper
             Sdl3.KeyLShift or Sdl3.KeyRShift => Key.Shift,
             Sdl3.KeyLCtrl or Sdl3.KeyRCtrl => Key.Ctrl,
             Sdl3.KeyLAlt or Sdl3.KeyRAlt => Key.Alt,
+            Sdl3.KeyLGui or Sdl3.KeyRGui => Key.Win,
             _ => null,
         };
     }

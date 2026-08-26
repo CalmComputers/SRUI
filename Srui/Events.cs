@@ -268,4 +268,9 @@ public abstract record HostEvent
     /// <summary>The window lost keyboard focus. Held-key releases will
     /// not arrive; zero any held-key state.</summary>
     public sealed record FocusLost : HostEvent;
+
+    /// <summary>A system-wide hotkey registered through
+    /// <see cref="ISystemHotkeys"/> was pressed, wherever keyboard focus
+    /// was. The combo never arrives as a key: the OS consumed it.</summary>
+    public sealed record Hotkey(int Id) : HostEvent;
 }
