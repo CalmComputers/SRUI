@@ -358,10 +358,11 @@ public readonly record struct KeyCombo(Key Key, bool Ctrl, bool Alt, bool Shift,
         get
         {
             // Plain Tab / Shift+Tab: the focus ring must always work.
-            if (Key == Key.Tab && !Ctrl && !Alt)
+            if (Key == Key.Tab && !Ctrl && !Alt && !Win)
                 return "Tab is reserved for moving between widgets";
-            // Alt+letter: widget mnemonics. Alt+arrows: hierarchy navigation.
-            if (Alt && !Ctrl && !Shift)
+            // Alt+letter: widget mnemonics. Alt+arrows: hierarchy
+            // navigation. The Windows key takes a combo out of both.
+            if (Alt && !Ctrl && !Shift && !Win)
             {
                 if (Key.IsChar(out var c) && char.IsAsciiLetter(c))
                     return "Alt plus a letter is reserved for widget shortcuts";

@@ -190,6 +190,15 @@ public class KeyComboTests
     }
 
     [Fact]
+    public void WindowsKeyLiftsTheAltReservations()
+    {
+        Assert.NotNull(KeyCombo.WithAlt(Key.Char('m')).ReservedReason);
+        Assert.Null(KeyCombo.WinAlt(Key.Char('m')).ReservedReason);
+        Assert.Null(KeyCombo.WinAlt(Key.Left).ReservedReason);
+        Assert.Null(KeyCombo.WithWin(Key.Tab).ReservedReason);
+    }
+
+    [Fact]
     public void WindowsKeyRidesTheFlatEncoding()
     {
         var combo = KeyCombo.WithWin(Key.Char('k'));
