@@ -155,6 +155,26 @@ public class KeyComboTests
     }
 
     [Fact]
+    public void EveryPunctuationKeyRoundTripsThroughConfig()
+    {
+        // The keys a user can bind on a US layout without Shift, each
+        // through the Windows modifier a launcher-style binding uses.
+        foreach (var c in "',./\\;-=`[]")
+        {
+            var combo = KeyCombo.WithWin(Key.Char(c));
+            var s = combo.ToConfigString();
+            Assert.DoesNotContain("?", s);
+            Assert.True(KeyCombo.TryParseConfig(s, out var parsed), $"parse failed for {s}");
+            Assert.Equal(combo, parsed);
+        }
+        Assert.Equal("win+apostrophe", KeyCombo.WithWin(Key.Char('\'')).ToConfigString());
+        Assert.True(KeyCombo.TryParseConfig("windows+'", out var literal));
+        Assert.Equal(KeyCombo.WithWin(Key.Char('\'')), literal);
+        Assert.True(KeyCombo.TryParseConfig("ctrl+plus", out var plus));
+        Assert.Equal(KeyCombo.WithCtrl(Key.Char('+')), plus);
+    }
+
+    [Fact]
     public void ParseAliases()
     {
         Assert.True(KeyCombo.TryParseConfig("control+esc", out var esc));

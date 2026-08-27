@@ -113,7 +113,8 @@ public readonly record struct Key(uint Code)
     public string ConfigName()
     {
         if (IsChar(out var c))
-            return char.IsAsciiLetterOrDigit(c) ? char.ToLowerInvariant(c).ToString() : "?";
+            return char.IsAsciiLetterOrDigit(c) ? char.ToLowerInvariant(c).ToString()
+                : PunctuationName(c) ?? "?";
         if (IsF(out var n))
             return n is >= 1 and <= 12 ? $"f{n}" : "f?";
         return Code switch
@@ -146,6 +147,10 @@ public readonly record struct Key(uint Code)
     {
         if (s.Length == 1 && char.IsAsciiLetterOrDigit(s[0]))
             return Char(char.ToLowerInvariant(s[0]));
+        if (s.Length == 1 && PunctuationName(s[0]) is not null)
+            return Char(s[0]);
+        if (PunctuationChar(s) is { } punctuation)
+            return Char(punctuation);
         if (s.Length >= 2 && s[0] == 'f' && byte.TryParse(s.AsSpan(1), out var n) && n is >= 1 and <= 12)
             return F(n);
         return s switch
@@ -171,6 +176,44 @@ public readonly record struct Key(uint Code)
             _ => null,
         };
     }
+
+    /// <summary>Config names for the printable keys that are neither
+    /// letters nor digits, named rather than written as themselves
+    /// because "+" is the combo separator and a lone quote mark in a
+    /// document is easy to misread. Parsing accepts the character too.</summary>
+    private static string? PunctuationName(char c) => c switch
+    {
+        '\'' => "apostrophe",
+        ',' => "comma",
+        '.' => "period",
+        '/' => "slash",
+        '\\' => "backslash",
+        ';' => "semicolon",
+        '-' => "minus",
+        '=' => "equals",
+        '`' => "grave",
+        '[' => "leftbracket",
+        ']' => "rightbracket",
+        '+' => "plus",
+        _ => null,
+    };
+
+    private static char? PunctuationChar(string name) => name switch
+    {
+        "apostrophe" or "quote" => '\'',
+        "comma" => ',',
+        "period" or "dot" => '.',
+        "slash" => '/',
+        "backslash" => '\\',
+        "semicolon" => ';',
+        "minus" or "hyphen" or "dash" => '-',
+        "equals" or "equal" => '=',
+        "grave" or "backtick" or "backquote" => '`',
+        "leftbracket" => '[',
+        "rightbracket" => ']',
+        "plus" => '+',
+        _ => null,
+    };
 }
 
 /// <summary>A key combined with modifier state. Carries both string forms
