@@ -328,10 +328,16 @@ internal sealed class CoreUi
                 _focusMemory.Remember(parent, old);
         }
         _tree.SetFocus(next);
-        EmitFocused(next, cause);
+        EmitFocused(next, cause, old);
     }
 
-    private void EmitFocused(NodeId id, FocusCause cause)
+    /// <summary>Announce a focus landing. <paramref name="from"/> is
+    /// where focus was: the groups entered on the way from there to
+    /// <paramref name="id"/> are spoken first as context, so tabbing
+    /// into a group hears its name once and moves within it do not
+    /// repeat it. None (first focus, recovery) speaks every enclosing
+    /// group.</summary>
+    private void EmitFocused(NodeId id, FocusCause cause, NodeId from = default)
     {
         var node = _tree.Get(id);
         if (node?.Owner is Widget owner)
@@ -341,7 +347,8 @@ internal sealed class CoreUi
             // read as reshaped.
             owner.OnFocusGained();
             _events.Add(new CoreEvent.Acc(new AccessibilityEvent.Focused(
-                owner, node.Label.ToInfo(owner.ValueText, owner.StateText), EmptyContext, cause)));
+                owner, node.Label.ToInfo(owner.ValueText, owner.StateText),
+                GroupsEnteredFor(id, from), cause)));
         }
     }
 
@@ -359,9 +366,44 @@ internal sealed class CoreUi
         var node = _tree.Get(id);
         if (node?.Owner is not Widget owner)
             return;
+        var context = GroupsEnteredFor(id, NodeId.None);
+        context.AddRange(ContextLabelsFor(id));
         _events.Add(new CoreEvent.Acc(new AccessibilityEvent.Focused(
-            owner, node.Label.ToInfo(owner.ValueText, owner.StateText), ContextLabelsFor(id),
+            owner, node.Label.ToInfo(owner.ValueText, owner.StateText), context,
             FocusCause.Reannounce)));
+    }
+
+    /// <summary>The groups focus enters moving from <paramref name="from"/>
+    /// to <paramref name="id"/>, outermost first, each as "name role":
+    /// every group enclosing the target that does not also enclose (or
+    /// is not) the origin. A group with no name and the default role is
+    /// structure, not context, and is skipped.</summary>
+    private List<string> GroupsEnteredFor(NodeId id, NodeId from)
+    {
+        var result = new List<string>();
+        for (var ancestor = _tree.Parent(id); !ancestor.IsNone; ancestor = _tree.Parent(ancestor))
+        {
+            if (ancestor == from || IsAncestor(ancestor, from))
+                break;
+            var node = _tree.Get(ancestor);
+            if (node is null || node.Label.Focusable || node.Label.IsContextLabel)
+                continue;
+            var spoken = GroupContextText(node.Label);
+            if (spoken.Length == 0)
+                continue;
+            result.Insert(0, spoken);
+        }
+        return result;
+    }
+
+    private static string GroupContextText(WidgetLabel label)
+    {
+        var name = label.Name ?? "";
+        if (name.Length == 0 && label.RoleText == Widget.GroupRole)
+            return "";
+        return name.Length == 0 ? label.RoleText
+            : label.RoleText.Length == 0 ? name
+            : $"{name} {label.RoleText}";
     }
 
     private List<string> ContextLabelsFor(NodeId id)

@@ -42,7 +42,7 @@ public class FocusAndNavigationTests
 
         ui.Input(InputKind.NavigateNext);
         Assert.True(wrap.IsFocused);
-        Assert.Equal(new[] { "Word Wrap check box not checked" }, ui.Spoken());
+        Assert.Equal(new[] { "Options group Word Wrap check box not checked" }, ui.Spoken());
     }
 
     [Fact]
@@ -542,7 +542,7 @@ public class ShortcutTests
         Assert.True(ui.Raw(KeyCombo.WithCtrl(Key.Char('w'))));
         Assert.True(wrap.IsFocused);
         Assert.Equal(
-            new[] { "Word Wrap check box not checked control w" },
+            new[] { "Options group Word Wrap check box not checked control w" },
             ui.Spoken());
     }
 
@@ -1833,6 +1833,99 @@ public class TabControlTests
         var tabs = new TabControl(ui.App, "Views", ["One", "Two"]);
         var only = new Group(ui.App, "One");
         Assert.Throws<ArgumentException>(() => tabs.AttachPanels(only));
+    }
+}
+
+public class GroupContextTests
+{
+    [Fact]
+    public void EnteringAGroupSpeaksItOnceAndMovesWithinDoNot()
+    {
+        var ui = new TestApp();
+        _ = new Button(ui.App, "Save");
+        var options = new Group(ui.App, "Options");
+        _ = new CheckBox(options, "First");
+        _ = new CheckBox(options, "Second");
+        ui.App.EnsureFocus();
+
+        ui.Input(InputKind.NavigateNext);
+        Assert.Equal(new[] { "Options group First check box not checked" }, ui.Spoken());
+        ui.Input(InputKind.NavigateNext);
+        Assert.Equal(new[] { "Second check box not checked" }, ui.Spoken());
+        ui.Input(InputKind.NavigatePrev);
+        Assert.Equal(new[] { "First check box not checked" }, ui.Spoken());
+        ui.Input(InputKind.NavigatePrev);
+        Assert.Equal(new[] { "Save button" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void LandingOnTheGroupThenEnteringDoesNotRepeatIt()
+    {
+        var ui = new TestApp();
+        var options = new Group(ui.App, "Options");
+        var first = new CheckBox(options, "First");
+        first.Focus();
+        ui.Input(InputKind.TreeUp);
+        Assert.Equal(new[] { "Options group" }, ui.Spoken());
+        ui.Input(InputKind.TreeDown);
+        Assert.Equal(new[] { "First check box not checked" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void NestedGroupsSpeakOutermostFirst()
+    {
+        var ui = new TestApp();
+        _ = new Button(ui.App, "Save");
+        var options = new Group(ui.App, "Options");
+        var personal = new Group(options, "Personal");
+        _ = new EditBox(personal, "Name");
+        ui.App.EnsureFocus();
+
+        ui.Input(InputKind.NavigateNext);
+        Assert.Equal(new[] { "Options group Personal group Name edit blank" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void UnnamedGroupIsSilentAndACustomRoleIsNot()
+    {
+        var ui = new TestApp();
+        _ = new Button(ui.App, "Save");
+        var plain = new Group(ui.App, null);
+        _ = new CheckBox(plain, "Inside");
+        var console = new Group(ui.App, null, "console");
+        _ = new EditBox(console, null) { Role = "input" };
+        ui.App.EnsureFocus();
+
+        ui.Input(InputKind.NavigateNext);
+        Assert.Equal(new[] { "Inside check box not checked" }, ui.Spoken());
+        ui.Input(InputKind.NavigateNext);
+        Assert.Equal(new[] { "console input blank" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void FirstFocusAndReannounceSpeakEveryEnclosingGroup()
+    {
+        var ui = new TestApp();
+        var options = new Group(ui.App, "Options");
+        _ = new Label(options, "Identity");
+        _ = new CheckBox(options, "First");
+        ui.App.EnsureFocus();
+        Assert.Equal(new[] { "Options group First check box not checked" }, ui.Spoken());
+
+        ui.App.ReannounceWithContext();
+        Assert.Equal(new[] { "Options group Identity First check box not checked" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void EditBoxRoleOverrideSurvivesReadOnlyToggle()
+    {
+        var ui = new TestApp();
+        var box = new EditBox(ui.App, "Log", multiline: true) { Role = "output" };
+        box.ReadOnly = true;
+        box.Focus();
+        Assert.Equal(new[] { "Log output blank" }, ui.Spoken());
+        box.Role = null;
+        Assert.Equal(new[] { "edit read only multi line" }, ui.Spoken());
     }
 }
 

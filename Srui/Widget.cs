@@ -39,6 +39,9 @@ public interface IWidgetContainer
 /// </summary>
 public abstract class Widget : IWidgetContainer
 {
+    /// <summary>The default role text of a <see cref="Group"/>.</summary>
+    public const string GroupRole = "group";
+
     public SruiApp App { get; }
 
     /// <summary>The engine handle this widget embodies. Identity on the

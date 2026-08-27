@@ -12,11 +12,17 @@ public class Label : Widget
 }
 
 /// <summary>A container; children are created with it as their parent.
-/// Alt+Down enters it, Alt+Up leaves. Not in the tab ring.</summary>
+/// Alt+Down enters it, Alt+Up leaves. Not in the tab ring. Focus
+/// arriving from outside speaks the group first, as "name role", before
+/// the widget it lands on ("Options group Word Wrap check box not
+/// checked"); moves within it do not repeat it. A group with no name
+/// and the default role is structure only and speaks nothing on entry;
+/// <paramref name="roleText"/> replaces "group" for a container that
+/// is a thing in its own right ("console").</summary>
 public class Group : Widget
 {
-    public Group(IWidgetContainer parent, string name)
-        : base(parent, name, "group", focusable: false)
+    public Group(IWidgetContainer parent, string? name, string roleText = GroupRole)
+        : base(parent, name, roleText, focusable: false)
     {
     }
 }

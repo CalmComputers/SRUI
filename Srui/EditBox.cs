@@ -37,6 +37,23 @@ public class EditBox : Widget
 
     public bool Multiline => _editor.Multiline;
 
+    private string? _role;
+
+    /// <summary>The spoken role. Null derives it from the read-only and
+    /// multiline flags ("edit", "edit read only multi line"); a value
+    /// replaces that outright, for an editor that is something more
+    /// specific than an edit box ("input", "output"). Setting speaks
+    /// the new role when focused.</summary>
+    public string? Role
+    {
+        get => _role;
+        set
+        {
+            _role = value;
+            SetRoleText(value ?? RoleTextFor(_editor.ReadOnly, _editor.Multiline));
+        }
+    }
+
     /// <summary>The full text. Setting replaces the content (cursor
     /// clamped onto a grapheme boundary, selection cleared, undo
     /// history dropped — this is a new document, not an edit) and
@@ -56,7 +73,7 @@ public class EditBox : Widget
         set => Engine.UpdateLabel(Node, label =>
         {
             _editor.ReadOnly = value;
-            label.RoleText = RoleTextFor(value, _editor.Multiline);
+            label.RoleText = _role ?? RoleTextFor(value, _editor.Multiline);
         });
     }
 
