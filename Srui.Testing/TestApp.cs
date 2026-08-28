@@ -26,6 +26,9 @@ public sealed class TestApp : Harness
     public override void Dispose() => App.Dispose();
 
     /// <inheritdoc/>
+    protected override SpeechVerbosity Verbosity => App.SpeechVerbosity;
+
+    /// <inheritdoc/>
     protected override void DispatchEvents() => App.DispatchEvents();
 
     /// <inheritdoc/>

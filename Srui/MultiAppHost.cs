@@ -87,9 +87,12 @@ public sealed class MultiAppHost : IDisposable
 
     /// <summary>The shared speech reader's verbosity — one stream, so
     /// one setting, which every hosted app's
-    /// <see cref="SruiApp.SpeechVerbosity"/> resolves to. Null when
-    /// headless.</summary>
-    public SpeechVerbosity? Verbosity => _speechReader?.Verbosity;
+    /// <see cref="SruiApp.SpeechVerbosity"/> resolves to. A headless
+    /// host owns one of its own, so a setting applied to it reaches
+    /// whatever reader a test attaches.</summary>
+    public SpeechVerbosity Verbosity => _speechReader?.Verbosity ?? _headlessVerbosity;
+
+    private readonly SpeechVerbosity _headlessVerbosity = new();
 
     public void Dispose()
     {

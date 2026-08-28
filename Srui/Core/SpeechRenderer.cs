@@ -2,6 +2,26 @@ using System.Text;
 
 namespace Srui;
 
+/// <summary>What typing speaks as it lands. Gates insertion only:
+/// deletions always speak what they removed — that is confirmation of
+/// a destruction, not typing chatter.</summary>
+public enum TypingEcho
+{
+    /// <summary>Every character, and the word it completed on a
+    /// separator: "hello space". The default.</summary>
+    Both,
+
+    /// <summary>Every character; no completed words.</summary>
+    Characters,
+
+    /// <summary>Only the completed word, on the separator or Enter
+    /// that finished it.</summary>
+    Words,
+
+    /// <summary>Nothing.</summary>
+    None,
+}
+
 /// <summary>What the reference rendering speaks beyond the essentials.
 /// Everything on is the default and the historical behavior. A reader
 /// holds one instance (<see cref="SpeechReader.Verbosity"/>) and the
@@ -19,6 +39,9 @@ public sealed class SpeechVerbosity
 
     /// <summary>Speak descriptions and the "with help" hint.</summary>
     public bool Extras = true;
+
+    /// <summary>What typing speaks as it lands.</summary>
+    public TypingEcho Echo = TypingEcho.Both;
 }
 
 /// <summary>Speech rendering — the reference rendering of accessibility
@@ -59,20 +82,27 @@ public static class SpeechRenderer
             }
 
             case AccessibilityEvent.Typing(_, var grapheme, var lastWord, var kind):
+            {
                 // On a word boundary the just-completed word is echoed
-                // before the separator: "hello space". For deletes,
+                // before the separator: "hello space". Echo gates
+                // insertion only; deletions always speak. For deletes,
                 // grapheme is already in spoken form (SpeakChar passes
                 // multi-char strings through unchanged).
+                var chars = verbosity.Echo is TypingEcho.Both or TypingEcho.Characters;
+                var words = verbosity.Echo is TypingEcho.Both or TypingEcho.Words;
                 return kind switch
                 {
-                    TypingKind.Insert when lastWord is not null => $"{lastWord} {SpeakChar(grapheme)}",
-                    TypingKind.Insert when grapheme.Length != 0 => SpeakChar(grapheme),
+                    TypingKind.Insert when words && lastWord is not null && chars =>
+                        $"{lastWord} {SpeakChar(grapheme)}",
+                    TypingKind.Insert when words && lastWord is not null => lastWord,
+                    TypingKind.Insert when chars && grapheme.Length != 0 => SpeakChar(grapheme),
                     TypingKind.Insert => null,
                     TypingKind.Delete when grapheme.Length != 0 => SpeakChar(grapheme),
                     TypingKind.Delete => null,
                     TypingKind.DeleteWord => lastWord,
                     _ => null,
                 };
+            }
 
             case AccessibilityEvent.TextNav(_, _, var context, _, var boundary):
                 return boundary switch
@@ -259,7 +289,7 @@ public static class SpeechRenderer
         ';' => "semicolon",
         ':' => "colon",
         '!' => "bang",
-        '?' => "question mark",
+        '?' => "question",
         '\'' => "tick",
         '"' => "quote",
         '(' => "left paren",
@@ -268,8 +298,8 @@ public static class SpeechRenderer
         ']' => "right bracket",
         '{' => "left brace",
         '}' => "right brace",
-        '<' => "less than",
-        '>' => "greater than",
+        '<' => "less",
+        '>' => "greater",
         '/' => "slash",
         '\\' => "backslash",
         '|' => "pipe",
@@ -281,11 +311,11 @@ public static class SpeechRenderer
         '&' => "and",
         '*' => "star",
         '-' => "dash",
-        '_' => "underscore",
+        '_' => "line",
         '+' => "plus",
         '=' => "equals",
         '~' => "tilde",
-        '`' => "backtick",
+        '`' => "graav",
 
         >= 'A' and <= 'Z' => $"cap {c}",
 

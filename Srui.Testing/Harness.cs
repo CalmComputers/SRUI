@@ -41,6 +41,12 @@ public abstract class Harness : IDisposable
 
     // ── What a derived harness supplies ──
 
+    /// <summary>The live verbosity of the thing under test, which
+    /// assertions render under — so a test that trims it (or a settings
+    /// screen under test that does) asserts what a reader would
+    /// actually hear. All-on by default, the full rendering.</summary>
+    protected abstract SpeechVerbosity Verbosity { get; }
+
     /// <summary>Deliver queued output to the readers.</summary>
     protected abstract void DispatchEvents();
 
@@ -59,7 +65,8 @@ public abstract class Harness : IDisposable
     // ── Speech ──
 
     /// <summary>Deliver queued output and return the utterances heard
-    /// since the last delivery, in order, rendered at full verbosity.</summary>
+    /// since the last delivery, in order, rendered under the thing
+    /// under test's live verbosity.</summary>
     public List<string> Spoken()
     {
         DispatchEvents();
@@ -73,7 +80,7 @@ public abstract class Harness : IDisposable
     /// watches speech arrive during <see cref="Until"/>.</summary>
     public List<string> Pending() =>
         Reader.Events
-            .Select(SpeechRenderer.RenderEvent)
+            .Select(e => SpeechRenderer.RenderEvent(e, Verbosity))
             .OfType<string>()
             .ToList();
 

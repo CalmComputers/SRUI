@@ -30,10 +30,14 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
 
     /// <summary>The speech reader's verbosity — mutate its fields to
     /// trim announcements live. The default reader's for a windowed
-    /// app, the host's shared reader's for an app under a MultiAppHost
-    /// (one stream, one verbosity); null when headless.</summary>
-    public SpeechVerbosity? SpeechVerbosity =>
-        _speechReader?.Verbosity ?? VerbositySource?.Invoke();
+    /// app, the host's shared one for an app under a MultiAppHost (one
+    /// stream, one verbosity); a standalone headless app owns one of
+    /// its own, so a setting applied to it reaches whatever reader a
+    /// test attaches.</summary>
+    public SpeechVerbosity SpeechVerbosity =>
+        _speechReader?.Verbosity ?? VerbositySource?.Invoke() ?? _headlessVerbosity;
+
+    private readonly SpeechVerbosity _headlessVerbosity = new();
 
     /// <summary>Where <see cref="SpeechVerbosity"/> comes from when a
     /// host owns the speech reader (MultiAppHost).</summary>

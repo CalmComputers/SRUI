@@ -21,6 +21,9 @@ public class TestHost : Harness
     public override void Dispose() => Host.Dispose();
 
     /// <inheritdoc/>
+    protected override SpeechVerbosity Verbosity => Host.Verbosity;
+
+    /// <inheritdoc/>
     protected override void DispatchEvents() => Host.DispatchEvents();
 
     /// <inheritdoc/>

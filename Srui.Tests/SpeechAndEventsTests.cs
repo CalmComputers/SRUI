@@ -1,5 +1,6 @@
 using Srui;
 using Srui.Core;
+using Srui.Testing;
 using Xunit;
 
 namespace Srui.Tests;
@@ -215,6 +216,51 @@ public class SpeechRendererTests
         // The actionable state echoes survive full quiet.
         Assert.Equal("unavailable", SpeechRenderer.RenderEvent(
             new AccessibilityEvent.StateChange(save, WidgetStates.Disabled, true), quiet));
+    }
+
+    [Fact]
+    public void EchoGatesInsertionButNeverDeletion()
+    {
+        var box = new EditBox(App, "Notes");
+        var ch = new AccessibilityEvent.Typing(box, "a", null, TypingKind.Insert);
+        var sep = new AccessibilityEvent.Typing(box, " ", "hello", TypingKind.Insert);
+        var del = new AccessibilityEvent.Typing(box, "a", null, TypingKind.Delete);
+        var delWord = new AccessibilityEvent.Typing(box, "", "hello", TypingKind.DeleteWord);
+
+        Assert.Equal("a", SpeechRenderer.RenderEvent(ch));
+        Assert.Equal("hello space", SpeechRenderer.RenderEvent(sep));
+
+        var chars = new SpeechVerbosity { Echo = TypingEcho.Characters };
+        Assert.Equal("a", SpeechRenderer.RenderEvent(ch, chars));
+        Assert.Equal("space", SpeechRenderer.RenderEvent(sep, chars));
+
+        var words = new SpeechVerbosity { Echo = TypingEcho.Words };
+        Assert.Null(SpeechRenderer.RenderEvent(ch, words));
+        Assert.Equal("hello", SpeechRenderer.RenderEvent(sep, words));
+
+        var none = new SpeechVerbosity { Echo = TypingEcho.None };
+        Assert.Null(SpeechRenderer.RenderEvent(ch, none));
+        Assert.Null(SpeechRenderer.RenderEvent(sep, none));
+
+        // Deletion is confirmation of a destruction, not typing
+        // chatter: it survives every mode.
+        Assert.Equal("a", SpeechRenderer.RenderEvent(del, none));
+        Assert.Equal("hello", SpeechRenderer.RenderEvent(delWord, none));
+    }
+
+    [Fact]
+    public void HarnessRendersUnderTheAppsLiveVerbosity()
+    {
+        using var ui = new TestApp(app => new EditBox(app, "Notes"));
+        ui.App.SpeechVerbosity.Echo = TypingEcho.Words;
+        ui.Type("hi ");
+        ui.Expect("hi");
+        ui.App.SpeechVerbosity.Echo = TypingEcho.None;
+        ui.Type("go ");
+        ui.ExpectNoSpeech();
+        // Deletion speaks in every mode.
+        ui.Press("backspace");
+        ui.Expect("space");
     }
 }
 
