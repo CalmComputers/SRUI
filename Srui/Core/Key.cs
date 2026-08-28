@@ -77,7 +77,7 @@ public readonly record struct Key(uint Code)
     public string DisplayName()
     {
         if (IsChar(out var c))
-            return char.ToLowerInvariant(c).ToString();
+            return SpeechRenderer.SpeakChar(char.ToLowerInvariant(c).ToString());
         if (IsF(out var n))
             return $"f{n}";
         return Code switch
