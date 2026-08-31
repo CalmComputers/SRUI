@@ -17,7 +17,7 @@ public class Label : Widget
 /// the widget it lands on ("Options group Word Wrap check box not
 /// checked"); moves within it do not repeat it. A group with no name
 /// and the default role is structure only and speaks nothing on entry;
-/// <paramref name="roleText"/> replaces "group" for a container that
+/// <c>roleText</c> replaces "group" for a container that
 /// is a thing in its own right ("console").</summary>
 public class Group : Widget
 {
