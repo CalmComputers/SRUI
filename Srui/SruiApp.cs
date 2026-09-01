@@ -181,6 +181,7 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     /// speech reader over Prism (the running screen reader, or platform
     /// TTS) installed out of the box.</summary>
     public SruiApp(string title, uint width = 400, uint height = 300)
+        : this()
     {
         Host = new SdlHost(title, width, height);
         Host.ProvideClipboard(this);
@@ -190,6 +191,10 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
 
     private SruiApp()
     {
+        // The engine consults the live verbosity (the layer-restore
+        // mode gates event emission), resolved through the same chain
+        // as SpeechVerbosity so a host's shared instance reaches it.
+        Engine.VerbositySource = () => SpeechVerbosity;
     }
 
     /// <summary>An app with no window, no clipboard, and no voice: the

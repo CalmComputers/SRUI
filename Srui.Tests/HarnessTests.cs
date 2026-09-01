@@ -233,11 +233,10 @@ public class StepTests
 
         // Closing a dialog restores focus at drain time; the step has
         // drained by the time it returns, so the restored focus is
-        // assertable at once (the restore itself is silent — nothing
-        // changed under the dialog).
+        // assertable at once, its re-announcement already heard.
         ui.Press("escape");
         Assert.True(below.IsFocused);
-        ui.ExpectNoSpeech();
+        ui.Expect("Below button");
     }
 
     [Fact]

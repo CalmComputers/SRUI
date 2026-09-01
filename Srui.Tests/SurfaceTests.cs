@@ -862,9 +862,30 @@ public class KeyBindingTests
 public class DialogTests
 {
     [Fact]
-    public void LayerPopRestoresFocusSilentlyWhenNothingChanged()
+    public void LayerPopReAnnouncesTheRestoredFocus()
     {
         var ui = new TestApp();
+        var save = new Button(ui.App, "Save");
+        save.Focus();
+        ui.Drain();
+
+        var dialog = ui.App.OpenDialog();
+        var confirm = new Button(dialog, "Confirm");
+        confirm.Focus();
+        ui.Drain();
+
+        // The default restore mode re-anchors: the widget under the
+        // dialog reads as any focus would, changed or not.
+        dialog.Close();
+        Assert.True(save.IsFocused);
+        Assert.Equal(new[] { "Save button" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void ChangesModeRestoresFocusSilentlyWhenNothingChanged()
+    {
+        var ui = new TestApp();
+        ui.App.SpeechVerbosity.Restore = RestoreAnnouncement.Changes;
         var save = new Button(ui.App, "Save");
         save.Focus();
         ui.Drain();
@@ -881,9 +902,10 @@ public class DialogTests
     }
 
     [Fact]
-    public void LayerPopSpeaksWhatChangedUnderTheDialog()
+    public void ChangesModeSpeaksWhatChangedUnderTheDialog()
     {
         var ui = new TestApp();
+        ui.App.SpeechVerbosity.Restore = RestoreAnnouncement.Changes;
         var list = new ListBox(ui.App, "Files", new[] { "alpha", "beta" }, numbered: true);
         list.Focus();
         ui.Drain();
@@ -898,6 +920,45 @@ public class DialogTests
         list.SelectedIndex = 1;
         dialog.Close();
         Assert.Equal(new[] { "beta 2 of 2" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void NoneModeRestoresInSilenceEvenWhenChanged()
+    {
+        var ui = new TestApp();
+        ui.App.SpeechVerbosity.Restore = RestoreAnnouncement.None;
+        var list = new ListBox(ui.App, "Files", new[] { "alpha", "beta" }, numbered: true);
+        list.Focus();
+        ui.Drain();
+
+        var dialog = ui.App.OpenDialog();
+        new Button(dialog, "Confirm").Focus();
+        ui.Drain();
+
+        // The expert setting: the user knows where they are, and the
+        // close says nothing — not even the change under the dialog.
+        list.SelectedIndex = 1;
+        dialog.Close();
+        Assert.True(list.IsFocused);
+        Assert.Empty(ui.Spoken());
+    }
+
+    [Fact]
+    public void RestoreModeIsReadLive()
+    {
+        var ui = new TestApp();
+        var save = new Button(ui.App, "Save");
+        save.Focus();
+        ui.Drain();
+
+        // The mode at the pop governs, not the mode at the push — a
+        // settings dialog changing this very setting closes under it.
+        var dialog = ui.App.OpenDialog();
+        new Button(dialog, "Confirm").Focus();
+        ui.Drain();
+        ui.App.SpeechVerbosity.Restore = RestoreAnnouncement.Changes;
+        dialog.Close();
+        Assert.Empty(ui.Spoken());
     }
 
     [Fact]
@@ -932,15 +993,15 @@ public class DialogTests
         Assert.Equal(new[] { "Done button" }, ui.Spoken());
 
         // Closing the inner dialog cascades: both layers pop, focus
-        // lands on the ground, and one delta read speaks the whole
-        // excursion's change.
+        // lands on the ground, and one restore read carries the whole
+        // excursion's result.
         ui.Input(InputKind.Activate);
         Assert.False(first.IsOpen);
         Assert.False(second!.IsOpen);
         Assert.True(name.IsFocused);
-        // "selected": the single-line box selects all as focus
-        // re-enters, and the restore reads it as reshaped.
-        Assert.Equal(new[] { "selected picked" }, ui.Spoken());
+        // "selected picked": the single-line box selects all as focus
+        // re-enters, and the restore reads the reshaped value.
+        Assert.Equal(new[] { "Name edit selected picked" }, ui.Spoken());
     }
 
     [Fact]
@@ -1074,7 +1135,7 @@ public class DialogTests
         dialog.AnnounceOpened();
 
         Assert.True(ui.Input(InputKind.Activate));
-        Assert.Equal(new[] { "Created playlist Untitled.", "Untitled" }, ui.Spoken());
+        Assert.Equal(new[] { "Created playlist Untitled.", "Playlists list Untitled" }, ui.Spoken());
     }
 
     [Fact]
@@ -2785,10 +2846,19 @@ public class FocusCauseTests
         Assert.NotEmpty(causes);
         Assert.DoesNotContain(FocusCause.UserNavigation, causes);
 
-        // Nothing changed under the dialog, so the restore emits no
-        // Focused event at all — in particular, nothing reading as
-        // user navigation.
+        // The default restore re-announces, attributed to the layer —
+        // never reading as user navigation.
         dialog.Close();
+        Assert.Equal(new[] { FocusCause.LayerRestore }, Causes(ui));
+
+        // Under Changes with nothing changed, no Focused event exists
+        // at all.
+        ui.App.SpeechVerbosity.Restore = RestoreAnnouncement.Changes;
+        var again = ui.App.OpenDialog();
+        _ = new Button(again, "OK");
+        again.AnnounceOpened();
+        ui.Drain();
+        again.Close();
         Assert.Empty(Causes(ui));
     }
 

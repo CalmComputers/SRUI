@@ -27,6 +27,16 @@ internal sealed class CoreUi
         public ulong NextFireMs;
     }
 
+    /// <summary>Where the live speech verbosity comes from. The engine
+    /// consults it for the layer-restore mode, which decides whether a
+    /// restore emits a Focused event at all; a bare engine with no
+    /// source behaves as full.</summary>
+    public Func<SpeechVerbosity>? VerbositySource;
+
+    private static readonly SpeechVerbosity FullVerbosity = new();
+
+    private SpeechVerbosity Verbosity => VerbositySource?.Invoke() ?? FullVerbosity;
+
     /// <summary>Install a platform clipboard (defaults to a no-op).</summary>
     public void SetClipboard(IClipboard clipboard) => _clipboard = clipboard;
 
@@ -442,15 +452,16 @@ internal sealed class CoreUi
     }
 
     /// <summary>Pop the top layer. The previous layer's focus is
-    /// restored; what it announces is the delta since the layer was
-    /// pushed. The user never left the widget under the layer, so its
-    /// name and role are not news: value and state speak if they
-    /// changed while the layer was open (a rename landing, a listing
-    /// refreshed), and an unchanged widget restores in silence. Only
-    /// focus landing somewhere else - the pushed-from node is gone -
-    /// reads in full, as the recovery it is. <paramref name="announce"/>
-    /// false pops without any of that - the intermediate layers of a
-    /// cascade, which were never the user's ground.</summary>
+    /// restored; what that announces is the verbosity's restore mode
+    /// (<see cref="SpeechVerbosity.Restore"/>): the full focus
+    /// announcement by default, only the delta since the layer was
+    /// pushed under Changes - value and state if they moved (a rename
+    /// landing, a listing refreshed), silence when nothing did - and
+    /// nothing at all under None. Only focus landing somewhere else -
+    /// the pushed-from node is gone - always reads in full, as the
+    /// recovery it is. <paramref name="announce"/> false pops without
+    /// any of that - the intermediate layers of a cascade, which were
+    /// never the user's ground.</summary>
     public void PopLayer(bool announce = true)
     {
         var snapshot = _layerSnapshots.Count > 0 ? _layerSnapshots[^1] : null;
@@ -469,10 +480,14 @@ internal sealed class CoreUi
             return;
         // The reshape hook runs even when the restore stays silent.
         owner.OnFocusGained();
-        if (SpokenPartsOf(node, owner) != known.Spoken)
-            _events.Add(new CoreEvent.Acc(new AccessibilityEvent.Focused(
-                owner, node.Label.ToInfo(owner.ValueText, owner.StateText),
-                EmptyContext, FocusCause.LayerRestore)));
+        var mode = Verbosity.Restore;
+        if (mode == RestoreAnnouncement.None)
+            return;
+        if (mode == RestoreAnnouncement.Changes && SpokenPartsOf(node, owner) == known.Spoken)
+            return;
+        _events.Add(new CoreEvent.Acc(new AccessibilityEvent.Focused(
+            owner, node.Label.ToInfo(owner.ValueText, owner.StateText),
+            EmptyContext, FocusCause.LayerRestore)));
     }
 
     /// <summary>What the focused widget sounded like when a layer was

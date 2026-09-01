@@ -22,13 +22,40 @@ public enum TypingEcho
     None,
 }
 
+/// <summary>What the widget under a closed dialog announces when focus
+/// returns to it. The user never left the widget, so this is
+/// re-orientation rather than news, and how much of it to speak is an
+/// experience curve: the full announcement re-anchors a user who lost
+/// the thread while the dialog was up, the delta serves one who trusts
+/// that silence means nothing changed, and nothing serves the expert
+/// whose hands already know where they are. Whatever the mode, a
+/// result the dialog announced before closing still speaks, and a
+/// restore whose widget is gone reads in full as the recovery it
+/// is.</summary>
+public enum RestoreAnnouncement
+{
+    /// <summary>The normal focus announcement, under the same
+    /// verbosity as any other focus. The default.</summary>
+    Full,
+
+    /// <summary>Only what changed while the dialog was open — value
+    /// and state; an unchanged widget restores in silence.</summary>
+    Changes,
+
+    /// <summary>Nothing.</summary>
+    None,
+}
+
 /// <summary>What the reference rendering speaks beyond the essentials.
 /// Everything on is the default and the historical behavior. A reader
 /// holds one instance (<see cref="SpeechReader.Verbosity"/>) and the
 /// app mutates its fields live; the renderer consults it per event.
 /// Name, value, dynamic state text, and the actionable states
 /// (unavailable, required, warning) are never suppressible — those
-/// are information, not verbosity.</summary>
+/// are information, not verbosity. <see cref="Restore"/> is the one
+/// whole-utterance switch, and it may trim information: the return
+/// from a closed dialog is a re-orientation the user can opt out of
+/// wholesale, not a fact they never chose to hear.</summary>
 public sealed class SpeechVerbosity
 {
     /// <summary>Speak widget roles ("button", "slider").</summary>
@@ -42,6 +69,13 @@ public sealed class SpeechVerbosity
 
     /// <summary>What typing speaks as it lands.</summary>
     public TypingEcho Echo = TypingEcho.Both;
+
+    /// <summary>What the widget under a closed dialog announces when
+    /// focus returns to it. Consulted at the pop itself, not just the
+    /// rendering: under <see cref="RestoreAnnouncement.Changes"/> an
+    /// unchanged widget emits no Focused event at all, and under
+    /// <see cref="RestoreAnnouncement.None"/> none ever does.</summary>
+    public RestoreAnnouncement Restore = RestoreAnnouncement.Full;
 }
 
 /// <summary>Speech rendering — the reference rendering of accessibility
@@ -76,11 +110,20 @@ public static class SpeechRenderer
             case AccessibilityEvent.Focused(_, var info, var contextLabels, var cause):
             {
                 // A layer restore returns the user to the widget they
-                // never left, and only arrives when something changed
-                // under the closed layer: value and state are the news,
-                // identity is not.
+                // never left; the verbosity's Restore mode says how
+                // much of a re-orientation that is worth. Full is the
+                // ordinary focus announcement; Changes arrives only
+                // when something changed under the closed layer and
+                // speaks value and state, the news without the
+                // identity; None never arrives, and renders null as
+                // the backstop.
                 if (cause == FocusCause.LayerRestore)
-                    return AnnounceRestore(info);
+                    return verbosity.Restore switch
+                    {
+                        RestoreAnnouncement.Changes => AnnounceRestore(info),
+                        RestoreAnnouncement.None => null,
+                        _ => AnnounceFocus(info, verbosity),
+                    };
                 var announcement = AnnounceFocus(info, verbosity);
                 return contextLabels.Count == 0
                     ? announcement
@@ -277,8 +320,9 @@ public static class SpeechRenderer
         return result.ToString();
     }
 
-    /// <summary>The layer-restore announcement: value and dynamic state,
-    /// with the actionable state flags - never the name, role,
+    /// <summary>The layer-restore announcement under
+    /// <see cref="RestoreAnnouncement.Changes"/>: value and dynamic
+    /// state, with the actionable state flags - never the name, role,
     /// description, or shortcut the user heard before the layer opened.
     /// Null when nothing audible remains.</summary>
     public static string? AnnounceRestore(WidgetInfo info)
