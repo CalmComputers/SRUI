@@ -73,8 +73,14 @@ public static class SpeechRenderer
         verbosity ??= Full;
         switch (ev)
         {
-            case AccessibilityEvent.Focused(_, var info, var contextLabels, _):
+            case AccessibilityEvent.Focused(_, var info, var contextLabels, var cause):
             {
+                // A layer restore returns the user to the widget they
+                // never left, and only arrives when something changed
+                // under the closed layer: value and state are the news,
+                // identity is not.
+                if (cause == FocusCause.LayerRestore)
+                    return AnnounceRestore(info);
                 var announcement = AnnounceFocus(info, verbosity);
                 return contextLabels.Count == 0
                     ? announcement
@@ -269,6 +275,32 @@ public static class SpeechRenderer
             Append(info.Shortcuts[0].DisplayName());
 
         return result.ToString();
+    }
+
+    /// <summary>The layer-restore announcement: value and dynamic state,
+    /// with the actionable state flags - never the name, role,
+    /// description, or shortcut the user heard before the layer opened.
+    /// Null when nothing audible remains.</summary>
+    public static string? AnnounceRestore(WidgetInfo info)
+    {
+        var result = new StringBuilder(32);
+        void Append(string field)
+        {
+            if (field.Length == 0)
+                return;
+            if (result.Length != 0)
+                result.Append(' ');
+            result.Append(field);
+        }
+        Append(info.Value);
+        Append(info.StateText);
+        if ((info.States & WidgetStates.Disabled) != 0)
+            Append("unavailable");
+        if ((info.States & WidgetStates.Required) != 0)
+            Append("required");
+        if ((info.States & WidgetStates.Warning) != 0)
+            Append("warning");
+        return result.Length == 0 ? null : result.ToString();
     }
 
     /// <summary>Speak a character with punctuation expansion and case

@@ -94,7 +94,7 @@ The same reasoning covers instruction labels. A leading label reading "Space tog
 `Announce` is the escape hatch for facts with no widget: operation outcomes, background events, errors. Because it is unstructured, it should be the *last* tool considered, and its content held to the same no-duplication standard:
 
 - Never announce what a property change on a focused widget just spoke (section 2.1).
-- Never announce what focus movement is about to speak. Closing a dialog restores focus, and the restored widget announces itself; an `Announce("Returned to the menu.")` immediately followed by "Menu, list, …" says everything twice.
+- Never announce what focus movement is about to speak. Closing a dialog restores focus, and the restore speaks whatever changed under the dialog on its own (an unchanged widget restores silently); an `Announce("Returned to the menu.")` narrates a transition the user already made.
 - State outcomes once, tersely, most-important-first: "Added. 5 fighters." The user can act on the first word; everything after it is optional listening.
 - Never rely on interruption or urgency tiers to make an announcement land — structure the content so the front-loaded words suffice.
 

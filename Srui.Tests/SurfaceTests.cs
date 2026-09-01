@@ -862,7 +862,7 @@ public class KeyBindingTests
 public class DialogTests
 {
     [Fact]
-    public void LayerPopRestoresAndAnnouncesFocus()
+    public void LayerPopRestoresFocusSilentlyWhenNothingChanged()
     {
         var ui = new TestApp();
         var save = new Button(ui.App, "Save");
@@ -874,9 +874,30 @@ public class DialogTests
         confirm.Focus();
         ui.Drain();
 
+        // The user never left Save; re-reading it is not news.
         dialog.Close();
         Assert.True(save.IsFocused);
-        Assert.Equal(new[] { "Save button" }, ui.Spoken());
+        Assert.Empty(ui.Spoken());
+    }
+
+    [Fact]
+    public void LayerPopSpeaksWhatChangedUnderTheDialog()
+    {
+        var ui = new TestApp();
+        var list = new ListBox(ui.App, "Files", new[] { "alpha", "beta" }, numbered: true);
+        list.Focus();
+        ui.Drain();
+
+        var dialog = ui.App.OpenDialog();
+        new Button(dialog, "Confirm").Focus();
+        ui.Drain();
+
+        // Silent while the dialog holds focus; the close speaks the
+        // delta — value and state, never the name and role the user
+        // never left.
+        list.SelectedIndex = 1;
+        dialog.Close();
+        Assert.Equal(new[] { "beta 2 of 2" }, ui.Spoken());
     }
 
     [Fact]
@@ -945,16 +966,18 @@ public class DialogTests
     public void DialogResultIsSpokenBeforeRestoredFocus()
     {
         var ui = new TestApp();
-        var save = new Button(ui.App, "Save");
-        save.Focus();
+        var list = new ListBox(ui.App, "Playlists", new[] { "none yet" });
+        list.Focus();
         ui.Drain();
 
-        // The natural handler shape: close, then report the result. The
-        // restored lower-layer focus must be heard AFTER the result.
+        // The natural handler shape: mutate, close, then report the
+        // result. The restored focus delta must be heard AFTER the
+        // result.
         var dialog = ui.App.OpenDialog();
         var create = new Button(dialog, "Create");
         create.Activated += () =>
         {
+            list.SetItems(new[] { "Untitled" });
             dialog.Close();
             ui.App.Announce("Created playlist Untitled.");
         };
@@ -962,7 +985,7 @@ public class DialogTests
         dialog.AnnounceOpened();
 
         Assert.True(ui.Input(InputKind.Activate));
-        Assert.Equal(new[] { "Created playlist Untitled.", "Save button" }, ui.Spoken());
+        Assert.Equal(new[] { "Created playlist Untitled.", "Untitled" }, ui.Spoken());
     }
 
     [Fact]
@@ -2673,6 +2696,27 @@ public class FocusCauseTests
         Assert.NotEmpty(causes);
         Assert.DoesNotContain(FocusCause.UserNavigation, causes);
 
+        // Nothing changed under the dialog, so the restore emits no
+        // Focused event at all — in particular, nothing reading as
+        // user navigation.
+        dialog.Close();
+        Assert.Empty(Causes(ui));
+    }
+
+    [Fact]
+    public void AChangedRestoreIsAttributedToTheLayer()
+    {
+        var ui = new TestApp();
+        var name = new EditBox(ui.App, "Name");
+        name.Focus();
+        ui.Drain();
+
+        var dialog = ui.App.OpenDialog();
+        _ = new Button(dialog, "OK");
+        dialog.AnnounceOpened();
+        ui.Drain();
+
+        name.Text = "picked";
         dialog.Close();
         Assert.Equal(new[] { FocusCause.LayerRestore }, Causes(ui));
     }

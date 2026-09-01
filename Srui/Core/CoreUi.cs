@@ -433,18 +433,63 @@ internal sealed class CoreUi
     public void SetCancel(NodeId id) => _tree.SetCancel(id);
 
     /// <summary>Push a modal layer. New root nodes go into it; only it is
-    /// navigable.</summary>
-    public void PushLayer() => _tree.PushLayer();
+    /// navigable. The focused widget's spoken fields are snapshotted for
+    /// the delta comparison when the layer pops.</summary>
+    public void PushLayer()
+    {
+        _layerSnapshots.Add(SnapshotFor(_tree.Focus));
+        _tree.PushLayer();
+    }
 
-    /// <summary>Pop the top layer. The previous layer's focus is restored
-    /// and announced.</summary>
+    /// <summary>Pop the top layer. The previous layer's focus is
+    /// restored; what it announces is the delta since the layer was
+    /// pushed. The user never left the widget under the layer, so its
+    /// name and role are not news: value and state speak if they
+    /// changed while the layer was open (a rename landing, a listing
+    /// refreshed), and an unchanged widget restores in silence. Only
+    /// focus landing somewhere else - the pushed-from node is gone -
+    /// reads in full, as the recovery it is.</summary>
     public void PopLayer()
     {
+        var snapshot = _layerSnapshots.Count > 0 ? _layerSnapshots[^1] : null;
+        if (_layerSnapshots.Count > 0)
+            _layerSnapshots.RemoveAt(_layerSnapshots.Count - 1);
         var restored = _tree.PopLayer();
         _focusMemory.Gc(_tree);
-        if (!restored.IsNone)
-            EmitFocused(restored, FocusCause.LayerRestore);
+        if (restored.IsNone)
+            return;
+        if (snapshot is not { } known || known.Focus != restored)
+        {
+            EmitFocused(restored, FocusCause.Recovery);
+            return;
+        }
+        if (_tree.Get(restored) is not { Owner: Widget owner } node)
+            return;
+        // The reshape hook runs even when the restore stays silent.
+        owner.OnFocusGained();
+        if (SpokenPartsOf(node, owner) != known.Spoken)
+            _events.Add(new CoreEvent.Acc(new AccessibilityEvent.Focused(
+                owner, node.Label.ToInfo(owner.ValueText, owner.StateText),
+                EmptyContext, FocusCause.LayerRestore)));
     }
+
+    /// <summary>What the focused widget sounded like when a layer was
+    /// pushed over it, for the delta comparison at pop.</summary>
+    private readonly record struct LayerSnapshot(NodeId Focus, string Spoken);
+
+    private readonly List<LayerSnapshot?> _layerSnapshots = new();
+
+    private LayerSnapshot? SnapshotFor(NodeId id) =>
+        !id.IsNone && _tree.Get(id) is { Owner: Widget owner } node
+            ? new LayerSnapshot(id, SpokenPartsOf(node, owner))
+            : null;
+
+    private const WidgetStates AudibleStates = WidgetStates.Disabled
+        | WidgetStates.Required | WidgetStates.Warning | WidgetStates.WithHelp;
+
+    private static string SpokenPartsOf(Node node, Widget owner) =>
+        $"{node.Label.Name}\n{node.Label.RoleText}\n{owner.ValueText}\n" +
+        $"{owner.StateText}\n{(uint)(node.Label.States & AudibleStates)}";
 
     // ── Input dispatch ──
 
