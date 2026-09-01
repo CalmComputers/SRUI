@@ -258,21 +258,44 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
         _flushBatchInput = true;
     }
 
-    internal void CloseDialog(Dialog dialog)
+    internal void CloseDialog(Dialog dialog, bool nested)
     {
+        if (!_dialogs.Contains(dialog))
+            return;
+        // A buried dialog defers by default: its result delivery
+        // opened UI of its own, which the close must not take down.
+        // It is condemned, and collapses when the cascade reaches it.
+        if (!ReferenceEquals(_dialogs.Peek(), dialog) && !nested)
+        {
+            dialog.Condemned = true;
+            return;
+        }
         // The closing layer gets the same seal the opening one did:
         // held keys release into the dialog, and the rest of the batch
         // must not leak into the layer being revealed.
         SealLayerInput();
-        // Dialogs close strictly LIFO; closing a buried dialog closes
-        // those above it.
-        while (_dialogs.Count > 0)
+        // Collect top-down: everything above the target (nested takes
+        // live dialogs with it; without nested the target is the top),
+        // the target, then every condemned dialog the collapse newly
+        // reveals - the cascade.
+        var doomed = new List<Dialog>();
+        var reachedTarget = false;
+        foreach (var entry in _dialogs)
         {
-            var top = _dialogs.Pop();
-            Engine.PopLayer();
-            if (ReferenceEquals(top, dialog))
+            if (reachedTarget && !entry.Condemned)
                 break;
-            top.Close();
+            doomed.Add(entry);
+            if (ReferenceEquals(entry, dialog))
+                reachedTarget = true;
+        }
+        // Only the last pop announces: its layer snapshot is the state
+        // the user last heard before the whole excursion began, and the
+        // intermediate layers were never the user's ground.
+        for (var i = 0; i < doomed.Count; i++)
+        {
+            _dialogs.Pop();
+            Engine.PopLayer(announce: i == doomed.Count - 1);
+            doomed[i].Collapse();
         }
     }
 

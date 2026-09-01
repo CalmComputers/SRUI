@@ -448,15 +448,17 @@ internal sealed class CoreUi
     /// changed while the layer was open (a rename landing, a listing
     /// refreshed), and an unchanged widget restores in silence. Only
     /// focus landing somewhere else - the pushed-from node is gone -
-    /// reads in full, as the recovery it is.</summary>
-    public void PopLayer()
+    /// reads in full, as the recovery it is. <paramref name="announce"/>
+    /// false pops without any of that - the intermediate layers of a
+    /// cascade, which were never the user's ground.</summary>
+    public void PopLayer(bool announce = true)
     {
         var snapshot = _layerSnapshots.Count > 0 ? _layerSnapshots[^1] : null;
         if (_layerSnapshots.Count > 0)
             _layerSnapshots.RemoveAt(_layerSnapshots.Count - 1);
         var restored = _tree.PopLayer();
         _focusMemory.Gc(_tree);
-        if (restored.IsNone)
+        if (!announce || restored.IsNone)
             return;
         if (snapshot is not { } known || known.Focus != restored)
         {

@@ -901,6 +901,89 @@ public class DialogTests
     }
 
     [Fact]
+    public void AResultDeliveryMayOpenADialogBeforeClosing()
+    {
+        var ui = new TestApp();
+        var name = new EditBox(ui.App, "Name");
+        name.Focus();
+        ui.Drain();
+
+        var first = ui.App.OpenDialog();
+        var go = new Button(first, "Go");
+        go.Focus();
+        ui.Drain();
+
+        // The deliver-then-close pattern: the delivery mutates the
+        // ground, opens follow-up UI, and only then closes - which
+        // defers, because the follow-up lives above.
+        Dialog? second = null;
+        go.Activated += () =>
+        {
+            name.Text = "picked";
+            second = ui.App.OpenDialog();
+            var done = new Button(second, "Done");
+            done.Activated += () => second!.Close();
+            done.Focus();
+            second.AnnounceOpened();
+            first.Close();
+        };
+        ui.Input(InputKind.Activate);
+        Assert.True(first.IsOpen); // condemned, not collapsed
+        Assert.Equal(new[] { "Done button" }, ui.Spoken());
+
+        // Closing the inner dialog cascades: both layers pop, focus
+        // lands on the ground, and one delta read speaks the whole
+        // excursion's change.
+        ui.Input(InputKind.Activate);
+        Assert.False(first.IsOpen);
+        Assert.False(second!.IsOpen);
+        Assert.True(name.IsFocused);
+        // "selected": the single-line box selects all as focus
+        // re-enters, and the restore reads it as reshaped.
+        Assert.Equal(new[] { "selected picked" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void NestedCloseTakesTheDialogsAboveDownWithIt()
+    {
+        var ui = new TestApp();
+        var save = new Button(ui.App, "Save");
+        save.Focus();
+        ui.Drain();
+
+        var outer = ui.App.OpenDialog();
+        new Button(outer, "Outer").Focus();
+        var inner = ui.App.OpenDialog();
+        new Button(inner, "Inner").Focus();
+        ui.Drain();
+
+        outer.Close(nested: true);
+        Assert.False(outer.IsOpen);
+        Assert.False(inner.IsOpen);
+        Assert.True(save.IsFocused);
+    }
+
+    [Fact]
+    public void ACondemnedDialogsClosedFiresAtTheCollapse()
+    {
+        var ui = new TestApp();
+        new Button(ui.App, "Ground").Focus();
+        ui.Drain();
+
+        var order = new List<string>();
+        var first = ui.App.OpenDialog();
+        first.Closed += () => order.Add("first");
+        var second = ui.App.OpenDialog();
+        second.Closed += () => order.Add("second");
+
+        first.Close();
+        Assert.Empty(order); // condemned: still standing under second
+
+        second.Close();
+        Assert.Equal(new[] { "second", "first" }, order);
+    }
+
+    [Fact]
     public void AnnounceOpenedCollectsPrecedingLabels()
     {
         var ui = new TestApp();
@@ -941,7 +1024,7 @@ public class DialogTests
     }
 
     [Fact]
-    public void ClosingBuriedDialogClosesThoseAboveIt()
+    public void ClosingABuriedDialogDefersUntilThoseAboveDie()
     {
         var ui = new TestApp();
         _ = new Button(ui.App, "Root");
@@ -956,7 +1039,13 @@ public class DialogTests
         var innerClosed = 0;
         inner.Closed += () => innerClosed++;
 
+        // Condemned, not collapsed: the inner dialog stands.
         outer.Close();
+        Assert.True(outer.IsOpen);
+        Assert.True(inner.IsOpen);
+        Assert.Equal(0, innerClosed);
+
+        inner.Close();
         Assert.False(outer.IsOpen);
         Assert.False(inner.IsOpen);
         Assert.Equal(1, innerClosed);

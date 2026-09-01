@@ -51,17 +51,20 @@ public static class SruiDialogs
         AddMnemonic(yes, "Yes", taken);
         AddMnemonic(no, "No", taken);
         var answered = false;
+        // Answer first, close second: the closing restore then speaks
+        // what the answer changed, and a dialog the answer opened
+        // defers the close until it dies.
         yes.Activated += () =>
         {
             answered = true;
-            dialog.Close();
             onYes();
+            dialog.Close();
         };
         no.Activated += () =>
         {
             answered = true;
-            dialog.Close();
             onNo?.Invoke();
+            dialog.Close();
         };
         dialog.Dismissed += () =>
         {
@@ -89,8 +92,8 @@ public static class SruiDialogs
             button.Activated += () =>
             {
                 chosen = true;
-                dialog.Close();
                 onChoice(captured);
+                dialog.Close();
             };
         }
         dialog.Dismissed += () =>
