@@ -1112,6 +1112,117 @@ public class DialogTests
         Assert.Equal(1, innerClosed);
     }
 
+    /// <summary>The deliver-then-close pattern with a result that
+    /// re-homes the ground: the handler focuses a ground widget and
+    /// names a new primary before closing. Both writes land in the
+    /// ground's layer, not the dialog's doomed one, so the pop finds
+    /// them - focus is read once, as the recovery it is, and Enter
+    /// reaches the new primary.</summary>
+    [Fact]
+    public void AResultMayReHomeTheGroundBeforeClosing()
+    {
+        var ui = new TestApp();
+        var hand = new ListBox(ui.App, "Hand", new[] { "Ace" });
+        var deck = new ListBox(ui.App, "Deck", new[] { "Red" });
+        var play = new Button(ui.App, "Play");
+        var begin = new Button(ui.App, "Begin");
+        var begun = 0;
+        begin.Activated += () => begun++;
+        ui.App.SetPrimary(play);
+        hand.Focus();
+        ui.Drain();
+
+        var dialog = ui.App.OpenDialog();
+        var leave = new Button(dialog, "Leave");
+        leave.Activated += () =>
+        {
+            hand.Hidden = true;
+            deck.Focus();
+            ui.App.SetPrimary(begin);
+            dialog.Close();
+        };
+        leave.Focus();
+        ui.Drain();
+
+        ui.Input(InputKind.Activate);
+        Assert.False(dialog.IsOpen);
+        Assert.True(deck.IsFocused);
+        var spoken = ui.Spoken();
+        Assert.Single(spoken);
+        Assert.StartsWith("Deck list", spoken[0]);
+
+        ui.Input(InputKind.Activate);
+        Assert.Equal(1, begun);
+    }
+
+    /// <summary>The same result delivered from a confirm above the
+    /// dialog - the dialog's close is deferred behind the confirm, the
+    /// re-homing writes still reach the ground, and the cascade's one
+    /// restore lands on them.</summary>
+    [Fact]
+    public void AResultMayReHomeTheGroundThroughACascade()
+    {
+        var ui = new TestApp();
+        var hand = new ListBox(ui.App, "Hand", new[] { "Ace" });
+        var deck = new ListBox(ui.App, "Deck", new[] { "Red" });
+        var play = new Button(ui.App, "Play");
+        var begin = new Button(ui.App, "Begin");
+        var begun = 0;
+        begin.Activated += () => begun++;
+        ui.App.SetPrimary(play);
+        hand.Focus();
+        ui.Drain();
+
+        var pause = ui.App.OpenDialog();
+        var leave = new Button(pause, "Leave");
+        leave.Activated += () => ui.App.Confirm("Leave anyway?", () =>
+        {
+            pause.Close();                       // deferred: the confirm stands above
+            hand.Hidden = true;
+            deck.Focus();
+            ui.App.SetPrimary(begin);
+        });
+        leave.Focus();
+        ui.Drain();
+
+        ui.Input(InputKind.Activate);            // Leave: the confirm opens
+        ui.Input(InputKind.Activate);            // Yes
+        Assert.False(pause.IsOpen);
+        Assert.False(ui.App.HasOpenDialog);
+        Assert.True(deck.IsFocused);
+        var spoken = ui.Spoken();
+        Assert.Single(spoken);
+        Assert.StartsWith("Deck list", spoken[0]);
+
+        ui.Input(InputKind.Activate);
+        Assert.Equal(1, begun);
+    }
+
+    /// <summary>A ground root removed from under a dialog leaves the
+    /// ground's root list: navigation after the close walks the
+    /// survivors, never a dangling root.</summary>
+    [Fact]
+    public void AGroundRootRemovedUnderADialogLeavesTheGround()
+    {
+        var ui = new TestApp();
+        var first = new Button(ui.App, "First");
+        var second = new Button(ui.App, "Second");
+        var third = new Button(ui.App, "Third");
+        first.Focus();
+        ui.Drain();
+
+        var dialog = ui.App.OpenDialog();
+        _ = new Button(dialog, "Inside");
+        second.Remove();
+        dialog.Close();
+        ui.Drain();
+
+        ui.Input(InputKind.NavigateNext);
+        Assert.True(third.IsFocused);
+        ui.Input(InputKind.NavigatePrev);
+        Assert.True(first.IsFocused);
+    }
+
     [Fact]
     public void DialogResultIsSpokenBeforeRestoredFocus()
     {

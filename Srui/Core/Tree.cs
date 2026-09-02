@@ -74,7 +74,10 @@ internal sealed class Tree
         var doomed = new List<NodeId>();
         CollectSubtree(id, doomed);
 
-        // Detach from the parent's children or the active layer's roots.
+        // Detach from the parent's children or its own layer's roots -
+        // a ground root removed from under a dialog leaves the ground's
+        // list, not the dialog's.
+        var layer = LayerOf(id);
         if (_nodes.TryGetValue(id, out var node))
         {
             if (!node.Parent.IsNone)
@@ -84,11 +87,10 @@ internal sealed class Tree
             }
             else
             {
-                ActiveLayer.Roots.Remove(id);
+                layer.Roots.Remove(id);
             }
         }
 
-        var layer = ActiveLayer;
         foreach (var nid in doomed)
         {
             if (layer.Focus == nid)
@@ -128,7 +130,20 @@ internal sealed class Tree
 
     public NodeId Focus => ActiveLayer.Focus;
 
-    public void SetFocus(NodeId id) => ActiveLayer.Focus = id;
+    /// <summary>Set the focus of the layer <paramref name="id"/> lives
+    /// in - the active layer for None or an unknown node. Focus,
+    /// primary, and cancel are each a layer's own, so a write naming a
+    /// node under a dialog lands in that node's layer, where the pop
+    /// will find it, rather than in the dialog's, where the pop would
+    /// discard it.</summary>
+    public void SetFocus(NodeId id) => LayerOf(id).Focus = id;
+
+    /// <summary>The focus of the layer <paramref name="id"/> lives in.</summary>
+    public NodeId FocusInLayerOf(NodeId id) => LayerOf(id).Focus;
+
+    /// <summary>Whether <paramref name="id"/> is a node of the active
+    /// layer - reachable by the user now, layer-wise.</summary>
+    public bool InActiveLayer(NodeId id) => ReferenceEquals(LayerOf(id), ActiveLayer);
 
     public void ClearFocus() => ActiveLayer.Focus = NodeId.None;
 
@@ -163,12 +178,33 @@ internal sealed class Tree
     /// <summary>The active layer's primary widget (Enter activates it).</summary>
     public NodeId Primary => ActiveLayer.Primary;
 
-    public void SetPrimary(NodeId id) => ActiveLayer.Primary = id;
+    /// <summary>Set the primary of the layer <paramref name="id"/>
+    /// lives in (see <see cref="SetFocus"/>).</summary>
+    public void SetPrimary(NodeId id) => LayerOf(id).Primary = id;
 
     /// <summary>The active layer's cancel widget (Escape activates it).</summary>
     public NodeId Cancel => ActiveLayer.Cancel;
 
-    public void SetCancel(NodeId id) => ActiveLayer.Cancel = id;
+    /// <summary>Set the cancel of the layer <paramref name="id"/>
+    /// lives in (see <see cref="SetFocus"/>).</summary>
+    public void SetCancel(NodeId id) => LayerOf(id).Cancel = id;
 
     private Layer ActiveLayer => _layers[^1];
+
+    /// <summary>The layer holding <paramref name="id"/>'s root ancestor;
+    /// the active layer for None or a node the tree does not hold. A
+    /// walk to the root and a scan of each layer's roots, top down -
+    /// the common case, a node of the active layer, answers at the
+    /// first layer.</summary>
+    private Layer LayerOf(NodeId id)
+    {
+        if (id.IsNone || !_nodes.TryGetValue(id, out var node))
+            return ActiveLayer;
+        while (!node.Parent.IsNone && _nodes.TryGetValue(node.Parent, out var parent))
+            node = parent;
+        for (var i = _layers.Count - 1; i >= 0; i--)
+            if (_layers[i].Roots.Contains(node.Id))
+                return _layers[i];
+        return ActiveLayer;
+    }
 }

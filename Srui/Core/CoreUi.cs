@@ -304,11 +304,28 @@ internal sealed class CoreUi
     // ── Focus ──
 
     /// <summary>Move focus programmatically. Announces the newly focused
-    /// node.</summary>
+    /// node - unless the node lives under an open dialog, in which case
+    /// its layer's focus moves in silence: a result handler re-homing
+    /// the ground before its dialog closes (deliver first, close
+    /// second) is not yet the user's ground, and the pop announces the
+    /// landing as the recovery it is, since it differs from the
+    /// snapshot the layer was pushed over.</summary>
     public void SetFocus(NodeId id)
     {
-        if (_tree.Contains(id))
+        if (!_tree.Contains(id))
+            return;
+        if (_tree.InActiveLayer(id))
+        {
             SetFocusInternal(id, FocusCause.Programmatic);
+            return;
+        }
+        var old = _tree.FocusInLayerOf(id);
+        if (old == id)
+            return;
+        var parent = _tree.Parent(old);
+        if (!old.IsNone && !parent.IsNone)
+            _focusMemory.Remember(parent, old);
+        _tree.SetFocus(id);
     }
 
     /// <summary>If nothing is focused, focus the first focusable node and
