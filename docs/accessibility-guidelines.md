@@ -34,9 +34,20 @@ app.Announce("Fireball selected.");   // second utterance for the same toggle
 
 A `Description` that begins by paraphrasing the `Name` makes the widget introduce itself twice ("Quit button. Press again to quit."). Descriptions never restate the name, the role, or anything else the standard announcement already says (section 4).
 
-## 2.3 Echoing input back
+## 2.3 Confirming what focus is about to show
 
-When the user typed the text or picked the item, they know what it was. Confirm the *operation*, not the operand: "Added." beats "Added Water the plants." when the user just pressed Enter on "Water the plants". Echo the operand only when the system transformed it (trimming, normalizing, resolving a name) or when the action happened away from the user's focus.
+An action the user initiated has a result, and the result is usually a widget: a new list item, a changed value, a closed dialog. If focus lands on that result, the landing *is* the confirmation. A user who adds a task and finds themselves on "Water the plants, 4 of 4" knows the add succeeded, knows the count, and knows what was added; an `Announce("Added.")` on top of that is a third statement of a fact the list already made. Route focus to the result and say nothing.
+
+In SRUI terms: `Add`/`Insert` are silent and keep the selection where it was, so the caller lands the user on the new item. From inside the list, set `SelectedIndex` to the new item — on a focused list the setter speaks the item exactly as an arrow move would. From an add dialog, insert, select, and close; the close restores focus to the list, and the restore reads the selected item. Either way the user hears the item once, and nothing else.
+
+A spoken confirmation is correct in exactly two situations:
+
+- **The action was not user-initiated.** A background sync finishing, a message arriving, a file appearing: nothing moved focus, so nothing else will speak.
+- **No widget shows the outcome.** The classic case is "Copied." — the clipboard has no widget to land on. Others: the add box stays focused and empty for the next entry; the result lives on another screen; the change is to something focus cannot visit.
+
+Failure is a third case, and it is not optional. When an add fails, focus does not land on a new item, but the user cannot hear an absence quickly, so the error is always announced (section 6).
+
+When a confirmation is spoken, confirm the *operation*, not the operand. The user typed the text or picked the item and knows what it was: "Added." beats "Added Water the plants." Echo the operand only when the system transformed it (trimming, normalizing, resolving a name) and focus will not show the transformed form.
 
 # 3. Name, Role, Value, State — Use the Slots
 
@@ -95,7 +106,8 @@ The same reasoning covers instruction labels. A leading label reading "Space tog
 
 - Never announce what a property change on a focused widget just spoke (section 2.1).
 - Never announce what focus movement is about to speak. Closing a dialog restores focus, and the restore speaks on its own — the full re-announcement by default, less under a trimmed restore verbosity; an `Announce("Returned to the menu.")` narrates a transition the user already made.
-- State outcomes once, tersely, most-important-first: "Added. 5 fighters." The user can act on the first word; everything after it is optional listening.
+- Announce an outcome only when focus will not show it (section 2.3). If the operation ends with focus on its result, the focus change is the announcement.
+- When an outcome is announced, state it once, tersely, most-important-first: "Added. 5 fighters." The user can act on the first word; everything after it is optional listening.
 - Never rely on interruption or urgency tiers to make an announcement land — structure the content so the front-loaded words suffice.
 
 # 7. Choosing Widgets: Lists Versus Button Stacks
@@ -125,6 +137,6 @@ These channels cover how bindings are *found*; choosing which keys to bind is it
 The transcript test (section 1) is automatable, and SRUI applications are expected to encode their spoken surface as tests: build the screen in `Srui.Testing`'s `TestApp`, push input, and `Expect` the utterances (docs/architecture.md, section 12). Two assertions are worth writing for every screen:
 
 - **The walk**: tab from the first widget to the last and assert the full sequence. Duplication is immediately visible as repeated substrings in adjacent utterances.
-- **The action**: perform each state-changing operation and assert that it produces exactly one utterance, and that the utterance leads with the outcome.
+- **The action**: perform each state-changing operation and assert that it produces exactly one utterance, and that the utterance leads with the outcome. When the operation ends with focus on its result, that one utterance is the focus change reading the result, and the test asserts that nothing else was spoken.
 
 A screen whose walk transcript reads well and whose actions speak once is, by construction, following everything above.
