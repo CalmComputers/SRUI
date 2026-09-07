@@ -264,6 +264,14 @@ public class EditorStateTests
     }
 
     [Fact]
+    public void PasteMultilineTurnsCrlfIntoLf()
+    {
+        var editor = new EditorState("", true);
+        editor.Paste("hello\r\nworld\r\n");
+        Assert.Equal("hello\nworld\n", editor.Text());
+    }
+
+    [Fact]
     public void PasteSingleLineConvertsNewlines()
     {
         var editor = new EditorState("", false);

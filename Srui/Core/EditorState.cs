@@ -588,8 +588,9 @@ internal sealed class EditorState
         return (text, "cut");
     }
 
-    /// <summary>Paste text at the cursor. For single-line editors,
-    /// newlines become spaces and CRs are removed.</summary>
+    /// <summary>Paste text at the cursor. The buffer's newline is LF, so
+    /// CRLF from the system clipboard (Windows) becomes LF; for
+    /// single-line editors, newlines become spaces and CRs are removed.</summary>
     public string Paste(string text)
     {
         if (ReadOnly)
@@ -598,8 +599,9 @@ internal sealed class EditorState
         try
         {
             var hadSelection = DeleteSelectionSilent();
-            if (!Multiline)
-                text = text.Replace('\n', ' ').Replace("\r", "");
+            text = Multiline
+                ? text.Replace("\r\n", "\n")
+                : text.Replace('\n', ' ').Replace("\r", "");
             Splice(Cursor, Cursor, text);
             Cursor += text.Length;
             Selection = null;
