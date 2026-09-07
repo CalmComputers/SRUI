@@ -17,6 +17,21 @@ internal sealed class EditorState
     public bool Multiline;
     public bool ReadOnly;
 
+    /// <summary>A password field: every spoken form of the text - the
+    /// value, typing echo, navigation, selection, undo - is one star
+    /// per character, and copy and cut are refused. The text itself is
+    /// untouched; the program reads it as usual.</summary>
+    public bool Masked;
+
+    /// <summary>Text as the user hears it: itself, or one star per
+    /// grapheme when <see cref="Masked"/>. Applied before speech
+    /// expansion, so a single masked character still speaks as
+    /// "star".</summary>
+    public string Spoken(string text) =>
+        Masked && text.Length != 0
+            ? new string('*', new System.Globalization.StringInfo(text).LengthInTextElements)
+            : text;
+
     /// <summary>Undo history. Recording rides <see cref="Splice"/>, so
     /// every mutation path participates; <see cref="SetText"/> clears it.</summary>
     public readonly UndoHistory History = new();
@@ -131,7 +146,14 @@ internal sealed class EditorState
     }
 
     /// <summary>All text, or "blank" when empty.</summary>
-    public string ReadAll() => IsEmpty ? "blank" : Text();
+    public string ReadAll() => IsEmpty ? "blank" : Spoken(Text());
+
+    /// <summary>The line under the cursor, or "blank".</summary>
+    public string CurrentLine()
+    {
+        var line = TextNav.CurrentLineText(Rope, Cursor);
+        return line.Length == 0 ? "blank" : Spoken(line);
+    }
 
     // ── Editing operations ──
 
@@ -152,7 +174,7 @@ internal sealed class EditorState
             Cursor += s.Length;
             Selection = null;
             PreferredColumn = null;
-            var charSpeech = SpeechRenderer.SpeakChar(s);
+            var charSpeech = SpeechRenderer.SpeakChar(Spoken(s));
             return hadSelection ? $"selection removed, {charSpeech}" : charSpeech;
         }
         finally
@@ -203,7 +225,7 @@ internal sealed class EditorState
             Splice(prev, Cursor, "");
             Cursor = prev;
             PreferredColumn = null;
-            return SpeechRenderer.SpeakChar(deleted);
+            return SpeechRenderer.SpeakChar(Spoken(deleted));
         }
         finally
         {
@@ -227,7 +249,7 @@ internal sealed class EditorState
                 return null;
             Splice(Cursor, next, "");
             PreferredColumn = null;
-            return SpeechRenderer.SpeakChar(deleted);
+            return SpeechRenderer.SpeakChar(Spoken(deleted));
         }
         finally
         {
@@ -252,7 +274,7 @@ internal sealed class EditorState
             var deleted = Splice(target, Cursor, "");
             Cursor = target;
             PreferredColumn = null;
-            return deleted;
+            return Spoken(deleted);
         }
         finally
         {
@@ -275,7 +297,7 @@ internal sealed class EditorState
             var target = TextNav.NextWordExtent(Rope, Cursor);
             var deleted = Splice(Cursor, target, "");
             PreferredColumn = null;
-            return deleted;
+            return Spoken(deleted);
         }
         finally
         {
@@ -286,7 +308,7 @@ internal sealed class EditorState
     // ── Movement operations ──
 
     private string GraphemeSpeechAt(int pos) =>
-        TextNav.GraphemeAt(Rope, pos) is string g ? SpeechRenderer.SpeakChar(g) : "blank";
+        TextNav.GraphemeAt(Rope, pos) is string g ? SpeechRenderer.SpeakChar(Spoken(g)) : "blank";
 
     /// <summary>Move left one grapheme. Returns the character at the new
     /// position or "blank".</summary>
@@ -372,33 +394,24 @@ internal sealed class EditorState
         return "blank";
     }
 
-    /// <summary>Move to the document start (Ctrl+Home).</summary>
+    /// <summary>Move to the document start (Ctrl+Home). Speaks the
+    /// first line, the way Up speaks the line it lands on.</summary>
     public string MoveToDocStart()
     {
         Selection = null;
         Cursor = 0;
         PreferredColumn = null;
-        return GraphemeSpeechAt(0);
+        return CurrentLine();
     }
 
-    /// <summary>Move to the document end (Ctrl+End).</summary>
+    /// <summary>Move to the document end (Ctrl+End). Speaks the last
+    /// line.</summary>
     public string MoveToDocEnd()
     {
         Selection = null;
         Cursor = Length;
         PreferredColumn = null;
-        if (Cursor == 0)
-            return "blank";
-        if (TextNav.GraphemeBefore(Rope, Cursor) is not string g)
-            return "blank";
-        if (g == "\n" || g == "\r")
-        {
-            var prev = TextNav.PrevGrapheme(Rope, Math.Max(Cursor - 1, 0));
-            return prev is int p && TextNav.GraphemeAt(Rope, p) is string g2
-                ? SpeechRenderer.SpeakChar(g2)
-                : "blank";
-        }
-        return SpeechRenderer.SpeakChar(g);
+        return CurrentLine();
     }
 
     private int CurrentColumn() => Cursor - TextNav.LineStart(Rope, Cursor);
@@ -568,7 +581,7 @@ internal sealed class EditorState
         Cursor = length;
         return length > SpeechRenderer.SpeakLimit
             ? $"{length} characters selected"
-            : $"{Text()} selected";
+            : $"{Spoken(Text())} selected";
     }
 
     // ── Clipboard operations ──
@@ -722,7 +735,7 @@ internal sealed class EditorState
             return "blank";
         if (count > SpeechRenderer.SpeakLimit)
             return $"{count} characters selected";
-        return SelectedText() is string text ? $"{text} selected" : "blank";
+        return SelectedText() is string text ? $"{Spoken(text)} selected" : "blank";
     }
 
     /// <summary>Replace the content (cursor clamped onto a grapheme

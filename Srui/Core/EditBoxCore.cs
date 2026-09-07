@@ -51,11 +51,11 @@ internal static class EditBoxCore
     {
         var at = TextNav.GraphemeAt(editor.Rope, editor.Cursor);
         if (at is string g && (!skipNewline || (g != "\n" && g != "\r")))
-            return SpeechRenderer.SpeakChar(g);
+            return SpeechRenderer.SpeakChar(editor.Spoken(g));
         if (editor.Cursor > 0)
         {
             return TextNav.GraphemeBefore(editor.Rope, editor.Cursor) is string before
-                ? SpeechRenderer.SpeakChar(before)
+                ? SpeechRenderer.SpeakChar(editor.Spoken(before))
                 : "blank";
         }
         return "blank";
@@ -69,11 +69,12 @@ internal static class EditBoxCore
             NavGranularity.Char, null);
 
     /// <summary>Raw grapheme at the cursor (no speech expansion) for the
-    /// structural TextNav payload.</summary>
+    /// structural TextNav payload - masked like everything else a
+    /// password field lets out.</summary>
     private static string RawGraphemeAtCursor(EditorState editor) =>
-        TextNav.GraphemeAt(editor.Rope, editor.Cursor)
-        ?? TextNav.GraphemeBefore(editor.Rope, editor.Cursor)
-        ?? "";
+        editor.Spoken(TextNav.GraphemeAt(editor.Rope, editor.Cursor)
+            ?? TextNav.GraphemeBefore(editor.Rope, editor.Cursor)
+            ?? "");
 
     /// <summary>Speak a WordAt result — a single non-alphanumeric rune
     /// goes through character expansion.</summary>
@@ -101,30 +102,22 @@ internal static class EditBoxCore
                 return "new line";
             var prev = TextNav.PrevWordBoundary(editor.Rope, editor.Cursor);
             var prevPos = TextNav.SkipWhitespaceForward(editor.Rope, prev);
-            return SpeakWord(TextNav.WordAt(editor.Rope, prevPos));
+            return SpeakWord(editor.Spoken(TextNav.WordAt(editor.Rope, prevPos)));
         }
-        return SpeakWord(word);
+        return SpeakWord(editor.Spoken(word));
     }
 
     /// <summary>Speech context for the cursor position at a navigation
-    /// granularity.</summary>
-    private static string NavContext(EditorState editor, NavKind kind)
+    /// granularity: the character for Home and End, the line for a
+    /// text edge - Ctrl+Home and Ctrl+End land on a line, and its text
+    /// is what says where the user is.</summary>
+    private static string NavContext(EditorState editor, NavKind kind) => kind switch
     {
-        switch (kind)
-        {
-            case NavKind.Char:
-                return CursorSpeakChar(editor, false);
-            case NavKind.Word:
-                return WordContext(editor);
-            case NavKind.LineEdge or NavKind.TextEdge:
-                return CursorSpeakChar(editor, true);
-            default:
-            {
-                var text = TextNav.CurrentLineText(editor.Rope, editor.Cursor);
-                return text.Length == 0 ? "blank" : text;
-            }
-        }
-    }
+        NavKind.Char => CursorSpeakChar(editor, false),
+        NavKind.Word => WordContext(editor),
+        NavKind.LineEdge => CursorSpeakChar(editor, true),
+        _ => editor.CurrentLine(),
+    };
 
     /// <summary>Word-echo separator: whitespace or ASCII punctuation.</summary>
     private static bool IsWordSeparator(char c) =>
@@ -253,7 +246,10 @@ internal static class EditBoxCore
             var result = Result.JustConsumed();
             if (cursorMoved)
             {
-                var atEnd = navKind is NavKind.Char or NavKind.TextEdge
+                // Right arrow reaching the end says so; Ctrl+End does
+                // not - the last line is where it was always going, and
+                // "Bottom" is kept for the press that had nowhere to go.
+                var atEnd = navKind is NavKind.Char
                     && editor.Cursor >= editor.Length
                     && prevCursor < editor.Length;
                 result.Events.Add(new AccessibilityEvent.TextNav(
@@ -311,7 +307,7 @@ internal static class EditBoxCore
                 }
                 var delta = deltaLen > SpeechRenderer.SpeakLimit
                     ? $"{deltaLen} characters"
-                    : editor.SliceToString(selStart, selEnd);
+                    : editor.Spoken(editor.SliceToString(selStart, selEnd));
                 result.Events.Add(new AccessibilityEvent.Selection(
                     widget, delta,
                     isUnselecting ? SelectionKind.Unselected : SelectionKind.Selected));
@@ -333,7 +329,7 @@ internal static class EditBoxCore
             var length = editor.Length;
             var delta = length > SpeechRenderer.SpeakLimit
                 ? $"{length} characters"
-                : editor.Text();
+                : editor.Spoken(editor.Text());
             var result = Result.JustConsumed();
             result.Events.Add(new AccessibilityEvent.Selection(widget, delta, SelectionKind.All));
             return result;
@@ -358,13 +354,15 @@ internal static class EditBoxCore
             if (hadSel)
                 result.Events.Add(new AccessibilityEvent.Selection(widget, "", SelectionKind.Cleared));
 
-            var lastWord = text.Length == 1 && IsWordSeparator(text[0])
+            // A password field echoes a star per character and never a
+            // completed word: a word of stars says only its length.
+            var lastWord = !editor.Masked && text.Length == 1 && IsWordSeparator(text[0])
                 && FirstSeparatorInRun(editor.Rope, editor.Cursor)
                 ? CompletedWord(editor.Rope, editor.Cursor)
                 : null;
 
             result.Events.Add(new AccessibilityEvent.Typing(
-                widget, text, lastWord, TypingKind.Insert));
+                widget, editor.Spoken(text), lastWord, TypingKind.Insert));
             return result;
         }
 
@@ -382,7 +380,7 @@ internal static class EditBoxCore
             if (hadSel)
                 result.Events.Add(new AccessibilityEvent.Selection(widget, "", SelectionKind.Cleared));
 
-            var lastWord = FirstSeparatorInRun(editor.Rope, editor.Cursor)
+            var lastWord = !editor.Masked && FirstSeparatorInRun(editor.Rope, editor.Cursor)
                 ? CompletedWord(editor.Rope, editor.Cursor)
                 : null;
 
@@ -428,11 +426,14 @@ internal static class EditBoxCore
         }
 
         // ── Clipboard ──
+        // A password field refuses copy and cut - the Windows
+        // convention, since the clipboard is readable by anything -
+        // and still takes a paste.
         switch (input.Kind)
         {
             case InputKind.Copy:
             {
-                if (!hadSelection)
+                if (!hadSelection || editor.Masked)
                     return Result.JustConsumed();
                 var (clip, _) = editor.Copy();
                 if (clip.Length != 0)
@@ -443,7 +444,7 @@ internal static class EditBoxCore
             }
             case InputKind.Cut:
             {
-                if (editor.ReadOnly || !hadSelection)
+                if (editor.ReadOnly || !hadSelection || editor.Masked)
                     return Result.JustConsumed();
                 var (clip, _) = editor.Cut();
                 if (clip.Length != 0)
@@ -498,11 +499,8 @@ internal static class EditBoxCore
             var length = end - start;
             return length >= SpeechRenderer.SpeakLimit
                 ? $"selected {length} characters"
-                : $"selected {editor.Rope.Substring(start, end)}";
+                : $"selected {editor.Spoken(editor.Rope.Substring(start, end))}";
         }
-        if (editor.Length == 0)
-            return "blank";
-        var line = TextNav.CurrentLineText(editor.Rope, editor.Cursor);
-        return line.Length == 0 ? "blank" : line;
+        return editor.CurrentLine();
     }
 }

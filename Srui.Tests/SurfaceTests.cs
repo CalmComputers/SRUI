@@ -1874,11 +1874,40 @@ public class EditBoxTests
 
         notes.MoveToDocStart();
         Assert.Equal(0, notes.CursorPosition);
-        Assert.Equal(new[] { "h" }, ui.Spoken());
+        Assert.Equal(new[] { "hello world" }, ui.Spoken());
 
         // At the boundary already: the same edge report as the key.
         notes.MoveToDocStart();
-        Assert.Equal(new[] { "Top, h" }, ui.Spoken());
+        Assert.Equal(new[] { "Top, hello world" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void PasswordFieldSpeaksProtectedStarsAndStillTakesAPaste()
+    {
+        var ui = new TestApp();
+        var clipboard = new MemClipboard();
+        clipboard.Write("hunter2");
+        ui.App.SetClipboard(clipboard);
+        var box = new EditBox(ui.App, "Password") { Password = true };
+        box.Focus();
+        Assert.Equal(new[] { "Password edit blank protected" }, ui.Spoken());
+
+        ui.Input(InputEvent.TypeChar('a'));
+        Assert.Equal(new[] { "star" }, ui.Spoken());
+        ui.Input(InputKind.SelectAll);
+        Assert.Equal(new[] { "* selected" }, ui.Spoken());
+        ui.Input(InputKind.Copy);
+        Assert.Empty(ui.Spoken());
+        Assert.Equal("hunter2", clipboard.Read());
+        ui.Input(InputKind.Paste);
+        Assert.Equal(new[] { "Paste" }, ui.Spoken());
+        Assert.Equal("hunter2", box.Text);
+        box.SelectAll();
+        Assert.Equal(new[] { "******* selected" }, ui.Spoken());
+        box.Password = false;
+        Assert.Empty(ui.Spoken());
+        ui.Input(InputKind.MoveToDocStart);
+        Assert.Equal(new[] { "hunter2" }, ui.Spoken());
     }
 
     [Fact]

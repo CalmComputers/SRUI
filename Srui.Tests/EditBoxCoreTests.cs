@@ -100,6 +100,53 @@ public class EditBoxCoreTests
     }
 
     [Fact]
+    public void CtrlHomeAndEndSpeakTheLineTheyLandOnAndTheEdgeOnlyWhenPinned()
+    {
+        var editor = new EditorState("first line\nlast line", true) { Cursor = 3 };
+        Assert.Equal(new[] { "last line" }, Speech(Handle(Simple(InputKind.MoveToDocEnd), editor)));
+        Assert.Equal(20, editor.Cursor);
+        Assert.Equal(new[] { "Bottom, last line" }, Speech(Handle(Simple(InputKind.MoveToDocEnd), editor)));
+        Assert.Equal(new[] { "first line" }, Speech(Handle(Simple(InputKind.MoveToDocStart), editor)));
+        Assert.Equal(0, editor.Cursor);
+        Assert.Equal(new[] { "Top, first line" }, Speech(Handle(Simple(InputKind.MoveToDocStart), editor)));
+        // A trailing newline makes the last line blank, and that is what is read.
+        var trailing = new EditorState("one\n", true) { Cursor = 0 };
+        Assert.Equal(new[] { "blank" }, Speech(Handle(Simple(InputKind.MoveToDocEnd), trailing)));
+        Assert.Equal(4, trailing.Cursor);
+    }
+
+    [Fact]
+    public void PasswordFieldMasksEverySpokenFormAndRefusesCopy()
+    {
+        var editor = new EditorState("", false) { Masked = true };
+        Assert.Equal(new[] { "star" }, Speech(Handle(InputEvent.TypeChar('h'), editor)));
+        Assert.Equal(new[] { "star" }, Speech(Handle(InputEvent.TypeChar('i'), editor)));
+        // A separator completes no word.
+        Assert.Equal(new[] { "star" }, Speech(Handle(InputEvent.TypeChar(' '), editor)));
+        Assert.Equal("hi ", editor.Text());
+        Assert.Equal("***", EditBoxCore.LabelValue(editor));
+        Assert.Equal(new[] { "star" }, Speech(Handle(Simple(InputKind.DeleteBackward), editor)));
+        Assert.Equal(new[] { "star" }, Speech(Handle(Simple(InputKind.MoveLeft), editor)));
+        Assert.Equal(new[] { "star" }, Speech(Handle(Simple(InputKind.MoveToLineStart), editor)));
+        Assert.Equal(new[] { "**" }, Speech(Handle(Simple(InputKind.MoveWordRight), editor)));
+        Assert.Equal(new[] { "** selected" }, Speech(Handle(Simple(InputKind.SelectAll), editor)));
+        Assert.Equal("selected **", EditBoxCore.LabelValue(editor));
+        var copy = Handle(Simple(InputKind.Copy), editor);
+        Assert.True(copy.Consumed);
+        Assert.Empty(copy.Events);
+        var cut = Handle(Simple(InputKind.Cut), editor);
+        Assert.Empty(cut.Events);
+        Assert.Equal("hi", editor.Text());
+        // A collapse, a displaced insert, and the undo that reads the
+        // restored line - all through the mask.
+        Assert.Equal(new[] { "star" }, Speech(Handle(Simple(InputKind.MoveLeft), editor)));
+        Assert.Equal(new[] { "star" }, Speech(Handle(InputEvent.TypeChar('x'), editor)));
+        Assert.Equal("xhi", editor.Text());
+        Assert.Equal(new[] { "**" }, Speech(Handle(Simple(InputKind.Undo), editor)));
+        Assert.Equal("hi", editor.Text());
+    }
+
+    [Fact]
     public void ReadOnlyTypingIsSilent()
     {
         var editor = new EditorState("hello", false) { ReadOnly = true };

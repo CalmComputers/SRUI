@@ -87,6 +87,7 @@ views.Changed += () => Log($"views: {panelNames[views.ActiveIndex]}");
 // ── Editor panel: text, toggles, capture ──
 
 var name = new EditBox(editorPanel, "Your name");
+var password = new EditBox(editorPanel, "Password") { Password = true };
 var notes = new EditBox(editorPanel, "Notes", multiline: true);
 var wrap = new CheckBox(editorPanel, "Word wrap");
 var options = new Group(editorPanel, "Options");

@@ -27,6 +27,26 @@ public class EditBox : Widget
     /// pulled fresh at announcement time.</summary>
     protected internal override string ValueText => EditBoxCore.LabelValue(_editor);
 
+    /// <summary>"protected" for a password field, spoken after the value
+    /// in the focus announcement.</summary>
+    protected internal override string StateText => _editor.Masked ? "protected" : "";
+
+    /// <summary>A password field. The text is kept and read back as
+    /// usual; what reaches the user is masked - the value, typing echo,
+    /// cursor and word movement, selection, undo, and deletion all
+    /// speak one star per character, a completed word is never echoed,
+    /// and copy and cut are refused (paste still lands). Focus hears
+    /// "protected" after the value. Switching it is silent, like any
+    /// state-text change: the next focus announcement carries it, and a
+    /// program that switches mid-session - a console whose server took
+    /// over echo for a password prompt - already has the prompt to say
+    /// so.</summary>
+    public bool Password
+    {
+        get => _editor.Masked;
+        set => _editor.Masked = value;
+    }
+
     private static string RoleTextFor(bool readOnly, bool multiline) => (readOnly, multiline) switch
     {
         (false, false) => "edit",
@@ -120,7 +140,7 @@ public class EditBox : Widget
                     var end = Math.Max(a, c);
                     var delta = end - start > SpeechRenderer.SpeakLimit
                         ? $"{end - start} characters"
-                        : _editor.SliceToString(start, end);
+                        : _editor.Spoken(_editor.SliceToString(start, end));
                     Promulgate(new AccessibilityEvent.Selection(this, delta, SelectionKind.Selected));
                 }
             }
@@ -174,7 +194,7 @@ public class EditBox : Widget
         var length = _editor.Length;
         var delta = length > SpeechRenderer.SpeakLimit
             ? $"{length} characters"
-            : _editor.Text();
+            : _editor.Spoken(_editor.Text());
         Promulgate(new AccessibilityEvent.Selection(this, delta, SelectionKind.All));
     }
 
@@ -199,7 +219,7 @@ public class EditBox : Widget
         if (hadSelection)
             Promulgate(new AccessibilityEvent.Selection(this, "", SelectionKind.Cleared));
         if (text.Length != 0)
-            Promulgate(new AccessibilityEvent.Typing(this, text, null, TypingKind.Insert));
+            Promulgate(new AccessibilityEvent.Typing(this, _editor.Spoken(text), null, TypingKind.Insert));
     }
 
     /// <summary>Replace the range between two positions (either order;
@@ -272,10 +292,12 @@ public class EditBox : Widget
     /// arrow.</summary>
     public void MoveLineDown() => Nav(InputKind.MoveLineDown);
 
-    /// <summary>Move to the text start, announcing like Ctrl+Home.</summary>
+    /// <summary>Move to the text start, announcing the first line like
+    /// Ctrl+Home ("Top, ..." only when already there).</summary>
     public void MoveToDocStart() => Nav(InputKind.MoveToDocStart);
 
-    /// <summary>Move to the text end, announcing like Ctrl+End.</summary>
+    /// <summary>Move to the text end, announcing the last line like
+    /// Ctrl+End ("Bottom, ..." only when already there).</summary>
     public void MoveToDocEnd() => Nav(InputKind.MoveToDocEnd);
 
     // ── Undo ──

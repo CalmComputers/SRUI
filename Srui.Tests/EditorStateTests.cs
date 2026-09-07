@@ -119,9 +119,9 @@ public class EditorStateTests
     public void MoveToDocStartEnd()
     {
         var editor = new EditorState("hello\nworld", true) { Cursor = 8 };
-        Assert.Equal("h", editor.MoveToDocStart());
+        Assert.Equal("hello", editor.MoveToDocStart());
         Assert.Equal(0, editor.Cursor);
-        Assert.Equal("d", editor.MoveToDocEnd());
+        Assert.Equal("world", editor.MoveToDocEnd());
         Assert.Equal(11, editor.Cursor);
     }
 
