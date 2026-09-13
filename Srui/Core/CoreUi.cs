@@ -762,20 +762,20 @@ internal sealed class CoreUi
         {
             if (field.FocusOnly)
                 continue;
-            // A reread is the later, more deliberate request: it wins
-            // over a suppression in the same tick.
-            if (owner.IsRereadRequested(field, scope))
+            // An arrival reads in full, whatever the tick suppressed:
+            // the fields of an item the cursor landed on (nothing was
+            // heard of it before), and the position it landed at, which
+            // belongs with it. A reread is the later, more deliberate
+            // request: it wins over a suppression in the same tick.
+            var arrival = before is null || (landed && ReferenceEquals(field, Fields.Position));
+            if (arrival || owner.IsRereadRequested(field, scope))
             {
                 tick.Add(new AccessibilityEvent.FieldValue(owner, field, value, scope));
                 continue;
             }
             if (owner.IsSuppressed(field))
                 continue;
-            var changed = before is null
-                || !before.TryGetBoxed(field, out var old)
-                || !field.ValuesEqual(old, value);
-            // The cursor's position belongs with the item it landed on.
-            if (changed || (landed && ReferenceEquals(field, Fields.Position)))
+            if (!before!.TryGetBoxed(field, out var old) || !field.ValuesEqual(old, value))
                 tick.Add(new AccessibilityEvent.FieldValue(owner, field, value, scope));
         }
     }

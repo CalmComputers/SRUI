@@ -208,6 +208,29 @@ public partial class TickModelTests
     }
 
     [Fact]
+    public void ASuppressedFieldStillReadsWhereTheCursorLands()
+    {
+        using var ui = new TestApp();
+        var list = new ListBox(ui.App, "Items", ["one", "two", "three"], numbered: true);
+        list.Focus();
+        ui.Drain();
+
+        // A refresh that keeps in-place line changes out of the reading
+        // (the program narrates those) must not silence a landing: the
+        // item under the cursor went, and the survivor is news in full.
+        list.Suppress(Fields.Value, Fields.Position);
+        list.RemoveAt(0);
+        Assert.Equal(new[] { "two 1 of 2" }, ui.Spoken());
+
+        // The same suppression over a surviving item: silent, as asked.
+        list.Suppress(Fields.Value, Fields.Position);
+        list.SetItem(1, new ListItem("THREE"));
+        list.RemoveAt(1);
+        list.Insert(1, new ListItem("three"));
+        Assert.Empty(ui.Spoken());
+    }
+
+    [Fact]
     public void ActionEventsOfAWidgetLeftBehindAreDropped()
     {
         using var ui = new TestApp();
