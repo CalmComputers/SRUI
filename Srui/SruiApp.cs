@@ -424,17 +424,27 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
 
     private readonly List<AccessibilityEvent> _tick = new();
 
-    /// <summary>End the tick: drain the engine until quiescent,
-    /// delivering widget and ticker notifications to their objects
-    /// (handlers may queue more output, delivered in the same call),
-    /// then describe the focused widget against what the user last
-    /// heard and hand every reader the tick's events in one list —
-    /// announcements and action events in order, the settled state
-    /// after them. The explicit call always describes; the event loop
-    /// skips the description on an iteration where nothing happened.</summary>
-    public void DispatchEvents() => EndTick(force: true);
+    /// <summary>End the pending tick — whatever was dispatched or
+    /// mutated since the last one — then run each ticker due since the
+    /// clock last moved as a tick of its own. Every tick drains the
+    /// engine until quiescent, delivering widget notifications to
+    /// their objects (handlers may queue more output, delivered in the
+    /// same tick), then describes the focused widget against what the
+    /// user last heard and hands every reader the tick's events in one
+    /// list — announcements and action events in order, the settled
+    /// state after them. The explicit call always describes the
+    /// pending tick; the event loop skips the description on a tick
+    /// where nothing happened.</summary>
+    public void DispatchEvents()
+    {
+        EndTick(force: true);
+        RunDueTickers();
+    }
 
-    private void EndTick(bool force)
+    /// <summary>End one tick: drain to quiescence, describe, deliver.
+    /// Unforced, a clean engine with nothing queued ends in silence
+    /// and allocates nothing.</summary>
+    internal void EndTick(bool force)
     {
         while (true)
         {
@@ -454,6 +464,20 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
         _tick.Clear();
     }
 
+    /// <summary>Each due ticker is a cause of its own: its handler
+    /// runs and its tick ends before the next ticker's handler runs,
+    /// so what one ticker changed is heard as its own reading, never
+    /// folded into another's or into the input's that shared the loop
+    /// iteration.</summary>
+    private void RunDueTickers()
+    {
+        while (Engine.TakeDueTicker(out var id))
+        {
+            _tickers.GetValueOrDefault(id)?.OnTick();
+            EndTick(force: false);
+        }
+    }
+
     private void Dispatch(CoreEvent ev)
     {
         switch (ev)
@@ -466,9 +490,6 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
                 break;
             case CoreEvent.Callback(var invoke):
                 invoke();
-                break;
-            case CoreEvent.Tick(var id):
-                _tickers.GetValueOrDefault(id)?.OnTick();
                 break;
         }
     }
@@ -550,6 +571,7 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
                         // Physical transitions always flow; a dialog
                         // opening force-releases held keys itself.
                         HandleKey(keyInput);
+                        EndTick(force: false);
                         break;
                     case HostEvent.FocusLost:
                         // Releases will never arrive; forget the holds
@@ -563,12 +585,22 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
                         // of the keystroke that opened it, or typing
                         // aimed at the old layer — must not land in it.
                         if (!_flushBatchInput)
+                        {
+                            // One input, one tick: two keys that share
+                            // a pump batch read exactly as two that
+                            // arrived an iteration apart.
                             HandleInput(input);
+                            EndTick(force: false);
+                        }
                         break;
                 }
             }
         }
+        // Whatever else the iteration did (a host hook, program code
+        // between iterations), then the tickers due at this clock,
+        // each as a tick of its own.
         EndTick(force: false);
+        RunDueTickers();
         return !_quit;
     }
 

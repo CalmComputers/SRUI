@@ -21,6 +21,10 @@ internal sealed class CoreUi
     private IClipboard _clipboard = new NoClipboard();
     private readonly List<Ticker> _tickers = new();
     private ulong _nextTickerId;
+    /// <summary>Tickers whose interval elapsed at the last SetNow, in
+    /// registration order; the host runs each as a tick of its own and
+    /// takes them one at a time (<see cref="TakeDueTicker"/>).</summary>
+    private readonly Queue<ulong> _dueTickers = new();
 
     private sealed class Ticker
     {
@@ -48,7 +52,9 @@ internal sealed class CoreUi
 
     /// <summary>Advance the host clock (monotonic milliseconds). Call
     /// every loop iteration, not just on input: typeahead timeouts and
-    /// tickers are checked here, so ticker resolution is the call cadence.</summary>
+    /// tickers are checked here, so ticker resolution is the call
+    /// cadence. A ticker whose interval elapsed becomes due; the host
+    /// runs it as a tick of its own.</summary>
     public void SetNow(ulong nowMs)
     {
         _nowMs = nowMs;
@@ -56,7 +62,7 @@ internal sealed class CoreUi
         {
             if (nowMs >= ticker.NextFireMs)
             {
-                Emit(new CoreEvent.Tick(ticker.Id));
+                _dueTickers.Enqueue(ticker.Id);
                 // Drift-tolerant: the next interval starts now, so a late
                 // check fires once rather than bursting to catch up.
                 ticker.NextFireMs = nowMs + ticker.IntervalMs;
@@ -64,9 +70,13 @@ internal sealed class CoreUi
         }
     }
 
-    /// <summary>Register a periodic ticker: a Tick event fires each time
-    /// the interval elapses, observed at SetNow resolution. Returns the
-    /// id carried by the events.</summary>
+    /// <summary>The next ticker due since the last SetNow, in
+    /// registration order; false when none is left.</summary>
+    public bool TakeDueTicker(out ulong id) => _dueTickers.TryDequeue(out id);
+
+    /// <summary>Register a periodic ticker: it becomes due each time
+    /// the interval elapses, observed at SetNow resolution. Returns
+    /// its id.</summary>
     public ulong AddTicker(ulong intervalMs)
     {
         _nextTickerId++;

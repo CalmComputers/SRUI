@@ -534,6 +534,7 @@ public sealed class MultiAppHost : IDisposable
                         break;
                     case HostEvent.Key(var keyInput):
                         HandleKey(keyInput);
+                        EndActiveTick();
                         break;
                     case HostEvent.FocusLost:
                         _active?.App.FocusLost?.Invoke();
@@ -541,13 +542,25 @@ public sealed class MultiAppHost : IDisposable
                         break;
                     case HostEvent.Hotkey(var id):
                         HotkeyPressed?.Invoke(id);
+                        EndActiveTick();
                         break;
                     case HostEvent.Input(var input):
                         HandleInput(input);
+                        EndActiveTick();
                         break;
                 }
             }
         }
+    }
+
+    /// <summary>One input, one tick, as in a single app's loop: the
+    /// active app's pending tick ends now, so the reading for this
+    /// input is its own, and any switch the input caused is heard
+    /// before the next input lands in the app it switched to.</summary>
+    private void EndActiveTick()
+    {
+        if (_active is { } active)
+            Guarded(active, static hosted => hosted.App.EndTick(force: false));
     }
 
     /// <summary>Run until <see cref="Quit"/> or the window closes,

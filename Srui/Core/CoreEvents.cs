@@ -5,7 +5,7 @@ namespace Srui.Core;
 /// Activated names a node the framework triggered (primary/cancel
 /// routing, activate shortcuts, or the widget's own press); Callback is a
 /// widget-queued program reaction, delivered at drain so handlers never
-/// run inside input dispatch; Tick reports a ticker interval.</summary>
+/// run inside input dispatch.</summary>
 internal abstract record CoreEvent
 {
     /// <summary>What the user should perceive. Collected into the tick
@@ -19,8 +19,4 @@ internal abstract record CoreEvent
     /// <summary>A deferred program notification (Changed, Toggled, custom
     /// widget events). Invoked in order at drain time.</summary>
     public sealed record Callback(Action Invoke) : CoreEvent;
-
-    /// <summary>A ticker's interval elapsed (see SruiApp.StartTicker).
-    /// Fires at most once per clock advance per ticker.</summary>
-    public sealed record Tick(ulong Ticker) : CoreEvent;
 }
