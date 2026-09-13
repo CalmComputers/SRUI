@@ -16,19 +16,19 @@ If a widget speaks the same fact the previous utterance already carried — the 
 
 # 2. One Fact, Spoken Once
 
-Every fact should have exactly one home, and it should be spoken from that home exactly once per user action. The framework already enforces this on its side: focused-state setters speak like the equivalent user action, label changes on the focused widget speak the delta alone, list item operations own their structural announcements. Application code breaks the rule in three recurring ways.
+Every fact should have exactly one home, and it should be spoken from that home exactly once per user action. The framework enforces this on its side by construction: nothing a widget's state does is spoken as it happens. At the end of each tick the framework reads the widget the user ended on, as the difference between what they last heard and what is now under the cursor — the whole widget when focus arrived, the whole item when the cursor landed on another one, otherwise only the fields that changed (docs/architecture.md, section 7.2). Program code neither checks whether a widget is focused nor orders a focus move against a state change; both are the framework's. Application code breaks the rule in three recurring ways.
 
 ## 2.1 Announcing on top of a widget change
 
-Setting a property on a focused widget already speaks. Following it with `Announce` of the same fact produces double output:
+A field that changes under the cursor is read at the tick end. Following it with `Announce` of the same fact produces double output:
 
 ```csharp
-// Wrong: the Name setter on the focused button already speaks the new label.
-button.Name = "[x] Fireball";
+// Wrong: the checked field changed under the cursor; the tick end reads it.
+box.Checked = true;
 app.Announce("Fireball selected.");   // second utterance for the same toggle
 ```
 
-`Announce` is for facts that no widget change carries — an operation's outcome, a count, an error. If a property change already tells the story, the announcement is noise; if you want different wording than the property change produces, use the silent setter (`SetNameSilently`, `SetItemsSilently`, `SetTextSilently`, `SetCursorSilently`) and announce once.
+`Announce` is for facts that no field carries — an operation's outcome, a count, an error. If a field change already tells the story, the announcement is noise; if you want different wording than the field's reading, keep the field out of that tick's reading with `Suppress` and announce once. That is the only time `Suppress` is right: when your own words replace the framework's, never to hide a change the user should hear.
 
 ## 2.2 Restating the label in the description or prompt
 
@@ -38,7 +38,7 @@ A `Description` that begins by paraphrasing the `Name` makes the widget introduc
 
 An action the user initiated has a result, and the result is usually a widget: a new list item, a changed value, a closed dialog. If focus lands on that result, the landing *is* the confirmation. A user who adds a task and finds themselves on "Water the plants, 4 of 4" knows the add succeeded, knows the count, and knows what was added; an `Announce("Added.")` on top of that is a third statement of a fact the list already made. Route focus to the result and say nothing.
 
-In SRUI terms: `Add`/`Insert` are silent and keep the selection where it was, so the caller lands the user on the new item. From inside the list, set `SelectedIndex` to the new item — on a focused list the setter speaks the item exactly as an arrow move would. From an add dialog, insert, select, and close; the close restores focus to the list, and the restore reads the selected item. Either way the user hears the item once, and nothing else.
+In SRUI terms: add the item, move the cursor to it, and focus the list; in whatever order, in the same tick. The tick end reads the landing once — the list with its new item if focus arrived, the item alone if the user was already in the list — and nothing else. An announcement attributed to a widget speaks only if that widget is where focus settled, so an add box that says "Added." and then focuses the list is heard as the list, not as both; an announcement from the app speaks regardless, so make the confirmation the box's own (`Announce` from the widget) when it should yield to a landing.
 
 A spoken confirmation is correct in exactly two situations:
 
@@ -49,9 +49,9 @@ Failure is a third case, and it is not optional. When an add fails, focus does n
 
 When a confirmation is spoken, confirm the *operation*, not the operand. The user typed the text or picked the item and knows what it was: "Added." beats "Added Water the plants." Echo the operand only when the system transformed it (trimming, normalizing, resolving a name) and focus will not show the transformed form.
 
-# 3. Name, Role, Value, State — Use the Slots
+# 3. Name, Role, Value, State — Use the Fields
 
-A widget's announcement is assembled from semantic slots: name, role, value (`ValueText`), state (`StateText`), position, description. Readers can order, filter, and re-verbosify slots; they cannot do anything with a fact that has been flattened into the name string.
+A widget's reading is assembled from typed fields: name, role, value, checked, position, the states, description, and whatever a widget declares of its own (`[Field]` properties — docs/architecture.md, section 4.2). Readers order, filter, translate, and re-verbosify fields; they cannot do anything with a fact that has been flattened into the name string.
 
 The cardinal sin is **state as string decoration**:
 
@@ -65,9 +65,9 @@ var box = new CheckBox(dialog, "Longsword", initiallyChecked);
 
 The bracket version fails on every axis: the reader speaks punctuation ("left bracket, x, right bracket") or silently drops the state depending on user settings; the role is announced as "button", so nothing tells the user it toggles; toggling requires manually rewriting the name and usually a redundant announcement (section 2.1); and a future verbosity setting can never abbreviate what it cannot identify.
 
-The same applies to values. A button named "Weapons: 6" that opens a picker has fused a value into a name; when the count changes, application code must remember to rewrite the string. A widget whose `ValueText` override *derives* the count from state is always current and speaks the value in the value slot — derived fields are functions of widget state, pulled at announcement time, never stored.
+The same applies to values. A button named "Weapons: 6" that opens a picker has fused a value into a name; when the count changes, application code must remember to rewrite the string. A widget with a `[Field] public int Weapons => ...` derives the count from state and reads it as a field of its own — computed fields are functions of widget state, read at the tick end, never stored — and a field bound to the model (`Bind`) needs no code at all when the model moves. A fact that is not a string (a count, a flag, a number with a unit) should be a field of that type, so a reader can say it its own way.
 
-The rule generalizes: if you find yourself rewriting a name string to reflect changing state, the widget is the wrong kind or the fact is in the wrong slot.
+The rule generalizes: if you find yourself rewriting a name string to reflect changing state, the widget is the wrong kind or the fact is in the wrong field.
 
 # 4. Descriptions
 
@@ -104,9 +104,9 @@ The same reasoning covers instruction labels. A leading label reading "Space tog
 
 `Announce` is the escape hatch for facts with no widget: operation outcomes, background events, errors. Because it is unstructured, it should be the *last* tool considered, and its content held to the same no-duplication standard:
 
-- Never announce what a property change on a focused widget just spoke (section 2.1).
-- Never announce what focus movement is about to speak. Closing a dialog restores focus, and the restore speaks on its own — the full re-announcement by default, less under a trimmed restore verbosity; an `Announce("Returned to the menu.")` narrates a transition the user already made.
-- Announce an outcome only when focus will not show it (section 2.3). If the operation ends with focus on its result, the focus change is the announcement.
+- Never announce what a field change under the cursor will read (section 2.1).
+- Never announce what focus movement is about to read. Closing a dialog restores focus, and the restore reads on its own — the full reading by default, less under a trimmed restore verbosity; an `Announce("Returned to the menu.")` narrates a transition the user already made.
+- Announce an outcome only when focus will not show it (section 2.3). If the operation ends with focus on its result, the focus reading is the announcement. Announcements always speak before the tick's state, whatever order the handler emitted them in, so the natural handler shape — do the work, announce, move focus — reads as outcome then landing.
 - When an outcome is announced, state it once, tersely, most-important-first: "Added. 5 fighters." The user can act on the first word; everything after it is optional listening.
 - Never rely on interruption or urgency tiers to make an announcement land — structure the content so the front-loaded words suffice.
 
@@ -114,7 +114,7 @@ The same reasoning covers instruction labels. A leading label reading "Space tog
 
 The choice between a list and a row of discrete widgets is the choice between two navigation costs. A `ListBox` is **one tab stop**; its items cost one arrow press each, with typeahead, and each speaks name-state-position. A stack of buttons costs **one tab stop per item**. That trade dictates the answer:
 
-- **Many homogeneous items, especially with per-item state** → a list. A "choose your six weapons from forty" screen is a `ListBox<T>` whose items carry a selected flag exposed through their live `Text` (or a dedicated toggle-list widget); the user arrows through forty items, space toggles, and the item speaks its own state because `Text` is read live at announcement time — no refresh pass, no name rewriting.
+- **Many homogeneous items, especially with per-item state** → a list. A "choose your six weapons from forty" screen is a multi-select `ListBox<T>` whose items carry their own `Checked` field; the user arrows through forty items, space toggles, and the item speaks its own state because its fields are read at the tick end — no refresh pass, no name rewriting. Items bound to the model (`BindItems`) need no list calls at all.
 - **Few heterogeneous commands** → buttons. "OK", "Cancel", "Reposition" are distinct actions with distinct consequences; a tab stop each is correct, and primary/cancel routing gives them Enter and Escape for free.
 
 Forty buttons named `[x] Longsword` is the worst of both: forty tab stops, no typeahead, fake state (section 3), and a lying instruction label (section 5). This shape usually arrives by porting — a source platform where "menu of clickable text items" was the only primitive gets transliterated item-for-item into the closest clickable SRUI widget. Port the *task*, not the widget tree: ask what the user is choosing, then pick the SRUI widget whose semantics match the choice.
@@ -137,6 +137,6 @@ These channels cover how bindings are *found*; choosing which keys to bind is it
 The transcript test (section 1) is automatable, and SRUI applications are expected to encode their spoken surface as tests: build the screen in `Srui.Testing`'s `TestApp`, push input, and `Expect` the utterances (docs/architecture.md, section 12). Two assertions are worth writing for every screen:
 
 - **The walk**: tab from the first widget to the last and assert the full sequence. Duplication is immediately visible as repeated substrings in adjacent utterances.
-- **The action**: perform each state-changing operation and assert that it produces exactly one utterance, and that the utterance leads with the outcome. When the operation ends with focus on its result, that one utterance is the focus change reading the result, and the test asserts that nothing else was spoken.
+- **The action**: perform each state-changing operation and assert that it produces exactly one utterance, and that the utterance leads with the outcome. When the operation ends with focus on its result, that one utterance is the focus reading of the result, and the test asserts that nothing else was spoken. The framework makes this the default: a tick reads once, and its state utterance is one composed reading, so a second utterance in a step is always an announcement the test should question.
 
 A screen whose walk transcript reads well and whose actions speak once is, by construction, following everything above.

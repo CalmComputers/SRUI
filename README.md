@@ -3,8 +3,11 @@
 A screen-reader-first UI toolkit for C#. SRUI keeps a retained tree of
 semantic widgets, takes keyboard input, and emits structured accessibility
 events. It draws nothing: there are no pixels, no layout, and no rendering
-pass. What a user perceives is speech, and what a program manipulates is a
-tree of labelled widgets with roles, states, and values.
+pass. What a program manipulates is a tree of widgets described by typed
+fields — a name, a role, a value, a checked state, whatever a widget
+declares — which it changes freely or binds to its own model; what a user
+perceives is the difference the framework reads at the end of each tick,
+rendered to speech by a reader.
 
 It is the toolkit behind Lightspeed and Blindatro.
 
@@ -134,7 +137,7 @@ consumer.
 
 | Package | Contents | Native binaries |
 |---|---|---|
-| Srui | Widgets, dialogs, focus and navigation, shortcuts, the text engine, the SDL host, speech | prism.dll, SDL3.dll |
+| Srui | Widgets, dialogs, focus and navigation, shortcuts, the text engine, the SDL host, speech, and the field source generator (as an analyzer) | prism.dll, SDL3.dll |
 | Srui.Audio | Sounds, buses, effect chains, HRTF spatialisation, tweens | cosmos.dll, phonon.dll |
 | Srui.Testing | The headless test harness: input simulation, utterance assertions, scenario record and replay | none |
 | Srui.Templates | The `dotnet new` templates | none |
