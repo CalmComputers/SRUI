@@ -778,6 +778,16 @@ internal sealed class CoreUi
             if (!before!.TryGetBoxed(field, out var old) || !field.ValuesEqual(old, value))
                 tick.Add(new AccessibilityEvent.FieldValue(owner, field, value, scope));
         }
+        // A field heard before and absent now went away: a delta with
+        // no value, for a reader that wants to say so.
+        if (before is null)
+            return;
+        foreach (var (field, _) in before.Entries)
+        {
+            if (field.FocusOnly || after.Contains(field) || owner.IsSuppressed(field))
+                continue;
+            tick.Add(new AccessibilityEvent.FieldValue(owner, field, null, scope));
+        }
     }
 
     private void ClearTickRequests()

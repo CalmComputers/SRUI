@@ -94,6 +94,10 @@ public sealed class ReadoutContext
         _fields = fields;
     }
 
+    /// <summary>Where the field being rendered was read from: the
+    /// widget itself, or the item under its cursor.</summary>
+    public FieldScope Scope { get; internal set; }
+
     private readonly IReadOnlyList<AccessibilityEvent.FieldValue> _fields;
 
     public Widget Widget { get; }
@@ -110,7 +114,7 @@ public sealed class ReadoutContext
 
     /// <summary>A field's value: from this readout when the tick
     /// carried it, else read live from the widget or the item under its
-    /// cursor.</summary>
+    /// cursor. Default for a field that is absent.</summary>
     public T? Get<T>(Field<T> field)
     {
         foreach (var f in _fields)
@@ -155,6 +159,7 @@ public sealed class SpeechRenderer
     // change under it.
     private List<Field> _order = new();
     private Dictionary<Field, FieldRenderer> _renderers = new(ReferenceEqualityComparer.Instance);
+    private Dictionary<(Role, Field), FieldRenderer> _roleRenderers = new();
     private Dictionary<Role, string> _roleNames = new(ReferenceEqualityComparer.Instance);
 
     public SpeechRenderer()
@@ -177,12 +182,14 @@ public sealed class SpeechRenderer
         {
             if (ctx.Get(Fields.SelectedText) is not null)
                 return null;
-            if (v is null)
-                return ReferenceEquals(ctx.Widget.Role, Role.ShortcutField) ? "blank" : null;
-            return v.Length == 0 ? null : v;
+            // An empty line on a control (an edit box, a shortcut field
+            // with no combo) is "blank"; an item's empty line is nothing.
+            if (v is null || v.Length == 0)
+                return ctx.Scope == FieldScope.Control ? "blank" : null;
+            return v;
         });
-        Register(Fields.SelectedText, static (ctx, v) =>
-            v is null ? (ctx.IsArrival ? null : "Selection removed") : $"selected {v}");
+        // Null only ever arrives as a delta: the selection went.
+        Register(Fields.SelectedText, static (_, v) => v is null ? "Selection removed" : $"selected {v}");
         Register(Fields.Expanded, static (ctx, v) =>
             ctx.Get(Fields.ChildCount) > 0 ? (v ? "expanded" : "collapsed") : null);
         Register(Fields.ChildCount, static (_, v) => v > 0 ? $"{v} items" : null);
@@ -200,7 +207,7 @@ public sealed class SpeechRenderer
         // The mask is learned on arrival; switching it mid-session is
         // the program's prompt to explain, not the field's.
         Register(Fields.Password, static (ctx, v) => v && ctx.IsArrival ? "protected" : null);
-        Register(Fields.Filter, static (_, v) => v is null ? "no filter" : $"filter {v}");
+        Register(Fields.Filter, static (_, v) => v is { Length: > 0 } ? $"filter {v}" : "no filter");
         Register(Fields.Count, static (ctx, v) =>
             v == 0 ? (ReferenceEquals(ctx.Widget.Role, Role.FilterList) ? "no results" : "empty") : null);
         Register(Fields.Level, static (_, _) => null);
@@ -218,30 +225,66 @@ public sealed class SpeechRenderer
     }
 
     /// <summary>Install (or replace) the rendering of a field: given the
-    /// context and the value, the words, or null for nothing. New
-    /// fields join the order after <paramref name="after"/>, or at the
+    /// context and the value, the words, or null for nothing. The value
+    /// is null only for a delta saying the field went absent. A field
+    /// new to this reader takes its place after <paramref name="after"/>
+    /// when given, else the place its declaration asked for
+    /// (<see cref="Field.After"/>, <see cref="Field.Before"/>), else the
     /// end. A field with no registration speaks its value when that is
-    /// a string, and nothing otherwise.</summary>
+    /// a string, and nothing otherwise, at the declared place.</summary>
     public void Register<T>(Field<T> field, Func<ReadoutContext, T, string?> render, Field? after = null)
     {
         lock (_registration)
         {
             var renderers = new Dictionary<Field, FieldRenderer>(_renderers, ReferenceEqualityComparer.Instance)
             {
-                [field] = (ctx, v) => render(ctx, v is null ? default! : (T)v),
+                [field] = Wrap(render),
             };
             var order = new List<Field>(_order);
             if (!order.Contains(field))
             {
                 var at = after is null ? -1 : order.IndexOf(after);
-                if (at < 0)
-                    order.Add(field);
-                else
+                if (at >= 0)
                     order.Insert(at + 1, field);
+                else if (!Place(order, field))
+                    order.Add(field);
             }
             _renderers = renderers;
             _order = order;
         }
+    }
+
+    /// <summary>Install a role's own wording for a field, ahead of the
+    /// field's general rendering on widgets of that role: a search
+    /// box's empty query is "blank" where a filter list's is "no
+    /// filter".</summary>
+    public void Register<T>(Role role, Field<T> field, Func<ReadoutContext, T, string?> render)
+    {
+        lock (_registration)
+            _roleRenderers = new Dictionary<(Role, Field), FieldRenderer>(_roleRenderers)
+            {
+                [(role, field)] = Wrap(render),
+            };
+    }
+
+    private static FieldRenderer Wrap<T>(Func<ReadoutContext, T, string?> render) =>
+        (ctx, v) => render(ctx, v is null ? default! : (T)v);
+
+    /// <summary>Put a field into an order at its declared place. False
+    /// when it declares none, or its anchor is not there yet.</summary>
+    private static bool Place(List<Field> order, Field field)
+    {
+        if (field.After is { } after && order.IndexOf(after) is var a and >= 0)
+        {
+            order.Insert(a + 1, field);
+            return true;
+        }
+        if (field.Before is { } before && order.IndexOf(before) is var b and >= 0)
+        {
+            order.Insert(b, field);
+            return true;
+        }
+        return false;
     }
 
     private readonly object _registration = new();
@@ -356,30 +399,61 @@ public sealed class SpeechRenderer
         });
 
         var ctx = new ReadoutContext(widget, verbosity, focus is not null, fields);
-        var order = _order;
         var renderers = _renderers;
-        foreach (var field in order)
+        var roleRenderers = _roleRenderers;
+        var implied = widget.Role.Implies;
+        foreach (var field in OrderFor(fields))
         {
             foreach (var f in fields)
             {
                 if (!ReferenceEquals(f.Field, field))
                     continue;
+                // A field the role's word already states is not said
+                // again.
+                if (implied.Count != 0 && f.Scope == FieldScope.Control && implied.Contains(field))
+                    continue;
                 ctx.IsArrival = focus is not null
                     || (item is not null && (f.Scope == FieldScope.Item || ReferenceEquals(f.Field, Fields.Position)));
-                Append(renderers[field](ctx, f.Value));
+                ctx.Scope = f.Scope;
+                if (roleRenderers.Count != 0 && roleRenderers.TryGetValue((widget.Role, field), out var own))
+                    Append(own(ctx, f.Value));
+                else if (renderers.TryGetValue(field, out var render))
+                    Append(render(ctx, f.Value));
+                // A field with no rendering registered: a string speaks
+                // as it is (a program's composed line), anything else is
+                // silent until the program says how it sounds.
+                else if (f.Value is string text)
+                    Append(text);
             }
         }
-        // A field with no rendering registered: a string speaks as it
-        // is (a program's composed line), anything else is silent until
-        // the program says how it sounds.
-        foreach (var f in fields)
-        {
-            if (renderers.ContainsKey(f.Field))
-                continue;
-            if (f.Value is string text)
-                Append(text);
-        }
         return sb.Length == 0 ? null : sb.ToString();
+    }
+
+    /// <summary>The reader's order, with the tick's unregistered fields
+    /// placed by their declarations — after or before the field they
+    /// name, anchors resolved in any order — and the rest at the end.</summary>
+    private IReadOnlyList<Field> OrderFor(List<AccessibilityEvent.FieldValue> fields)
+    {
+        var order = _order;
+        List<Field>? extra = null;
+        foreach (var f in fields)
+            if (!order.Contains(f.Field) && (extra is null || !extra.Contains(f.Field)))
+                (extra ??= []).Add(f.Field);
+        if (extra is null)
+            return order;
+        var placed = new List<Field>(order);
+        for (var progress = true; progress && extra.Count != 0;)
+        {
+            progress = false;
+            for (var i = extra.Count - 1; i >= 0; i--)
+                if (Place(placed, extra[i]))
+                {
+                    extra.RemoveAt(i);
+                    progress = true;
+                }
+        }
+        placed.AddRange(extra);
+        return placed;
     }
 
     /// <summary>Render one announcement or action event to an

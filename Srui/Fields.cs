@@ -19,10 +19,21 @@ public abstract class Field
     /// a delta: the shortcut list, whose change is structural.</summary>
     public bool FocusOnly { get; }
 
-    private protected Field(string name, bool focusOnly)
+    /// <summary>The field this one is placed after in a reading, when
+    /// the declaration says so (<see cref="FieldAttribute.After"/>) — the
+    /// key's default place, which a reader may override.</summary>
+    public Field? After { get; }
+
+    /// <summary>The field this one is placed before in a reading; see
+    /// <see cref="After"/>.</summary>
+    public Field? Before { get; }
+
+    private protected Field(string name, bool focusOnly, Field? after, Field? before)
     {
         Name = name;
         FocusOnly = focusOnly;
+        After = after;
+        Before = before;
     }
 
     /// <summary>Whether two boxed values of this field are the same
@@ -44,8 +55,9 @@ public sealed class Field<T> : Field
 
     /// <summary>Declare a key. A program's own keys are normally
     /// declared by the generator, not by hand.</summary>
-    public Field(string name, bool focusOnly = false, IEqualityComparer<T>? comparer = null)
-        : base(name, focusOnly)
+    public Field(string name, bool focusOnly = false, IEqualityComparer<T>? comparer = null,
+        Field? after = null, Field? before = null)
+        : base(name, focusOnly, after, before)
     {
         Comparer = comparer ?? EqualityComparer<T>.Default;
     }
@@ -76,14 +88,25 @@ public readonly record struct Position(int Index, int Total);
 /// <summary>A widget's kind, compared by reference. The core roles
 /// are here; a program declares its own (<c>new Role("table")</c>) for
 /// a widget authored from the base. Readers map roles to words, so a
-/// role's name is an identifier, not what is spoken.</summary>
+/// role's name is an identifier, not what is spoken. A role may imply
+/// fields: ones its word already says (a console's "output" is read
+/// only and many lines by nature), which readers then leave unspoken
+/// while the fields stay present and readable.</summary>
 public sealed class Role
 {
     /// <summary>The identifier — the reader's key into its role table,
     /// and its fallback wording for a role it does not know.</summary>
     public string Name { get; }
 
-    public Role(string name) => Name = name;
+    /// <summary>The fields the role's word already states, which
+    /// readers leave unspoken on widgets of this role.</summary>
+    public IReadOnlyList<Field> Implies { get; }
+
+    public Role(string name, params Field[] implies)
+    {
+        Name = name;
+        Implies = implies;
+    }
 
     /// <summary>No role: the widget announces as its name alone — game
     /// surfaces and bespoke controls whose identity is their name.</summary>
@@ -109,12 +132,15 @@ public sealed class Role
 /// <summary>The core field keys. A [Field] property whose name matches
 /// one of these binds to it (the property type must convert to the
 /// key's); any other name declares a key of its own on the declaring
-/// type.</summary>
+/// type. A nullable key is one that can be absent — a widget with no
+/// name, an item with no checked concept, a list that does not count —
+/// and null is the only spelling of absence: an empty string is a
+/// value (an empty edit box, an empty query).</summary>
 public static class Fields
 {
     // ── Every widget ──
 
-    /// <summary>The spoken name; null announces as role and value only.</summary>
+    /// <summary>The spoken name; absent announces as role and value only.</summary>
     public static readonly Field<string?> Name = new("Name");
     public static readonly Field<Role> Role = new("Role", comparer: ReferenceEqualityComparer.Instance);
     /// <summary>Explanatory text for an esoteric name — never keys or
@@ -141,18 +167,21 @@ public static class Fields
     /// <summary>The cursor's position among its siblings, when the
     /// widget counts.</summary>
     public static readonly Field<Position?> Position = new("Position");
-    /// <summary>The type-to-filter query; null for no filter.</summary>
-    public static readonly Field<string?> Filter = new("Filter");
+    /// <summary>The type-to-filter query; empty when nothing is typed,
+    /// which readers word as "no filter".</summary>
+    public static readonly Field<string> Filter = new("Filter");
 
     // ── Items, and value-bearing controls ──
 
     /// <summary>The line: an item's text, an editor's current line.
-    /// Null is the absence of an item (an empty list).</summary>
+    /// Empty is an empty line ("blank" on a control); absent is an
+    /// element with no line at all.</summary>
     public static readonly Field<string?> Value = new("Value");
-    /// <summary>An editor's selected text, null when nothing is
-    /// selected; readers speak it in place of the line.</summary>
+    /// <summary>An editor's selected text, absent when nothing is
+    /// selected; readers speak it in place of the line, and may say
+    /// so when it goes.</summary>
     public static readonly Field<string?> SelectedText = new("SelectedText");
-    /// <summary>Checked state; null when the thing has no checked
+    /// <summary>Checked state; absent when the thing has no checked
     /// concept. A check box speaks both states, an item speaks only
     /// "checked" — the absence is the signal.</summary>
     public static readonly Field<bool?> Checked = new("Checked");

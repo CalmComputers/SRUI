@@ -229,6 +229,29 @@ public class SpeechRendererTests
     }
 
     [Fact]
+    public void AFieldTheRoleImpliesIsNotSaidAgain()
+    {
+        var output = new Role("output", Fields.ReadOnly, Fields.Multiline);
+        var log = new EditBox(App, "Log", "line one", multiline: true) { ReadOnly = true, Role = output };
+        Assert.Equal(["Log output line one"], Render(Arrival(log)));
+        // Present and readable all the same.
+        Assert.True(log.Describe().Contains(Fields.ReadOnly));
+    }
+
+    [Fact]
+    public void ARoleCanWordAFieldItsOwnWay()
+    {
+        var search = new Role("search");
+        var renderer = new SpeechRenderer();
+        renderer.SetRoleName(search, "list");
+        renderer.Register(search, Fields.Filter, static (_, v) => v.Length == 0 ? "blank" : $"filter {v}");
+        var box = new FilterListBox(App, "Search", ["a"]) { Role = search };
+        var plain = new FilterListBox(App, "Commands", ["a"]);
+        Assert.Equal(["Search list a 1 of 1 blank"], renderer.RenderTick(Arrival(box)));
+        Assert.Equal(["Commands list a 1 of 1 no filter"], renderer.RenderTick(Arrival(plain)));
+    }
+
+    [Fact]
     public void VerbosityNeverTrimsActionableStates()
     {
         var quiet = new SpeechVerbosity { Roles = false, Shortcuts = false, Extras = false };

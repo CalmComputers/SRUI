@@ -2474,7 +2474,7 @@ public class FilterListBoxTests
         Assert.Equal("q", list.Filter);
 
         list.ClearFilter();
-        Assert.Null(list.Filter);
+        Assert.Equal("", list.Filter);
         Assert.Equal(new[] { "Save File 1 of 3 no filter" }, ui.Spoken());
     }
 }

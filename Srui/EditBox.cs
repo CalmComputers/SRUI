@@ -32,8 +32,9 @@ public partial class EditBox : Widget
 
     // ── Fields ──
 
-    /// <summary>The current line (multiline) or the text (single-line).</summary>
-    [Field] public string? Value => _editor.CurrentLine();
+    /// <summary>The current line (multiline) or the text (single-line);
+    /// empty when the line is, which readers word as "blank".</summary>
+    [Field] public string Value => _editor.CurrentLineValue();
 
     /// <summary>The selected text in spoken form (masked in a password
     /// field, a count past the speak limit), or null when nothing is

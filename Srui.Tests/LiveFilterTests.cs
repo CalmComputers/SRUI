@@ -33,7 +33,7 @@ public partial class LiveFilterTests
             : base(parent, "Search", Array.Empty<Item>())
         {
             Score = static (item, _) => item.Score;
-            BindItems(() => Source(Filter ?? ""));
+            BindItems(() => Source(Filter));
         }
     }
 
@@ -50,7 +50,7 @@ public partial class LiveFilterTests
             Score = static (item, _) => item.Score;
         }
 
-        protected override void OnFilterChanged(string? filter) => Items = Source(filter ?? "");
+        protected override void OnFilterChanged(string filter) => Items = Source(filter);
     }
 
     [Fact]

@@ -9,10 +9,21 @@ namespace Srui;
 /// installed); on an ordinary property it registers the property as it
 /// is, which is how a computed field is declared. The key is the
 /// <see cref="Fields"/> member of the same name, or a <c>{Name}Field</c>
-/// the generator declares on the type.</summary>
+/// the generator declares on the type. A field whose read is null is
+/// absent: left out of the description, unspoken on arrival, and
+/// delivered as a null delta when it goes.</summary>
 [AttributeUsage(AttributeTargets.Property, Inherited = false)]
 public sealed class FieldAttribute : Attribute
 {
+    /// <summary>The field this one is read after, by property name — a
+    /// core field (<c>nameof(Value)</c>) or one declared on this type or
+    /// a base. The key carries it as its default place; a reader may
+    /// still put the field elsewhere. Only for keys the type declares:
+    /// a core key's place is the reader's.</summary>
+    public string? After { get; set; }
+
+    /// <summary>The field this one is read before; see <see cref="After"/>.</summary>
+    public string? Before { get; set; }
 }
 
 /// <summary>A field's live connection to the program's model: reads
@@ -42,7 +53,8 @@ public sealed class Binding<T>
 }
 
 /// <summary>A snapshot of an element's fields, in declaration order:
-/// what a tick describes and diffs, and what a test asserts against.</summary>
+/// what a tick describes and diffs, and what a test asserts against.
+/// A set holds no nulls: a field that reads null is absent from it.</summary>
 public sealed class FieldSet
 {
     private readonly List<KeyValuePair<Field, object?>> _entries = new();
@@ -53,8 +65,14 @@ public sealed class FieldSet
     /// <summary>The entries, in the order they were described.</summary>
     public IReadOnlyList<KeyValuePair<Field, object?>> Entries => _entries;
 
+    /// <summary>Record a field's value; null records its absence.</summary>
     public void Set<T>(Field<T> field, T value)
     {
+        if (value is null)
+        {
+            Remove(field);
+            return;
+        }
         if (_index.TryGetValue(field, out var at))
             _entries[at] = new KeyValuePair<Field, object?>(field, value);
         else
@@ -66,10 +84,7 @@ public sealed class FieldSet
 
     public bool Contains(Field field) => _index.ContainsKey(field);
 
-    /// <summary>Drop a field from the description — for a subclass whose
-    /// override of <see cref="Element.DescribeFields"/> withholds one
-    /// of its base's fields in some state. True when it was present.</summary>
-    public bool Remove(Field field)
+    private bool Remove(Field field)
     {
         if (!_index.TryGetValue(field, out var at))
             return false;
@@ -111,10 +126,14 @@ public sealed class FieldSet
 /// as [<see cref="FieldAttribute">Field</see>] properties and the
 /// generator supplies the rest — <see cref="DescribeFields"/>,
 /// <see cref="TryGet{T}"/>, <see cref="TrySet{T}"/>, and the
-/// implementation of partial ones. Any field can be bound to the
-/// program's model (<see cref="Bind{T}"/>): reads then come from the
-/// getter and a widget's writes go to the setter, so the program never
-/// synchronizes anything — the field writes itself.</summary>
+/// implementation of partial ones. Those three are the generator's
+/// alone (the analyzer refuses a hand-written override): what a reader
+/// hears is decided in the properties — a null read is absence — in
+/// the field attribute's order, and in the role's implied fields,
+/// never in a description assembled by hand. Any field can be bound
+/// to the program's model (<see cref="Bind{T}"/>): reads then come
+/// from the getter and a widget's writes go to the setter, so the
+/// program never synchronizes anything — the field writes itself.</summary>
 public abstract class Element
 {
     private Dictionary<Field, object>? _bindings;
@@ -152,9 +171,9 @@ public abstract class Element
         return false;
     }
 
-    /// <summary>Write every field into the set. Generated per type;
-    /// each override calls its base first, so a subclass's fields
-    /// follow its ancestors'.</summary>
+    /// <summary>Write every field that reads non-null into the set.
+    /// Generated per type, and only ever generated; each override calls
+    /// its base first, so a subclass's fields follow its ancestors'.</summary>
     public virtual void DescribeFields(FieldSet s)
     {
     }

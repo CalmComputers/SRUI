@@ -383,16 +383,48 @@ public partial class TickModelTests
 
         // Registered on the shared renderer, the number speaks — for
         // this test and any other in the process, so the wording is
-        // one no other test could meet by accident.
-        SpeechRenderer.Default.Register(Meter.GaugeField, static (_, v) => $"gauge at {v}", after: Fields.Value);
+        // one no other test could meet by accident — at the place its
+        // declaration asked for: before the trend.
+        SpeechRenderer.Default.Register(Meter.GaugeField, static (_, v) => $"gauge at {v}");
         meter.Gauge = 7;
         Assert.Equal(new[] { "gauge at 7" }, ui.Spoken());
+        ui.Input(InputKind.SpeakFocus);
+        Assert.Equal(new[] { "Meter meter gauge at 7 steady" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void AFieldThatReadsNullIsAbsentAndItsGoingIsADelta()
+    {
+        using var ui = new TestApp();
+        var meter = new Meter(ui.App);
+        meter.Focus();
+        ui.Drain();
+
+        // Absent: not in the description, so not a fact of the arrival.
+        Assert.False(meter.Describe().Contains(Meter.NoteField));
+        meter.Note = "hot";
+        Assert.Equal(new[] { "hot" }, ui.Spoken());
+        // (The gauge's rendering may or may not be registered on the
+        // shared renderer by now, so only the tail is asserted.)
+        ui.Input(InputKind.SpeakFocus);
+        Assert.EndsWith("steady hot", Assert.Single(ui.Spoken()));
+
+        // Going: a delta with no value, which the default rendering of
+        // a string field makes nothing of.
+        meter.Note = null;
+        ui.App.DispatchEvents();
+        Assert.Contains(ui.Reader.Ticks[^1],
+            e => e is AccessibilityEvent.FieldValue { Field: var f, Value: null } && ReferenceEquals(f, Meter.NoteField));
+        Assert.Empty(ui.Spoken());
     }
 
     private sealed partial class Meter(IWidgetContainer parent) : Widget(parent, "Meter", new Role("meter"))
     {
-        [Field] public partial int Gauge { get; set; }
+        [Field(Before = nameof(Trend))] public partial int Gauge { get; set; }
 
         [Field] public string Trend => "steady";
+
+        /// <summary>A remark, or none.</summary>
+        [Field(After = nameof(Trend))] public partial string? Note { get; set; }
     }
 }

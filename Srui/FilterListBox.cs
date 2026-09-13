@@ -22,11 +22,11 @@ public partial class FilterListBox<T> : Widget where T : Element
         : base(parent, name, Role.FilterList)
     {
         _items = new List<T>(items);
-        Filter = null;
+        Filter = "";
     }
 
-    /// <summary>The current query; null for no filter.</summary>
-    [Field] public partial string? Filter { get; set; }
+    /// <summary>The current query; empty for no filter.</summary>
+    [Field] public partial string Filter { get; set; }
 
     /// <summary>How many items match the filter.</summary>
     [Field] public int Count => Results.Count;
@@ -130,7 +130,7 @@ public partial class FilterListBox<T> : Widget where T : Element
     /// <summary>Clear the filter and selection.</summary>
     public void ClearFilter()
     {
-        Filter = null;
+        Filter = "";
         ResetCursor();
     }
 
@@ -138,7 +138,7 @@ public partial class FilterListBox<T> : Widget where T : Element
     /// Live-source subclasses override this to reshape the pool for the
     /// new filter so the tick end reads fresh results; the base does
     /// nothing.</summary>
-    protected virtual void OnFilterChanged(string? filter)
+    protected virtual void OnFilterChanged(string filter)
     {
     }
 
@@ -236,14 +236,13 @@ public partial class FilterListBox<T> : Widget where T : Element
                 return true;
             case InputKind.TypeChar:
                 if (System.Text.Rune.IsValid((int)input.Ch))
-                    Filter = (Filter ?? "") + AsciiMatch.LowerString(char.ConvertFromUtf32((int)input.Ch));
+                    Filter += AsciiMatch.LowerString(char.ConvertFromUtf32((int)input.Ch));
                 FilterChanged();
                 return true;
             case InputKind.DeleteBackward when Filter is { Length: > 0 } filter:
                 // Remove one character — two units when it is astral.
                 var cut = filter.Length >= 2 && char.IsLowSurrogate(filter[^1]) ? 2 : 1;
-                var rest = filter[..^cut];
-                Filter = rest.Length == 0 ? null : rest;
+                Filter = filter[..^cut];
                 FilterChanged();
                 return true;
             default:

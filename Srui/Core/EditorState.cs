@@ -148,12 +148,17 @@ internal sealed class EditorState
     /// <summary>All text, or "blank" when empty.</summary>
     public string ReadAll() => IsEmpty ? "blank" : Spoken(Text());
 
-    /// <summary>The line under the cursor, or "blank".</summary>
+    /// <summary>The line under the cursor, or "blank" — the spoken
+    /// context of a move or an undo.</summary>
     public string CurrentLine()
     {
         var line = TextNav.CurrentLineText(Rope, Cursor);
         return line.Length == 0 ? "blank" : Spoken(line);
     }
+
+    /// <summary>The line under the cursor as a value: empty when it is,
+    /// masked when the editor is; no words of its own.</summary>
+    public string CurrentLineValue() => Spoken(TextNav.CurrentLineText(Rope, Cursor));
 
     // ── Editing operations ──
 
