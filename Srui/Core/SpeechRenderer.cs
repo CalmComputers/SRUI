@@ -163,12 +163,16 @@ public sealed class SpeechRenderer
         // with the fields that qualify a role beside it, and the item's
         // own fields around the value.
         Register(Fields.Name, static (_, v) => v);
-        Register(Fields.MultiSelect, static (_, v) => v ? "multi select" : null);
+        // The fields that qualify a role ("multi select list", "edit
+        // read only multi line") are role words, and go with the role
+        // when the verbosity drops it.
+        Register(Fields.MultiSelect, static (ctx, v) => ctx.Verbosity.Roles && v ? "multi select" : null);
         Register(Fields.Role, (ctx, v) => ctx.Verbosity.Roles ? RoleName(v) : null);
         // The shared tables are read without a lock: a rendering holds
         // the references it started with.
-        Register(Fields.ReadOnly, static (ctx, v) => v ? "read only" : ctx.IsArrival ? null : "editable");
-        Register(Fields.Multiline, static (_, v) => v ? "multi line" : null);
+        Register(Fields.ReadOnly, static (ctx, v) =>
+            !ctx.Verbosity.Roles ? null : v ? "read only" : ctx.IsArrival ? null : "editable");
+        Register(Fields.Multiline, static (ctx, v) => ctx.Verbosity.Roles && v ? "multi line" : null);
         Register(Fields.Value, static (ctx, v) =>
         {
             if (ctx.Get(Fields.SelectedText) is not null)

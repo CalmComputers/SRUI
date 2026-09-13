@@ -215,6 +215,20 @@ public class SpeechRendererTests
     }
 
     [Fact]
+    public void RoleQualifiersGoWithTheRole()
+    {
+        var quiet = new SpeechVerbosity { Roles = false };
+        var notes = new EditBox(App, "Notes", "hi", multiline: true) { ReadOnly = true };
+        var picks = new ListBox(App, "Picks", ["a"], multiSelect: true);
+        Assert.Equal(["Notes edit read only multi line hi"], Render(Arrival(notes)));
+        Assert.Equal(["Notes hi"], Render(Arrival(notes), quiet));
+        Assert.Equal(["Picks multi select list a"], Render(Arrival(picks)));
+        Assert.Equal(["Picks a"], Render(Arrival(picks), quiet));
+        // A read-only flip is a role word too: silent without roles.
+        Assert.Empty(Render([new AccessibilityEvent.FieldValue(notes, Fields.ReadOnly, false, FieldScope.Control)], quiet));
+    }
+
+    [Fact]
     public void VerbosityNeverTrimsActionableStates()
     {
         var quiet = new SpeechVerbosity { Roles = false, Shortcuts = false, Extras = false };
