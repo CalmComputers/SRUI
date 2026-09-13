@@ -10,6 +10,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Srui\Srui.csproj" />
+    <!-- The field generator, for the items and widgets this app
+         authors (a PackageReference to Srui brings it by itself). -->
+    <ProjectReference Include="..\..\Srui.Generators\Srui.Generators.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <!-- Native dependencies staged by native/build-native.ps1. No game

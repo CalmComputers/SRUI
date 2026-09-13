@@ -1,28 +1,27 @@
 namespace Srui;
 
-/// <summary>Left/Right cycle through tabs with wraparound. The change
-/// echo speaks the tab name alone; position and role ride the focus
-/// announcement. Attach one panel per tab (<see cref="AttachPanels"/>)
-/// and the control owns their visibility: the active tab's panel shows,
-/// the rest hide and leave the tab ring.</summary>
+/// <summary>Left/Right cycle through tabs with wraparound; the active
+/// tab is the item under the cursor, so a switch reads the tab and a
+/// focus arrival reads the control with it. Attach one panel per tab
+/// (<see cref="AttachPanels"/>) and the control owns their visibility:
+/// the active tab's panel shows, the rest hide and leave the tab ring.</summary>
 public class TabControl : Widget
 {
-    private readonly List<string> _tabs;
+    private readonly List<ListItem> _tabs;
     private Widget[] _panels = [];
     private int _active;
 
     public TabControl(IWidgetContainer parent, string name, IReadOnlyList<string> tabs, int active = 0)
-        : base(parent, name, "tab control")
+        : base(parent, name, Role.Tabs)
     {
-        _tabs = new List<string>(tabs);
+        _tabs = ListBox.Wrap(tabs);
         _active = _tabs.Count == 0 ? 0 : Math.Clamp(active, 0, _tabs.Count - 1);
     }
 
-    /// <summary>The active tab's name, pulled at announcement time.</summary>
-    protected internal override string ValueText =>
-        _active < _tabs.Count ? _tabs[_active] : "";
+    public IReadOnlyList<string> Tabs => _tabs.Select(t => t.Value ?? "").ToList();
 
-    public IReadOnlyList<string> Tabs => _tabs;
+    protected internal override Element? CurrentItem =>
+        _active < _tabs.Count ? _tabs[_active] : null;
 
     /// <summary>Attach one panel per tab and hide every panel but the
     /// active one immediately; every later switch re-syncs (user-driven
@@ -44,9 +43,8 @@ public class TabControl : Widget
             _panels[i].Hidden = i != _active;
     }
 
-    /// <summary>The active tab's index. A programmatic switch (clamped)
-    /// while focused speaks the tab name alone, exactly as a user-driven
-    /// switch would; attached panels re-sync immediately.</summary>
+    /// <summary>The active tab's index. Setting switches (clamped);
+    /// attached panels re-sync immediately.</summary>
     public int ActiveIndex
     {
         get => _tabs.Count == 0 ? -1 : _active;
@@ -59,12 +57,11 @@ public class TabControl : Widget
                 return;
             _active = target;
             SyncPanels();
-            if (IsFocused)
-                Promulgate(new AccessibilityEvent.TabChange(this, _tabs[_active], (_active, _tabs.Count)));
+            Engine.Touch();
         }
     }
 
-    public string? ActiveTab => _active < _tabs.Count ? _tabs[_active] : null;
+    public string? ActiveTab => _active < _tabs.Count ? _tabs[_active].Value : null;
 
     public override bool ReservesKey(KeyCombo combo) =>
         !combo.Ctrl && !combo.Alt && !combo.Shift
@@ -93,7 +90,7 @@ public class TabControl : Widget
     private void Switch(int to)
     {
         _active = to;
-        Promulgate(new AccessibilityEvent.TabChange(this, _tabs[_active], (_active, _tabs.Count)));
+        Engine.Touch();
         // Panels are other widgets: touch them at drain, outside
         // dispatch — before Changed subscribers, so handlers see the
         // settled view.

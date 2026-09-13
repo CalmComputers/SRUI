@@ -2,33 +2,52 @@ using Srui.Core;
 
 namespace Srui;
 
-/// <summary>A node a <see cref="TreeView{T}"/> holds: a spoken line,
-/// children, and an expansion flag. State-bearing application node
+/// <summary>A node a <see cref="TreeView{T}"/> holds: a line, children,
+/// an expansion flag, a checked state. State-bearing application node
 /// types derive from the self-typed form (<c>class StatNode :
 /// TreeNode&lt;StatNode&gt;</c>) so traversal hands them back without
-/// casts; plain text rides the sealed <see cref="TreeNode"/>. The
-/// widget stamps <see cref="Parent"/> links when it takes the roots
-/// (and on <see cref="TreeView{T}.Refresh"/> after structural
-/// mutation); children lists are the application's to build.</summary>
-public class TreeNode<T> : IListItem where T : TreeNode<T>
+/// casts, and add fields of their own; plain text rides the sealed
+/// <see cref="TreeNode"/>. The widget stamps <see cref="Parent"/> links
+/// when it takes the roots (and on <see cref="TreeView{T}.Refresh"/>
+/// after structural mutation); children lists are the application's
+/// to build.</summary>
+public partial class TreeNode<T> : Element where T : TreeNode<T>
 {
-    public TreeNode(string text) => Text = text;
+    public TreeNode(string text) => Value = text;
 
     /// <summary>The node's line: spoken by readers, matched by
-    /// typeahead. Read live at announcement time, like every list
-    /// item's.</summary>
-    public string Text { get; set; }
+    /// typeahead.</summary>
+    [Field] public partial string? Value { get; set; }
+
+    /// <summary>Whether the branch is open. Meaningless on a leaf.</summary>
+    [Field] public partial bool Expanded { get; set; }
+
+    /// <summary>Checked state in a multi-select tree; null until
+    /// touched, which readers treat as unchecked.</summary>
+    [Field] public partial bool? Checked { get; set; }
+
+    /// <summary>How many children the node has; readers speak a
+    /// branch's expansion and count, and nothing for a leaf.</summary>
+    [Field] public int ChildCount => Children.Count;
+
+    /// <summary>Depth in the tree, roots at zero.</summary>
+    [Field]
+    public int Level
+    {
+        get
+        {
+            var level = 0;
+            for (var p = Parent; p is not null; p = p.Parent)
+                level++;
+            return level;
+        }
+    }
 
     /// <summary>The node's children, in display order. Mutating the
     /// structure under a live widget needs a <see
     /// cref="TreeView{T}.Refresh"/> so parent links and the cursor
     /// keep up.</summary>
     public List<T> Children { get; } = [];
-
-    /// <summary>Whether the branch is open. Meaningless on a leaf.
-    /// Programmatic writes are silent; the widget speaks only
-    /// user-driven expansion.</summary>
-    public bool Expanded { get; set; }
 
     /// <summary>Whether Space may check this node in a multi-select
     /// tree. Null is the default rule — leaves yes, branches no. A
@@ -43,6 +62,8 @@ public class TreeNode<T> : IListItem where T : TreeNode<T>
 
     /// <summary>Whether this node has children.</summary>
     public bool IsBranch => Children.Count > 0;
+
+    internal bool IsCheckable => Checkable ?? !IsBranch;
 }
 
 /// <summary>The plain-text node, for trees whose nodes carry no
@@ -81,28 +102,25 @@ public sealed class TreeNode : TreeNode<TreeNode>
 /// it and raises <see cref="Widget.Activated"/> for the selected
 /// node.
 ///
-/// A multi-select tree (<c>multiSelect: true</c>) announces as "multi
-/// select tree view" and lets the user check leaves independently of
-/// the cursor: Space toggles the selected leaf (Space leaves the
-/// typeahead buffer, the toggleWithSpace trade), checked leaves speak
-/// "checked" after their line, and non-checkable nodes refuse the
-/// toggle with a word. Checkability is per node (TreeNode.Checkable):
-/// leaves by default, branches on opt-in — a checkable branch is an
-/// item with properties inside, not a group. Enter stays whatever
-/// the activateItems choice made it.</summary>
-public class TreeView<T> : Widget where T : TreeNode<T>
+/// A multi-select tree (<c>multiSelect: true</c>) lets the user check
+/// leaves independently of the cursor: Space toggles the selected leaf
+/// (Space leaves the typeahead buffer, the toggleWithSpace trade), and
+/// non-checkable nodes refuse the toggle with a word. Checkability is
+/// per node (TreeNode.Checkable): leaves by default, branches on
+/// opt-in — a checkable branch is an item with properties inside, not
+/// a group. Enter stays whatever the activateItems choice made it.</summary>
+public partial class TreeView<T> : Widget where T : TreeNode<T>
 {
     /// <summary>Timeout for resetting the typeahead buffer (milliseconds
     /// of host time).</summary>
     private const ulong TypeAheadTimeoutMs = 400;
 
     private List<T> _roots;
+    private Func<IReadOnlyList<T>>? _source;
     private T? _cursor;
     private readonly bool _numbered;
     private readonly bool _activateItems;
-    /// <summary>The checked leaves of a multi-select tree, by
-    /// reference — null on a single-select tree.</summary>
-    private readonly HashSet<T>? _checked;
+    private readonly bool _multiSelect;
     private string _typeAheadBuffer = "";
     private ulong? _lastKeystrokeMs;
     /// <summary>Branches a typeahead landing opened (the
@@ -118,93 +136,119 @@ public class TreeView<T> : Widget where T : TreeNode<T>
     public TreeView(
         IWidgetContainer parent, string name, IReadOnlyList<T> roots,
         bool numbered = false, bool activateItems = false, bool multiSelect = false)
-        : base(parent, name, multiSelect ? "multi select tree view" : "tree view")
+        : base(parent, name, Role.Tree)
     {
         _roots = new List<T>(roots);
         StampParents(_roots, null);
         _cursor = _roots.Count > 0 ? _roots[0] : null;
         _numbered = numbered;
         _activateItems = activateItems;
-        if (multiSelect)
-            _checked = new HashSet<T>(ReferenceEqualityComparer.Instance);
+        _multiSelect = multiSelect;
     }
 
-    /// <summary>Whether this is a multi-select tree.</summary>
-    public bool MultiSelect => _checked is not null;
+    // ── Fields ──
 
-    /// <summary>The root nodes. Setting replaces the tree (parent
-    /// links stamped, cursor moved to the first root) and speaks the
-    /// newly selected node when focused.</summary>
+    /// <summary>Whether leaves are checked independently of the cursor.</summary>
+    [Field] public bool MultiSelect => _multiSelect;
+
+    /// <summary>How many roots the tree has.</summary>
+    [Field] public int Count => Roots.Count;
+
+    /// <summary>The cursor's position among its siblings, when the tree
+    /// counts.</summary>
+    [Field]
+    public Position? Position
+    {
+        get
+        {
+            if (!_numbered || Cursor is not { } c)
+                return null;
+            var siblings = SiblingsOf(c);
+            return new Position(siblings.IndexOf(c), siblings.Count);
+        }
+    }
+
+    protected internal override Element? CurrentItem => Cursor;
+
+    // ── Roots ──
+
+    /// <summary>The root nodes. Stored on the tree unless
+    /// <see cref="BindRoots"/> gave them a source; setting replaces the
+    /// tree (parent links stamped, cursor to the first root).</summary>
     public IReadOnlyList<T> Roots
     {
-        get => _roots;
+        get
+        {
+            if (_source is not { } source)
+                return _roots;
+            var roots = source();
+            StampParents(roots, null);
+            return roots;
+        }
         set => SetRoots(value);
     }
 
-    /// <summary>Replace the tree; equivalent to setting
-    /// <see cref="Roots"/>.</summary>
+    /// <summary>Replace the tree; equivalent to setting <see cref="Roots"/>.</summary>
     public void SetRoots(IReadOnlyList<T> roots)
     {
-        var copy = new List<T>(roots);
-        Engine.UpdateLabel(Node, _ =>
-        {
-            _roots = copy;
-            StampParents(_roots, null);
-            _cursor = _roots.Count > 0 ? _roots[0] : null;
-            _typeaheadOpened.Clear();
-        });
+        if (_source is not null)
+            throw new InvalidOperationException("the roots are bound; change them at the source");
+        _roots = new List<T>(roots);
+        StampParents(_roots, null);
+        _cursor = _roots.Count > 0 ? _roots[0] : null;
+        _typeaheadOpened.Clear();
+        Engine.Touch();
+    }
+
+    /// <summary>Make the program's collection the tree's roots: every
+    /// read asks the source and stamps parent links, so structure
+    /// follows the model with no call to the tree.</summary>
+    public void BindRoots(Func<IReadOnlyList<T>> source)
+    {
+        _source = source;
+        Engine.Touch();
     }
 
     /// <summary>Re-stamp parent links and re-seat the cursor after the
     /// application mutated node children in place. The cursor keeps
     /// its node when the node is still in the tree, else it falls to
-    /// the first root. Silent — the caller speaks any delta the user
-    /// should hear.</summary>
+    /// the first root, which the tick end reads.</summary>
     public void Refresh()
     {
         StampParents(_roots, null);
         _typeaheadOpened.Clear();
-        if (_cursor is null || !InTree(_cursor))
-            _cursor = _roots.Count > 0 ? _roots[0] : null;
+        Engine.Touch();
     }
 
-    /// <summary>The selected node, or null when the tree is empty.</summary>
-    public T? SelectedNode => _cursor;
+    // ── The cursor ──
 
-    /// <summary>Move the selection to a node in the tree, revealing it
-    /// (ancestors expand). A move while focused speaks the node
-    /// exactly as a user-driven move would.</summary>
-    public void SelectNode(T node)
-    {
-        if (!InTree(node))
-            throw new ArgumentException("the node is not in this tree", nameof(node));
-        _typeaheadOpened.Clear();
-        Reveal(node);
-        if (ReferenceEquals(node, _cursor))
-            return;
-        _cursor = node;
-        if (IsFocused)
-            AnnounceCursor(null);
-    }
-
-    /// <summary>The selected node's line (or "empty"), pulled fresh at
-    /// announcement time.</summary>
-    protected internal override string ValueText =>
-        _cursor is { } c
-            ? _checked?.Contains(c) == true ? $"{NodeLine(c)} checked" : NodeLine(c)
-            : "empty";
-
-    /// <summary>"N of M" among the selected node's siblings, when
-    /// numbered.</summary>
-    protected internal override string StateText
+    /// <summary>The cursor, re-seated on the first root when its node
+    /// left the tree.</summary>
+    private T? Cursor
     {
         get
         {
-            if (!_numbered || _cursor is not { } c)
-                return "";
-            var siblings = SiblingsOf(c);
-            return $"{siblings.IndexOf(c) + 1} of {siblings.Count}";
+            var roots = Roots;
+            if (_cursor is { } c && InTree(roots, c))
+                return c;
+            _cursor = roots.Count > 0 ? roots[0] : null;
+            return _cursor;
         }
+    }
+
+    /// <summary>The selected node, or null when the tree is empty.</summary>
+    public T? SelectedNode => Cursor;
+
+    /// <summary>Move the selection to a node in the tree, revealing it
+    /// (ancestors expand).</summary>
+    public void SelectNode(T node)
+    {
+        if (!InTree(Roots, node))
+            throw new ArgumentException("the node is not in this tree", nameof(node));
+        _typeaheadOpened.Clear();
+        Reveal(node);
+        _cursor = node;
+        Engine.Touch();
     }
 
     /// <summary>The user expanded or collapsed a branch; the arguments
@@ -216,24 +260,17 @@ public class TreeView<T> : Widget where T : TreeNode<T>
 
     // ── Multi-select checked state ──
 
-    /// <summary>Whether the node is checked. Always false on a
-    /// single-select tree.</summary>
-    public bool IsChecked(T node) => _checked?.Contains(node) ?? false;
+    /// <summary>Whether the node is checked.</summary>
+    public bool IsChecked(T node) => node.Checked == true;
 
-    /// <summary>Check or uncheck a leaf programmatically. Changing the
-    /// selected node's state while focused speaks the new state
-    /// exactly as a user-driven toggle would; it does not raise
-    /// <see cref="NodeChecked"/> (the program already knows). Throws
-    /// on a single-select tree or a branch node.</summary>
+    /// <summary>Check or uncheck a node programmatically. Throws on a
+    /// non-checkable node.</summary>
     public void SetChecked(T node, bool value)
     {
-        if (_checked is null)
-            throw new InvalidOperationException("not a multi-select tree");
-        if (!(node.Checkable ?? !node.IsBranch))
+        if (!node.IsCheckable)
             throw new InvalidOperationException("the node is not checkable");
-        var changed = value ? _checked.Add(node) : _checked.Remove(node);
-        if (changed && ReferenceEquals(node, _cursor) && IsFocused)
-            Promulgate(new AccessibilityEvent.Toggle(this, value));
+        node.Checked = value;
+        Engine.Touch();
     }
 
     /// <summary>The checked nodes, in tree order (expansion ignored —
@@ -242,11 +279,9 @@ public class TreeView<T> : Widget where T : TreeNode<T>
     {
         get
         {
-            if (_checked is null || _checked.Count == 0)
-                return Array.Empty<T>();
-            var result = new List<T>(_checked.Count);
+            var result = new List<T>();
             foreach (var node in AllNodes())
-                if (_checked.Contains(node))
+                if (node.Checked == true)
                     result.Add(node);
             return result;
         }
@@ -259,29 +294,28 @@ public class TreeView<T> : Widget where T : TreeNode<T>
     protected virtual void OnNodeChecked(T node, bool isChecked) =>
         NodeChecked?.Invoke(node, isChecked);
 
-    /// <summary>The user toggled the selected leaf: flip, announce the
-    /// new state, notify the program. Branches refuse with a word —
-    /// silence would feel like a dead key.</summary>
+    /// <summary>The user toggled the selected leaf: flip the node's
+    /// field (the tick end reads it), notify the program. Branches
+    /// refuse with a word — silence would feel like a dead key.</summary>
     private void ToggleSelected()
     {
         _typeaheadOpened.Clear();
-        if (_cursor is not { } cursor)
+        if (Cursor is not { } cursor)
             return;
-        if (!(cursor.Checkable ?? !cursor.IsBranch))
+        if (!cursor.IsCheckable)
         {
             Announce("Checks apply to items, not groups.");
             return;
         }
-        var isChecked = _checked!.Add(cursor);
-        if (!isChecked)
-            _checked.Remove(cursor);
-        Promulgate(new AccessibilityEvent.Toggle(this, isChecked));
+        var isChecked = !(cursor.Checked ?? false);
+        cursor.Checked = isChecked;
+        Engine.Touch();
         Post(() => OnNodeChecked(cursor, isChecked));
     }
 
     // ── Structure helpers ──
 
-    private static void StampParents(List<T> nodes, T? parent)
+    private static void StampParents(IReadOnlyList<T> nodes, T? parent)
     {
         foreach (var node in nodes)
         {
@@ -290,16 +324,18 @@ public class TreeView<T> : Widget where T : TreeNode<T>
         }
     }
 
-    private List<T> SiblingsOf(T node) => node.Parent?.Children ?? _roots;
+    private List<T> SiblingsOf(T node) => node.Parent?.Children ?? RootsAsList();
 
-    private bool InTree(T node)
+    private List<T> RootsAsList() => Roots as List<T> ?? new List<T>(Roots);
+
+    private static bool InTree(IReadOnlyList<T> roots, T node)
     {
         var top = node;
         while (top.Parent is { } p)
             top = p;
-        return _roots.Contains(top) && Lineage(node);
+        return roots.Contains(top) && Lineage(node);
 
-        bool Lineage(T n) => n.Parent is not { } p || (p.Children.Contains(n) && Lineage(p));
+        static bool Lineage(T n) => n.Parent is not { } p || (p.Children.Contains(n) && Lineage(p));
     }
 
     private static void Reveal(T node)
@@ -314,7 +350,7 @@ public class TreeView<T> : Widget where T : TreeNode<T>
     private List<T> VisibleNodes()
     {
         var result = new List<T>();
-        void Walk(List<T> nodes)
+        void Walk(IReadOnlyList<T> nodes)
         {
             foreach (var node in nodes)
             {
@@ -323,7 +359,7 @@ public class TreeView<T> : Widget where T : TreeNode<T>
                     Walk(node.Children);
             }
         }
-        Walk(_roots);
+        Walk(Roots);
         return result;
     }
 
@@ -331,7 +367,7 @@ public class TreeView<T> : Widget where T : TreeNode<T>
     private List<T> AllNodes()
     {
         var result = new List<T>();
-        void Walk(List<T> nodes)
+        void Walk(IReadOnlyList<T> nodes)
         {
             foreach (var node in nodes)
             {
@@ -339,46 +375,20 @@ public class TreeView<T> : Widget where T : TreeNode<T>
                 Walk(node.Children);
             }
         }
-        Walk(_roots);
+        Walk(Roots);
         return result;
     }
 
-    // ── Announcement ──
-
-    /// <summary>A node's spoken line: the text, plus the expansion
-    /// state and child count for branches — leaves are their text
-    /// alone. No commas: they buy intonation pauses the line doesn't
-    /// need.</summary>
-    private static string NodeLine(T node) =>
-        node.IsBranch
-            ? $"{node.Text} {(node.Expanded ? "expanded" : "collapsed")} {node.Children.Count} items"
-            : node.Text;
-
-    private void AnnounceCursor(Boundary? boundary)
-    {
-        if (_cursor is not { } c)
-            return;
-        (int, int)? position = null;
-        if (_numbered)
-        {
-            var siblings = SiblingsOf(c);
-            position = (siblings.IndexOf(c), siblings.Count);
-        }
-        bool? isChecked = _checked is not null && (c.Checkable ?? !c.IsBranch)
-            ? _checked.Contains(c) : null;
-        AnnounceItem(NodeLine(c), position, boundary, isChecked);
-    }
-
-    private void AnnounceEmpty() => AnnounceItem("empty", null, null);
-
-    private void MoveAndAnnounce(T node)
+    private void MoveAndNotify(T node)
     {
         _cursor = node;
-        AnnounceCursor(null);
+        Engine.Touch();
         PostChanged();
     }
 
     // ── Typeahead ──
+
+    private static string TextOf(T node) => node.Value ?? "";
 
     /// <summary>Candidates in match priority order: the cursor's
     /// sibling ring first (outward both ways, wrapping — the room
@@ -394,7 +404,7 @@ public class TreeView<T> : Widget where T : TreeNode<T>
     private List<T> TypeaheadCandidates(bool includeCursor)
     {
         var result = new List<T>();
-        if (_cursor is not { } cursor)
+        if (Cursor is not { } cursor)
             return result;
         var seen = new HashSet<T>(ReferenceEqualityComparer.Instance) { cursor };
         if (includeCursor)
@@ -430,7 +440,7 @@ public class TreeView<T> : Widget where T : TreeNode<T>
     private List<T> RotationCandidates()
     {
         var result = new List<T>();
-        if (_cursor is not { } cursor)
+        if (Cursor is not { } cursor)
             return result;
         var visible = VisibleNodes();
         int ci = visible.IndexOf(cursor);
@@ -482,8 +492,7 @@ public class TreeView<T> : Widget where T : TreeNode<T>
     /// <summary>Reveal a typeahead landing and settle the previous
     /// one's debt: branches the last landing opened close again unless
     /// the new match needs them, and whatever this reveal flips open
-    /// becomes the new provisional set. Silent both ways, like every
-    /// programmatic expansion.</summary>
+    /// becomes the new provisional set.</summary>
     private void RevealForTypeahead(T node)
     {
         var keep = new HashSet<T>(ReferenceEqualityComparer.Instance);
@@ -524,16 +533,16 @@ public class TreeView<T> : Widget where T : TreeNode<T>
         var candidates = cycling ? RotationCandidates() : TypeaheadCandidates(includeCursor: !singleChar);
         foreach (var node in candidates)
         {
-            if (!AsciiMatch.StartsWithLower(node.Text, needle))
+            if (!AsciiMatch.StartsWithLower(TextOf(node), needle))
                 continue;
             if (ReferenceEquals(node, _cursor))
             {
-                AnnounceCursor(null);
+                RereadItem();
             }
             else
             {
                 RevealForTypeahead(node);
-                MoveAndAnnounce(node);
+                MoveAndNotify(node);
             }
             return;
         }
@@ -562,7 +571,7 @@ public class TreeView<T> : Widget where T : TreeNode<T>
         // TypeChar kind; ToggleSelected clears for it.)
         if (input.Kind is not InputKind.TypeChar)
             _typeaheadOpened.Clear();
-        if (_cursor is not { } cursor)
+        if (Cursor is not { } cursor)
         {
             switch (input.Kind)
             {
@@ -570,7 +579,7 @@ public class TreeView<T> : Widget where T : TreeNode<T>
                     or InputKind.MoveRight or InputKind.MoveLeft
                     or InputKind.MoveToDocStart or InputKind.MoveToLineStart
                     or InputKind.MoveToDocEnd or InputKind.MoveToLineEnd:
-                    AnnounceEmpty();
+                    Reread(Fields.Count);
                     return true;
                 default:
                     return false;
@@ -581,10 +590,10 @@ public class TreeView<T> : Widget where T : TreeNode<T>
         switch (input.Kind)
         {
             case InputKind.MoveDown:
-                MoveAndAnnounce(siblings[(at + 1) % siblings.Count]);
+                MoveAndNotify(siblings[(at + 1) % siblings.Count]);
                 return true;
             case InputKind.MoveUp:
-                MoveAndAnnounce(siblings[(at - 1 + siblings.Count) % siblings.Count]);
+                MoveAndNotify(siblings[(at - 1 + siblings.Count) % siblings.Count]);
                 return true;
             case InputKind.MoveRight:
                 if (cursor.IsBranch)
@@ -594,43 +603,43 @@ public class TreeView<T> : Widget where T : TreeNode<T>
                     // speaks — landing inside IS the expansion report.
                     bool opened = !cursor.Expanded;
                     cursor.Expanded = true;
-                    MoveAndAnnounce(cursor.Children[0]);
+                    MoveAndNotify(cursor.Children[0]);
                     if (opened)
                         Post(() => OnNodeToggled(cursor, true));
                 }
                 else
                 {
-                    AnnounceCursor(Boundary.Right);
+                    AnnounceBoundary(Boundary.Right);
                 }
                 return true;
             case InputKind.MoveLeft:
                 if (cursor is { IsBranch: true, Expanded: true })
                 {
                     cursor.Expanded = false;
-                    AnnounceCursor(null);
+                    Engine.Touch();
                     Post(() => OnNodeToggled(cursor, false));
                 }
                 else if (cursor.Parent is { } parent)
                 {
-                    MoveAndAnnounce(parent);
+                    MoveAndNotify(parent);
                 }
                 else
                 {
-                    AnnounceCursor(Boundary.Left);
+                    AnnounceBoundary(Boundary.Left);
                 }
                 return true;
             case InputKind.MoveToDocStart or InputKind.MoveToLineStart:
                 if (at != 0)
-                    MoveAndAnnounce(siblings[0]);
+                    MoveAndNotify(siblings[0]);
                 return true;
             case InputKind.MoveToDocEnd or InputKind.MoveToLineEnd:
                 if (at != siblings.Count - 1)
-                    MoveAndAnnounce(siblings[^1]);
+                    MoveAndNotify(siblings[^1]);
                 return true;
             case InputKind.Activate when _activateItems:
                 PostActivated();
                 return true;
-            case InputKind.TypeChar when _checked is not null && input.IsChar(' '):
+            case InputKind.TypeChar when _multiSelect && input.IsChar(' '):
                 ToggleSelected();
                 return true;
             case InputKind.TypeChar:

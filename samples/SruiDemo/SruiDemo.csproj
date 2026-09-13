@@ -12,6 +12,10 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Srui\Srui.csproj" />
     <ProjectReference Include="..\..\Srui.Audio\Srui.Audio.csproj" />
+    <!-- The field generator, for the table widget this app authors (a
+         PackageReference to Srui brings it by itself). -->
+    <ProjectReference Include="..\..\Srui.Generators\Srui.Generators.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <!-- Native dependencies staged by native/build-native.ps1. They are

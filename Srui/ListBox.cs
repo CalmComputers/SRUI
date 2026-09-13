@@ -15,43 +15,34 @@ namespace Srui;
 /// with <c>activateItems: true</c>, claiming Enter and raising
 /// <see cref="Widget.Activated"/> for the selected item.
 ///
-/// A multi-select list (<c>multiSelect: true</c>) announces as
-/// "multi select list" and lets the user check items independently of
-/// the selection: checked items speak "checked" after their text,
-/// unchecked items say nothing. Enter toggles by default (so it no
-/// longer reaches the layer's primary widget); <c>toggleWithSpace:
-/// true</c> moves the toggle to Space instead, at the cost of
-/// multi-word typeahead (Space is no longer a typeahead character).
+/// A multi-select list (<c>multiSelect: true</c>) lets the user check
+/// items independently of the selection; the check lives on the item
+/// (its <see cref="Fields.Checked"/> field). Enter toggles by default
+/// (so it no longer reaches the layer's primary widget);
+/// <c>toggleWithSpace: true</c> moves the toggle to Space instead, at
+/// the cost of multi-letter typeahead (Space is no longer a typeahead
+/// character).
 ///
-/// Items are <typeparamref name="T"/> values implementing
-/// <see cref="IListItem"/> — state-bearing subclasses derive from the
-/// typed form (<c>class TaskListBox : ListBox&lt;TaskItem&gt;</c>) and read
-/// their items back without casts; plain strings arrive through the
-/// non-generic <see cref="ListBox"/>'s string overloads. The item
-/// operations (<see cref="RemoveAt"/>, <see cref="Insert"/>,
-/// <see cref="SetItem"/>) own the structural consequences — selection
-/// clamping and what the user hears about where the selection landed;
-/// editorial feedback ("Deleted X.") stays with the caller, as an
-/// attributed Announce.</summary>
-public class ListBox<T> : Widget where T : class, IListItem
+/// Items are <see cref="Element"/>s: their fields are what the reader
+/// speaks when the cursor lands on one, and their identity is what the
+/// cursor follows. The items are the list's own (<see cref="Items"/>,
+/// with <see cref="RemoveAt"/> and <see cref="Insert"/>) or the
+/// program's (<see cref="BindItems"/>): either way the cursor stays on
+/// its item through reorders, and when its item goes it lands on the
+/// survivor at the same place, which the tick end reads.</summary>
+public partial class ListBox<T> : Widget where T : Element
 {
     /// <summary>Timeout for resetting the typeahead buffer (milliseconds
     /// of host time).</summary>
     private const ulong TypeAheadTimeoutMs = 400;
 
     private List<T> _items;
-    private int _selected;
-    /// <summary>When true, announcements and focus state text carry "N of M".</summary>
+    private Func<IReadOnlyList<T>>? _source;
+    private T? _selectedItem;
+    private int _selectedIndex;
     private readonly bool _numbered;
-    /// <summary>When true, Enter is claimed and raises Activated for the
-    /// selected item instead of falling through to the layer's primary.</summary>
     private readonly bool _activateItems;
-    /// <summary>The checked items of a multi-select list, by reference —
-    /// null on a single-select list. Structural operations keep it in
-    /// step (a removed or replaced item forgets its check).</summary>
-    private readonly HashSet<T>? _checked;
-    /// <summary>When true (multi-select only), Space toggles instead of
-    /// Enter — and no longer feeds typeahead.</summary>
+    private readonly bool _multiSelect;
     private readonly bool _toggleWithSpace;
     private string _typeAheadBuffer = "";
     private ulong? _lastKeystrokeMs;
@@ -65,7 +56,7 @@ public class ListBox<T> : Widget where T : class, IListItem
         IWidgetContainer parent, string name, IReadOnlyList<T> items,
         bool numbered = false, bool activateItems = false,
         bool multiSelect = false, bool toggleWithSpace = false)
-        : base(parent, name, multiSelect ? "multi select list" : "list")
+        : base(parent, name, Role.List)
     {
         if (toggleWithSpace && !multiSelect)
             throw new ArgumentException(
@@ -78,196 +69,214 @@ public class ListBox<T> : Widget where T : class, IListItem
         _items = new List<T>(items);
         _numbered = numbered;
         _activateItems = activateItems;
-        if (multiSelect)
-            _checked = new HashSet<T>(ReferenceEqualityComparer.Instance);
+        _multiSelect = multiSelect;
         _toggleWithSpace = toggleWithSpace;
     }
 
-    /// <summary>Whether this is a multi-select list.</summary>
-    public bool MultiSelect => _checked is not null;
+    // ── Fields ──
 
-    /// <summary>The items. Setting replaces the list (selection clamped)
-    /// and speaks the newly selected item when focused and audibly
-    /// changed.</summary>
+    /// <summary>Whether items are checked independently of the cursor.</summary>
+    [Field] public bool MultiSelect => _multiSelect;
+
+    /// <summary>How many items the list holds.</summary>
+    [Field] public int Count => Items.Count;
+
+    /// <summary>The cursor's position, when the list counts.</summary>
+    [Field]
+    public Position? Position
+    {
+        get
+        {
+            if (!_numbered)
+                return null;
+            var (items, item, index) = Resolve();
+            return item is null ? null : new Position(index, items.Count);
+        }
+    }
+
+    protected internal override Element? CurrentItem => SelectedItem;
+
+    // ── Items ──
+
+    /// <summary>The items. Stored on the list unless <see cref="BindItems"/>
+    /// gave them a source; setting replaces the stored list. The cursor
+    /// keeps its item when the item survives, else lands at its old
+    /// place.</summary>
     public IReadOnlyList<T> Items
     {
-        get => _items;
-        set => SetItems(value);
-    }
-
-    /// <summary>Replace the item list (selection clamped); equivalent to
-    /// setting <see cref="Items"/>.</summary>
-    public virtual void SetItems(IReadOnlyList<T> items)
-    {
-        var copy = new List<T>(items);
-        Engine.UpdateLabel(Node, _ =>
+        get => _source is { } source ? source() : _items;
+        set
         {
-            _items = copy;
-            _checked?.IntersectWith(copy);
-            if (_items.Count > 0 && _selected >= _items.Count)
-                _selected = _items.Count - 1;
-        });
+            if (_source is not null)
+                throw new InvalidOperationException("the items are bound; change them at the source");
+            _items = new List<T>(value);
+            Engine.Touch();
+        }
     }
 
-    /// <summary>Replace the items without any announcement — the
-    /// counterpart of <see cref="SetItems(IReadOnlyList{T})"/> for
-    /// subclass input handlers, which mutate state silently and then
-    /// emit what the user should hear. The selection is clamped; the
-    /// label follows by itself.</summary>
-    protected void SetItemsSilently(IReadOnlyList<T> items)
+    /// <summary>Make the program's collection the list's items: every
+    /// read asks the source, so membership follows the model with no
+    /// call to the list. The structural operations then belong to the
+    /// model, not the list.</summary>
+    public void BindItems(Func<IReadOnlyList<T>> source)
     {
-        _items = new List<T>(items);
-        _checked?.IntersectWith(_items);
-        if (_items.Count > 0 && _selected >= _items.Count)
-            _selected = _items.Count - 1;
-    }
-
-    /// <summary>Forget any pending typeahead prefix — for subclasses
-    /// whose input handling replaced what the list is showing (a file
-    /// pane entering another folder), so the next keystroke starts a
-    /// fresh search instead of extending a prefix typed against the
-    /// old items within the timeout.</summary>
-    protected void ResetTypeahead()
-    {
-        _typeAheadBuffer = "";
-        _lastKeystrokeMs = null;
-    }
-
-    /// <summary>Move the selection without any announcement — the
-    /// counterpart of <see cref="SelectedIndex"/>'s setter for subclass
-    /// input handlers that reposition as part of a larger state change
-    /// and then emit what the user should hear. Clamped.</summary>
-    protected void SelectSilently(int index)
-    {
-        if (_items.Count > 0)
-            _selected = Math.Clamp(index, 0, _items.Count - 1);
+        _source = source;
+        Engine.Touch();
     }
 
     /// <summary>Remove the item at the index. Removing the selected item
-    /// while focused speaks the survivor the selection lands on exactly
-    /// as an arrow move would — or "empty" when the last item went;
-    /// removing any other item is silent (the selection kept its item,
-    /// only its position shifted). Editorial feedback ("Deleted X.") is
-    /// the caller's, spoken before the call.</summary>
+    /// leaves the cursor at the same place, on the survivor, which the
+    /// tick end reads exactly as an arrow move would. Editorial
+    /// feedback ("Deleted X.") is the caller's.</summary>
     public void RemoveAt(int index)
     {
+        Stored();
         if ((uint)index >= (uint)_items.Count)
             throw new ArgumentOutOfRangeException(nameof(index));
-        var wasSelected = index == _selected;
-        _checked?.Remove(_items[index]);
+        var (_, selected, at) = Resolve();
         _items.RemoveAt(index);
-        if (index < _selected)
-            _selected--;
-        else if (_selected >= _items.Count && _selected > 0)
-            _selected = _items.Count - 1;
-        if (!wasSelected || !IsFocused)
-            return;
-        if (_items.Count == 0)
-            AnnounceEmpty();
-        else
-            AnnounceSelected(null);
+        if (index == at)
+        {
+            _selectedItem = null;
+            _selectedIndex = index;
+        }
+        Engine.Touch();
     }
 
-    /// <summary>Insert an item at the index. Silent — the selection stays
-    /// on the same item (its index shifts when inserting at or above it)
-    /// and focus announcements pick the new count up automatically —
-    /// except into an empty list while focused: there the selection lands
-    /// on the new item, and it speaks exactly as an arrow move would.</summary>
+    /// <summary>Insert an item at the index. The cursor stays on its
+    /// item; into an empty list, it lands on the new one.</summary>
     public void Insert(int index, T item)
     {
+        Stored();
         if ((uint)index > (uint)_items.Count)
             throw new ArgumentOutOfRangeException(nameof(index));
-        var wasEmpty = _items.Count == 0;
         _items.Insert(index, item);
-        if (!wasEmpty && index <= _selected)
-            _selected++;
-        if (wasEmpty && IsFocused)
-            AnnounceSelected(null);
+        Engine.Touch();
     }
 
-    /// <summary>Append an item. Silent, like <see cref="Insert(int, T)"/>.</summary>
+    /// <summary>Append an item.</summary>
     public void Add(T item) => Insert(_items.Count, item);
 
-    /// <summary>Replace the item at the index with a different one.
-    /// Silent: the caller speaks the delta when the user should hear one.
-    /// Mutating an existing item's state needs no call at all — its Text
-    /// is read live wherever the framework needs the line.</summary>
+    /// <summary>Replace the item at the index with a different one; the
+    /// cursor lands on the replacement if it was on the old item.</summary>
     public void SetItem(int index, T item)
     {
+        Stored();
         if ((uint)index >= (uint)_items.Count)
             throw new ArgumentOutOfRangeException(nameof(index));
-        _checked?.Remove(_items[index]);
+        if (ReferenceEquals(_items[index], _selectedItem))
+            _selectedItem = null;
         _items[index] = item;
+        Engine.Touch();
+    }
+
+    private void Stored()
+    {
+        if (_source is not null)
+            throw new InvalidOperationException("the items are bound; change them at the source");
+    }
+
+    // ── The cursor ──
+
+    /// <summary>The current items with the cursor resolved against
+    /// them: the selected item's place if it is still present, else the
+    /// remembered index clamped, else nothing.</summary>
+    private (IReadOnlyList<T> Items, T? Item, int Index) Resolve()
+    {
+        var items = Items;
+        if (items.Count == 0)
+        {
+            _selectedItem = null;
+            _selectedIndex = 0;
+            return (items, null, -1);
+        }
+        if (_selectedItem is { } selected)
+        {
+            var at = IndexOf(items, selected);
+            if (at >= 0)
+            {
+                _selectedIndex = at;
+                return (items, selected, at);
+            }
+        }
+        _selectedIndex = Math.Clamp(_selectedIndex, 0, items.Count - 1);
+        _selectedItem = items[_selectedIndex];
+        return (items, _selectedItem, _selectedIndex);
+    }
+
+    private static int IndexOf(IReadOnlyList<T> items, T item)
+    {
+        for (var i = 0; i < items.Count; i++)
+            if (ReferenceEquals(items[i], item))
+                return i;
+        return -1;
+    }
+
+    /// <summary>The selected item, or null when the list is empty.
+    /// Setting moves the cursor to an item in the list.</summary>
+    public T? SelectedItem
+    {
+        get => Resolve().Item;
+        set
+        {
+            if (value is null)
+                return;
+            var at = IndexOf(Items, value);
+            if (at < 0)
+                throw new ArgumentException("the item is not in this list", nameof(value));
+            Select(at, value);
+        }
+    }
+
+    /// <summary>The selected index, or -1 when the list is empty.
+    /// Setting moves the cursor (clamped).</summary>
+    public int SelectedIndex
+    {
+        get => Resolve().Index;
+        set
+        {
+            var items = Items;
+            if (items.Count == 0)
+                return;
+            var target = Math.Clamp(value, 0, items.Count - 1);
+            Select(target, items[target]);
+        }
+    }
+
+    private void Select(int index, T item)
+    {
+        _selectedIndex = index;
+        _selectedItem = item;
+        Engine.Touch();
     }
 
     // ── Multi-select checked state ──
 
-    /// <summary>Whether the item at the index is checked. Always false on
-    /// a single-select list.</summary>
-    public bool IsChecked(int index)
-    {
-        if ((uint)index >= (uint)_items.Count)
-            throw new ArgumentOutOfRangeException(nameof(index));
-        return _checked?.Contains(_items[index]) ?? false;
-    }
+    /// <summary>Whether the item at the index is checked.</summary>
+    public bool IsChecked(int index) => Items[index].Get(Fields.Checked) == true;
 
-    /// <summary>Check or uncheck the item at the index programmatically.
-    /// Changing the selected item's state while focused speaks the new
-    /// state exactly as a user-driven toggle would; it does not raise
-    /// <see cref="ItemToggled"/> (the program already knows). Throws on a
-    /// single-select list.</summary>
+    /// <summary>Check or uncheck the item at the index. Throws when the
+    /// item has no Checked field.</summary>
     public void SetChecked(int index, bool value)
     {
-        if (_checked is null)
-            throw new InvalidOperationException("not a multi-select list");
-        if ((uint)index >= (uint)_items.Count)
-            throw new ArgumentOutOfRangeException(nameof(index));
-        var item = _items[index];
-        var changed = value ? _checked.Add(item) : _checked.Remove(item);
-        if (changed && index == _selected && IsFocused)
-            Promulgate(new AccessibilityEvent.Toggle(this, value)
-            {
-                Words = ToggleWords?.Invoke(item, value),
-            });
+        var item = Items[index];
+        if (!item.TrySet(Fields.Checked, value))
+            throw new InvalidOperationException("the item has no Checked field");
+        Engine.Touch();
     }
 
-    /// <summary>SetChecked without the focused-item state echo — for
-    /// bulk sweeps whose caller announces the outcome itself ("Selection
-    /// cleared.") and per-item words would talk over it. Same
-    /// program-only contract otherwise: no <see cref="ItemToggled"/>,
-    /// never refused.</summary>
-    public void SetCheckedSilently(int index, bool value)
-    {
-        if (_checked is null)
-            throw new InvalidOperationException("not a multi-select list");
-        if ((uint)index >= (uint)_items.Count)
-            throw new ArgumentOutOfRangeException(nameof(index));
-        var item = _items[index];
-        _ = value ? _checked.Add(item) : _checked.Remove(item);
-    }
-
-    /// <summary>The checked items, in list order. Empty on a
-    /// single-select list.</summary>
+    /// <summary>The checked items, in list order.</summary>
     public IReadOnlyList<T> CheckedItems
     {
         get
         {
-            if (_checked is null || _checked.Count == 0)
-                return Array.Empty<T>();
-            var result = new List<T>(_checked.Count);
-            foreach (var item in _items)
-                if (_checked.Contains(item))
+            var result = new List<T>();
+            foreach (var item in Items)
+                if (item.Get(Fields.Checked) == true)
                     result.Add(item);
             return result;
         }
     }
-
-    /// <summary>Optional wording for the toggle announcement: given the
-    /// item and its new state, return the full utterance ("Flush
-    /// checked"), or null for the default "checked"/"not checked". Runs
-    /// after the checked set updates, so it may inspect <see
-    /// cref="CheckedItems"/>.</summary>
-    public Func<T, bool, string?>? ToggleWords;
 
     /// <summary>The user checked or unchecked an item; the arguments are
     /// the item and its new state.</summary>
@@ -277,87 +286,29 @@ public class ListBox<T> : Widget where T : class, IListItem
         ItemToggled?.Invoke(item, isChecked);
 
     /// <summary>Whether the user may toggle the item's checked state;
-    /// return false to refuse. Gates user toggles only — <see
-    /// cref="SetChecked"/> is the program's and is never refused. A
-    /// refused toggle speaks nothing by itself: announce the reason from
-    /// the override so the key does not feel dead.</summary>
+    /// return false to refuse. Gates user toggles only — the program's
+    /// writes are never refused. A refused toggle speaks nothing by
+    /// itself: announce the reason from the override so the key does
+    /// not feel dead.</summary>
     protected virtual bool CanToggle(T item) => true;
 
-    /// <summary>The user toggled the selected item: flip, announce the new
-    /// state (the same words a check box speaks), notify the program.</summary>
+    /// <summary>The user toggled the selected item: flip the item's
+    /// field (the tick end reads it), notify the program.</summary>
     private void ToggleSelected()
     {
-        var item = _items[_selected];
-        if (!CanToggle(item))
+        if (Resolve().Item is not { } item || !CanToggle(item))
             return;
-        var isChecked = _checked!.Add(item);
-        if (!isChecked)
-            _checked.Remove(item);
-        Promulgate(new AccessibilityEvent.Toggle(this, isChecked)
-        {
-            Words = ToggleWords?.Invoke(item, isChecked),
-        });
+        var isChecked = !(item.Get(Fields.Checked) ?? false);
+        if (!item.TrySet(Fields.Checked, isChecked))
+            throw new InvalidOperationException(
+                $"items of a multi-select list need a Checked field; {typeof(T).Name} has none");
+        Engine.Touch();
         Post(() => OnItemToggled(item, isChecked));
     }
 
-    /// <summary>The selected index, or -1 when the list is empty. A
-    /// programmatic move (clamped) while focused speaks the item exactly
-    /// as a user-driven move would — the item alone, not a full
-    /// re-announcement.</summary>
-    public int SelectedIndex
-    {
-        get => _items.Count > 0 ? _selected : -1;
-        set
-        {
-            if (_items.Count == 0)
-                return;
-            var target = Math.Clamp(value, 0, _items.Count - 1);
-            if (target == _selected)
-                return;
-            _selected = target;
-            if (IsFocused)
-                AnnounceSelected(null);
-        }
-    }
+    // ── Typeahead ──
 
-    public T? SelectedItem => _selected < _items.Count ? _items[_selected] : null;
-
-    /// <summary>The selected item's line (or "empty"), pulled fresh at
-    /// announcement time — an item whose Text is computed from mutated
-    /// application state reads correctly with no sync call.</summary>
-    protected internal override string ValueText =>
-        _selected < _items.Count
-            ? _checked?.Contains(_items[_selected]) == true
-                ? $"{_items[_selected].Text} checked"
-                : _items[_selected].Text
-            : "empty";
-
-    /// <summary>"N of M" when numbered.</summary>
-    protected internal override string StateText =>
-        _numbered && _selected < _items.Count ? $"{_selected + 1} of {_items.Count}" : "";
-
-    /// <summary>The selection announcement, shared between user-driven
-    /// navigation and programmatic SelectedIndex moves.</summary>
-    private void AnnounceSelected(Boundary? boundary)
-    {
-        if (_selected >= _items.Count)
-            return;
-        (int, int)? position = _numbered ? (_selected, _items.Count) : null;
-        bool? isChecked = _checked?.Contains(_items[_selected]);
-        AnnounceItem(_items[_selected].Text, position, boundary, isChecked);
-    }
-
-    /// <summary>What an empty list says — the same word its label value
-    /// and focus announcement carry.</summary>
-    private void AnnounceEmpty() => AnnounceItem("empty", null, null);
-
-    /// <summary>Selection moved by input: announce, notify the program.</summary>
-    private void SelectAndAnnounce(int index)
-    {
-        _selected = index;
-        AnnounceSelected(null);
-        PostChanged();
-    }
+    private static string TextOf(T item) => item.Get(Fields.Value) ?? "";
 
     private void HandleTypeAhead(string runeText)
     {
@@ -374,16 +325,17 @@ public class ListBox<T> : Widget where T : class, IListItem
         _typeAheadBuffer += runeLower;
         _lastKeystrokeMs = now;
 
+        var (items, _, selected) = Resolve();
+        var count = items.Count;
         if (cycling || _typeAheadBuffer == runeLower)
         {
             // Single char: cycle from the current position forward.
-            var count = _items.Count;
             for (var offset = 1; offset <= count; offset++)
             {
-                var idx = (_selected + offset) % count;
-                if (AsciiMatch.StartsWithLower(_items[idx].Text, runeLower))
+                var idx = (selected + offset) % count;
+                if (AsciiMatch.StartsWithLower(TextOf(items[idx]), runeLower))
                 {
-                    SelectAndAnnounce(idx);
+                    SelectAndNotify(items, idx);
                     break;
                 }
             }
@@ -392,21 +344,30 @@ public class ListBox<T> : Widget where T : class, IListItem
         {
             // Multi-letter prefix search with wraparound, current item included.
             var needle = _typeAheadBuffer;
-            var count = _items.Count;
             for (var offset = 0; offset < count; offset++)
             {
-                var idx = (_selected + offset) % count;
-                if (AsciiMatch.StartsWithLower(_items[idx].Text, needle))
+                var idx = (selected + offset) % count;
+                if (AsciiMatch.StartsWithLower(TextOf(items[idx]), needle))
                 {
-                    if (idx != _selected)
-                        SelectAndAnnounce(idx);
+                    if (idx != selected)
+                        SelectAndNotify(items, idx);
                     else
-                        AnnounceSelected(null);
+                        RereadItem();
                     break;
                 }
             }
         }
     }
+
+    /// <summary>Selection moved by input: the tick end reads the landing;
+    /// notify the program.</summary>
+    private void SelectAndNotify(IReadOnlyList<T> items, int index)
+    {
+        Select(index, items[index]);
+        PostChanged();
+    }
+
+    // ── Input ──
 
     public override bool ReservesKey(KeyCombo combo)
     {
@@ -424,17 +385,18 @@ public class ListBox<T> : Widget where T : class, IListItem
 
     protected override bool OnInput(in InputEvent input)
     {
-        if (_items.Count == 0)
+        var (items, _, selected) = Resolve();
+        if (items.Count == 0)
         {
             // An empty list still answers navigation — with what the
-            // focus announcement already calls it.
+            // reader calls an empty list.
             switch (input.Kind)
             {
                 case InputKind.MoveDown or InputKind.MoveUp
                     or InputKind.MoveRight or InputKind.MoveLeft
                     or InputKind.MoveToDocStart or InputKind.MoveToLineStart
                     or InputKind.MoveToDocEnd or InputKind.MoveToLineEnd:
-                    AnnounceEmpty();
+                    Reread(Fields.Count);
                     return true;
                 default:
                     return false;
@@ -443,26 +405,26 @@ public class ListBox<T> : Widget where T : class, IListItem
         switch (input.Kind)
         {
             case InputKind.MoveDown or InputKind.MoveRight:
-                if (_selected + 1 < _items.Count)
-                    SelectAndAnnounce(_selected + 1);
+                if (selected + 1 < items.Count)
+                    SelectAndNotify(items, selected + 1);
                 else
-                    AnnounceSelected(Boundary.Bottom);
+                    AnnounceBoundary(Boundary.Bottom);
                 return true;
             case InputKind.MoveUp or InputKind.MoveLeft:
-                if (_selected > 0)
-                    SelectAndAnnounce(_selected - 1);
+                if (selected > 0)
+                    SelectAndNotify(items, selected - 1);
                 else
-                    AnnounceSelected(Boundary.Top);
+                    AnnounceBoundary(Boundary.Top);
                 return true;
             case InputKind.MoveToDocStart or InputKind.MoveToLineStart:
-                if (_selected != 0)
-                    SelectAndAnnounce(0);
+                if (selected != 0)
+                    SelectAndNotify(items, 0);
                 return true;
             case InputKind.MoveToDocEnd or InputKind.MoveToLineEnd:
-                if (_selected != _items.Count - 1)
-                    SelectAndAnnounce(_items.Count - 1);
+                if (selected != items.Count - 1)
+                    SelectAndNotify(items, items.Count - 1);
                 return true;
-            case InputKind.Activate when _checked is not null && !_toggleWithSpace:
+            case InputKind.Activate when _multiSelect && !_toggleWithSpace:
                 ToggleSelected();
                 return true;
             case InputKind.Activate when _activateItems:
@@ -483,13 +445,13 @@ public class ListBox<T> : Widget where T : class, IListItem
     }
 }
 
-/// <summary>The untyped list — <see cref="ListBox{T}"/> over plain
-/// <see cref="IListItem"/> values, carrying the string convenience
+/// <summary>The untyped list — <see cref="ListBox{T}"/> over
+/// <see cref="ListItem"/> values, carrying the string convenience
 /// overloads (plain strings wrap into <see cref="ListItem"/>).</summary>
-public class ListBox : ListBox<IListItem>
+public class ListBox : ListBox<ListItem>
 {
     public ListBox(
-        IWidgetContainer parent, string name, IReadOnlyList<IListItem> items,
+        IWidgetContainer parent, string name, IReadOnlyList<ListItem> items,
         bool numbered = false, bool activateItems = false,
         bool multiSelect = false, bool toggleWithSpace = false)
         : base(parent, name, items, numbered, activateItems, multiSelect, toggleWithSpace)
@@ -504,20 +466,16 @@ public class ListBox : ListBox<IListItem>
     {
     }
 
-    internal static List<IListItem> Wrap(IReadOnlyList<string> items)
+    internal static List<ListItem> Wrap(IReadOnlyList<string> items)
     {
-        var wrapped = new List<IListItem>(items.Count);
+        var wrapped = new List<ListItem>(items.Count);
         foreach (var item in items)
             wrapped.Add(new ListItem(item));
         return wrapped;
     }
 
-    /// <summary>Replace the item list with plain strings.</summary>
-    public void SetItems(IReadOnlyList<string> items) => SetItems(Wrap(items));
-
-    /// <summary>Replace the items with plain strings, silently.</summary>
-    protected void SetItemsSilently(IReadOnlyList<string> items) =>
-        SetItemsSilently(Wrap(items));
+    /// <summary>Replace the items with plain strings.</summary>
+    public void SetItems(IReadOnlyList<string> items) => Items = Wrap(items);
 
     /// <summary>Insert a plain-text item at the index.</summary>
     public void Insert(int index, string item) => Insert(index, new ListItem(item));

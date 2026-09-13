@@ -102,15 +102,3 @@ public class ReservationTests
         Assert.False(custom.ReservesKey(KeyCombo.Plain(Key.Enter)));
     }
 }
-
-public class WidgetStatesTests
-{
-    [Fact]
-    public void StatesBitflags()
-    {
-        var s = WidgetStates.Hidden | WidgetStates.Disabled;
-        Assert.True((s & WidgetStates.Hidden) != 0);
-        Assert.True((s & WidgetStates.Disabled) != 0);
-        Assert.False((s & WidgetStates.Required) != 0);
-    }
-}

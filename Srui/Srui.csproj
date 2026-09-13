@@ -24,6 +24,18 @@
     <ProjectReference Include="..\Srui.Audio\Srui.Audio.csproj" />
   </ItemGroup>
 
+  <!-- The field generator implements [Field] properties — the
+       toolkit's own widgets are generated the same way a consumer's
+       are. A project consuming Srui by ProjectReference adds the same
+       analyzer reference; the package carries the generator under
+       analyzers/dotnet/cs so a PackageReference needs nothing. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Srui.Generators\Srui.Generators.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <None Include="..\Srui.Generators\bin\$(Configuration)\netstandard2.0\Srui.Generators.dll"
+          Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+  </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="Srui.Tests" />
     <!-- The harness simulates key presses through the real input

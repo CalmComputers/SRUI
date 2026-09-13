@@ -575,13 +575,25 @@ public sealed class MultiAppHost : IDisposable
 
         public Forwarder(HostedApp hosted) => _hosted = hosted;
 
-        public void OnEvent(AccessibilityEvent e)
+        public void OnTick(IReadOnlyList<AccessibilityEvent> events)
         {
-            if (!_hosted.IsActive
-                && !(_hosted.AnnouncesInBackground && e is AccessibilityEvent.Announce))
+            IReadOnlyList<AccessibilityEvent> forwarded;
+            if (_hosted.IsActive)
+                forwarded = events;
+            else if (_hosted.AnnouncesInBackground)
+            {
+                var announces = new List<AccessibilityEvent>();
+                foreach (var e in events)
+                    if (e is AccessibilityEvent.Announce)
+                        announces.Add(e);
+                if (announces.Count == 0)
+                    return;
+                forwarded = announces;
+            }
+            else
                 return;
             foreach (var reader in _hosted.Owner._readers)
-                reader.OnEvent(e);
+                reader.OnTick(forwarded);
         }
 
         // Interrupts flow host → apps (the host broadcasts to the
@@ -602,8 +614,8 @@ public sealed class HostedApp
     /// <summary>The name switching announces. Read at announcement
     /// time, so a rename (an editor adopting its document's name, a
     /// player showing its track) speaks from the next switch on; the
-    /// change itself is silent. Task lists reading it live via
-    /// <see cref="IListItem.Text"/> need no sync call either.</summary>
+    /// change itself is silent. A task list whose items read it as
+    /// their line needs no sync call either.</summary>
     public string Name { get; set; }
 
     /// <summary>The app: build widgets into it as usual.</summary>

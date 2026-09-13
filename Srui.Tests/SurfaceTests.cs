@@ -244,12 +244,12 @@ public class FocusAndNavigationTests
         ui.Drain();
 
         // Rename twice and describe once before draining: the settled
-        // name and the description both speak; the intermediate name is
-        // coalesced away.
+        // name and the description both speak, as one reading; the
+        // intermediate name was never heard.
         save.Name = "Save All";
         save.Name = "Save Everything";
         save.Description = "saves the file";
-        Assert.Equal(new[] { "Save Everything", "saves the file" }, ui.Spoken());
+        Assert.Equal(new[] { "Save Everything saves the file" }, ui.Spoken());
     }
 
     [Fact]
@@ -1307,7 +1307,7 @@ public class ListBoxTests
         Assert.Equal(new[] { "bravo.txt 2 of 3" }, ui.Spoken());
         Assert.Equal(1, changes);
         Assert.Equal(1, files.SelectedIndex);
-        Assert.Equal("bravo.txt", files.SelectedItem?.Text);
+        Assert.Equal("bravo.txt", files.SelectedItem?.Value);
     }
 
     [Fact]
@@ -1351,7 +1351,7 @@ public class ListBoxTests
         var (ui, files) = ListUi(true);
         var open = new Button(ui.App, "Open");
         string? chosen = null;
-        open.Activated += () => chosen = files.SelectedItem?.Text;
+        open.Activated += () => chosen = files.SelectedItem?.Value;
         ui.App.SetPrimary(open);
         ui.Input(InputKind.MoveDown);
 
@@ -1378,13 +1378,13 @@ public class ListBoxTests
         // 'a' from apple → next item starting with 'a' (wraps past banana).
         ui.App.SetNow(1000);
         ui.Type('a');
-        Assert.Equal("avocado", files.SelectedItem?.Text);
+        Assert.Equal("avocado", files.SelectedItem?.Value);
         Assert.Equal(new[] { "avocado" }, ui.Spoken());
 
         // Repeated 'a' cycles onward: avocado → apple.
         ui.App.SetNow(1100);
         ui.Type('a');
-        Assert.Equal("apple", files.SelectedItem?.Text);
+        Assert.Equal("apple", files.SelectedItem?.Value);
     }
 
     [Fact]
@@ -1398,11 +1398,11 @@ public class ListBoxTests
         ui.App.SetNow(1000);
         ui.Type('b');
         // From banana, 'b' cycles to the NEXT b-item: berry.
-        Assert.Equal("berry", files.SelectedItem?.Text);
+        Assert.Equal("berry", files.SelectedItem?.Value);
         ui.App.SetNow(1100);
         ui.Type('e');
         // Buffer "be" → prefix search keeps berry.
-        Assert.Equal("berry", files.SelectedItem?.Text);
+        Assert.Equal("berry", files.SelectedItem?.Value);
     }
 
     [Fact]
@@ -1415,12 +1415,12 @@ public class ListBoxTests
 
         ui.App.SetNow(1000);
         ui.Type('b');
-        Assert.Equal("berry", files.SelectedItem?.Text);
+        Assert.Equal("berry", files.SelectedItem?.Value);
 
         // 500ms later the buffer has expired: 'c' is a fresh first letter.
         ui.App.SetNow(1500);
         ui.Type('c');
-        Assert.Equal("cat", files.SelectedItem?.Text);
+        Assert.Equal("cat", files.SelectedItem?.Value);
     }
 
     [Fact]
@@ -1450,8 +1450,8 @@ public class ListBoxTests
 
         files.SetItems(["only.txt"]);
         Assert.Equal(0, files.SelectedIndex);
-        Assert.Equal(new[] { "only.txt" }, ui.Spoken());
-        Assert.Equal(new[] { "only.txt" }, files.Items.Select(i => i.Text));
+        Assert.Equal(new[] { "only.txt 1 of 1" }, ui.Spoken());
+        Assert.Equal(new[] { "only.txt" }, files.Items.Select(i => i.Value));
     }
 
     [Fact]
@@ -1629,9 +1629,9 @@ public class EditBoxTests
         ui.Drain();
 
         notes.ReadOnly = true;
-        Assert.Equal(new[] { "edit read only" }, ui.Spoken());
+        Assert.Equal(new[] { "read only" }, ui.Spoken());
         notes.ReadOnly = false;
-        Assert.Equal(new[] { "edit" }, ui.Spoken());
+        Assert.Equal(new[] { "editable" }, ui.Spoken());
     }
 
     [Fact]
@@ -1648,23 +1648,21 @@ public class EditBoxTests
     }
 
     [Fact]
-    public void CursorPositionSpeaksLikeUserNavigation()
+    public void CursorPositionReadsTheLineItLandsOn()
     {
         var ui = new TestApp();
-        var notes = new EditBox(ui.App, "Notes", "abc");
+        var notes = new EditBox(ui.App, "Notes", "abc\ndef", multiline: true);
         notes.Focus();
         ui.Drain();
 
+        // Within the line: the line is what the user hears, and it did
+        // not change. Out of range: clamps.
         notes.CursorPosition = 1;
         Assert.Equal(1, notes.CursorPosition);
-        Assert.Equal(new[] { "b" }, ui.Spoken());
-
-        // Same position: silent. Out of range: clamps.
-        notes.CursorPosition = 1;
         Assert.Empty(ui.Spoken());
         notes.CursorPosition = 99;
-        Assert.Equal(3, notes.CursorPosition);
-        ui.Drain();
+        Assert.Equal(7, notes.CursorPosition);
+        Assert.Equal(new[] { "def" }, ui.Spoken());
     }
 
     [Fact]
@@ -1721,7 +1719,7 @@ public class EditBoxTests
         notes.Selection = (1, 3);
         Assert.Equal((1, 3), notes.Selection);
         Assert.Equal("bc", notes.SelectedText);
-        Assert.Equal(new[] { "bc selected" }, ui.Spoken());
+        Assert.Equal(new[] { "selected bc" }, ui.Spoken());
 
         notes.Selection = null;
         Assert.Null(notes.Selection);
@@ -1904,8 +1902,10 @@ public class EditBoxTests
         Assert.Equal("hunter2", box.Text);
         box.SelectAll();
         Assert.Equal(new[] { "******* selected" }, ui.Spoken());
+        // Unmasking changes what the selection sounds like, and the
+        // tick end says so; the mask flag itself is not spoken.
         box.Password = false;
-        Assert.Empty(ui.Spoken());
+        Assert.Equal(new[] { "selected hunter2" }, ui.Spoken());
         ui.Input(InputKind.MoveToDocStart);
         Assert.Equal(new[] { "hunter2" }, ui.Spoken());
     }
@@ -2029,7 +2029,7 @@ public class SliderTests
         // Home/End jump to the edges.
         ui.Input(InputKind.MoveToLineEnd);
         Assert.Equal(new[] { "100%" }, ui.Spoken());
-        Assert.Equal(100, vol.Value);
+        Assert.Equal(100, vol.Number);
 
         // Clamped at max: consumed, re-announced, but no Changed event.
         changes = 0;
@@ -2048,16 +2048,16 @@ public class SliderTests
 
         // A programmatic move speaks like a user-driven one: the value,
         // not "Progress slider 30%".
-        progress.Value = 30;
+        progress.Number = 30;
         Assert.Equal(new[] { "30%" }, ui.Spoken());
-        Assert.Equal(30, progress.Value);
+        Assert.Equal(30, progress.Number);
 
         // No change (clamped to the same value): silent.
-        progress.Value = 200;
+        progress.Number = 200;
         ui.Drain();
-        progress.Value = 150;
+        progress.Number = 150;
         Assert.Empty(ui.Spoken());
-        Assert.Equal(100, progress.Value);
+        Assert.Equal(100, progress.Number);
     }
 
     [Fact]
@@ -2069,9 +2069,9 @@ public class SliderTests
         other.Focus();
         ui.Drain();
 
-        progress.Value = 30;
+        progress.Number = 30;
         Assert.Empty(ui.Spoken());
-        Assert.Equal(30, progress.Value);
+        Assert.Equal(30, progress.Number);
     }
 }
 
@@ -2205,8 +2205,8 @@ public class GroupContextTests
         _ = new Button(ui.App, "Save");
         var plain = new Group(ui.App, null);
         _ = new CheckBox(plain, "Inside");
-        var console = new Group(ui.App, null, "console");
-        _ = new EditBox(console, null) { Role = "input" };
+        var console = new Group(ui.App, null, new Role("console"));
+        _ = new EditBox(console, null) { Role = new Role("input") };
         ui.App.EnsureFocus();
 
         ui.Input(InputKind.NavigateNext);
@@ -2230,15 +2230,15 @@ public class GroupContextTests
     }
 
     [Fact]
-    public void EditBoxRoleOverrideSurvivesReadOnlyToggle()
+    public void EditBoxRoleIsItsOwnField()
     {
         var ui = new TestApp();
-        var box = new EditBox(ui.App, "Log", multiline: true) { Role = "output" };
+        var box = new EditBox(ui.App, "Log", multiline: true) { Role = new Role("output") };
         box.ReadOnly = true;
         box.Focus();
-        Assert.Equal(new[] { "Log output blank" }, ui.Spoken());
-        box.Role = null;
-        Assert.Equal(new[] { "edit read only multi line" }, ui.Spoken());
+        Assert.Equal(new[] { "Log output read only multi line blank" }, ui.Spoken());
+        box.Role = Role.Edit;
+        Assert.Equal(new[] { "edit" }, ui.Spoken());
     }
 }
 
@@ -2363,7 +2363,7 @@ public class FilterListBoxTests
         var ui = new TestApp();
         var list = new FilterListBox(ui.App, "Commands", ["Save File"]);
         list.Focus();
-        Assert.Equal(new[] { "Commands list Save File no filter" }, ui.Spoken());
+        Assert.Equal(new[] { "Commands list Save File 1 of 1 no filter" }, ui.Spoken());
     }
 
     private sealed class PendingFilterList : FilterListBox
@@ -2421,7 +2421,7 @@ public class FilterListBoxTests
         Assert.Null(list.SelectedItem);
         // The filter state rides the focus announcement.
         ui.Input(InputKind.SpeakFocus);
-        Assert.Equal(new[] { "Commands list empty filter sx" }, ui.Spoken());
+        Assert.Equal(new[] { "Commands list filter sx no results" }, ui.Spoken());
 
         // Backspace restores results.
         ui.Input(InputKind.DeleteBackward);
@@ -2452,7 +2452,7 @@ public class FilterListBoxTests
         var (ui, list) = FilterUi();
         var open = new Button(ui.App, "Open");
         string? chosen = null;
-        open.Activated += () => chosen = list.SelectedItem?.Text;
+        open.Activated += () => chosen = list.SelectedItem?.Value;
         ui.App.SetPrimary(open);
         ui.Type('q');
 
@@ -2469,8 +2469,8 @@ public class FilterListBoxTests
         Assert.Equal("q", list.Filter);
 
         list.ClearFilter();
-        Assert.Equal("", list.Filter);
-        Assert.Equal(new[] { "Save File" }, ui.Spoken());
+        Assert.Null(list.Filter);
+        Assert.Equal(new[] { "Save File 1 of 3 no filter" }, ui.Spoken());
     }
 }
 
@@ -2682,7 +2682,7 @@ public class TickTests
 public class ReaderTests
 {
     [Fact]
-    public void EveryReaderHearsEveryAccessibilityEvent()
+    public void EveryReaderHearsEveryTick()
     {
         var ui = new TestApp();
         var second = new RecordingReader();
@@ -2691,17 +2691,19 @@ public class ReaderTests
         save.Focus();
         ui.App.DispatchEvents();
 
-        Assert.Single(ui.Reader.Events);
-        Assert.Single(second.Events);
-        var focused = Assert.IsType<AccessibilityEvent.Focused>(second.Events[0]);
+        Assert.Single(ui.Reader.Ticks);
+        var tick = Assert.Single(second.Ticks);
+        var focused = Assert.IsType<AccessibilityEvent.FocusArrived>(tick[0]);
         Assert.Same(save, focused.Widget);
-        Assert.Equal("Save", focused.Info.Name);
-        Assert.Equal("button", focused.Info.Role);
+        var name = Assert.Single(tick.OfType<AccessibilityEvent.FieldValue>(), f => f.Field == Fields.Name);
+        Assert.Equal("Save", name.Value);
+        var role = Assert.Single(tick.OfType<AccessibilityEvent.FieldValue>(), f => f.Field == Fields.Role);
+        Assert.Same(Role.Button, role.Value);
 
         Assert.True(ui.App.RemoveReader(second));
         ui.App.Announce("hello");
         ui.App.DispatchEvents();
-        Assert.Single(second.Events);
+        Assert.Single(second.Ticks);
     }
 
     [Fact]
@@ -2731,10 +2733,12 @@ public class ReaderTests
 
         ui.Type(' ');
         ui.App.DispatchEvents();
-        var toggle = Assert.IsType<AccessibilityEvent.Toggle>(
-            ui.Reader.Events.Single(e => e is AccessibilityEvent.Toggle));
+        var toggle = Assert.IsType<AccessibilityEvent.FieldValue>(
+            ui.Reader.Events.Single(e => e is AccessibilityEvent.FieldValue));
         Assert.Same(mute, toggle.Widget);
-        Assert.True(toggle.Checked);
+        Assert.Same(Fields.Checked, toggle.Field);
+        Assert.Equal(true, toggle.Value);
+        Assert.Equal(FieldScope.Control, toggle.Scope);
     }
 
     [Fact]
@@ -2760,37 +2764,42 @@ public class ReaderTests
 
         ui.Input(InputKind.MoveDown);
         ui.App.DispatchEvents();
-        var nav = Assert.IsType<AccessibilityEvent.ItemNav>(
-            ui.Reader.Events.Single(e => e is AccessibilityEvent.ItemNav));
-        Assert.Same(files, nav.Widget);
-        Assert.Equal("b", nav.Item);
-        Assert.Equal((1, 2), nav.Position);
+        var tick = ui.Reader.Ticks.Single();
+        var landed = Assert.Single(tick.OfType<AccessibilityEvent.ItemArrived>());
+        Assert.Same(files, landed.Widget);
+        Assert.Same(files.SelectedItem, landed.Item);
+        var value = Assert.Single(tick.OfType<AccessibilityEvent.FieldValue>(), f => f.Field == Fields.Value);
+        Assert.Equal("b", value.Value);
+        Assert.Equal(FieldScope.Item, value.Scope);
+        var position = Assert.Single(tick.OfType<AccessibilityEvent.FieldValue>(), f => f.Field == Fields.Position);
+        Assert.Equal(new Position(1, 2), position.Value);
+        Assert.Equal(FieldScope.Control, position.Scope);
     }
 }
 
 /// <summary>The behavior-authoring forcing function: a two-dimensional
 /// grid widget written entirely from the public base class. Arrows move
-/// the cell cursor, boundary hits are announced, the label mirrors the
+/// the cell cursor, boundary hits are announced, the fields mirror the
 /// cell, and the widget reserves its arrows for bind-dialog warnings.</summary>
-public class WidgetAuthoringTests
+public partial class WidgetAuthoringTests
 {
-    private sealed class GridWidget : Widget
+    private sealed partial class GridWidget : Widget
     {
         private readonly string[][] _cells;
         private int _row;
         private int _col;
 
         public GridWidget(IWidgetContainer parent, string name, string[][] cells)
-            : base(parent, name, roleText: "grid")
+            : base(parent, name, new Role("grid"))
         {
             _cells = cells;
         }
 
         public string Cell => _cells[_row][_col];
 
-        protected internal override string ValueText => Cell;
+        [Field] public string Value => Cell;
 
-        protected internal override string StateText => $"row {_row + 1} column {_col + 1}";
+        [Field] public string Place => $"row {_row + 1} column {_col + 1}";
 
         public event Action<string>? CellChosen;
 
@@ -2820,11 +2829,21 @@ public class WidgetAuthoringTests
                         : dc < 0 ? Boundary.Left : Boundary.Right
                     : null;
                 (_row, _col) = (row, col);
-                AnnounceItem(boundary is Boundary.Left or Boundary.Right
-                    ? $"edge, {Cell}"
-                    : Cell, null, boundary is Boundary.Top or Boundary.Bottom ? boundary : null);
-                if (boundary is null)
+                if (boundary is { } edge)
+                {
+                    // Nothing moved: the edge, and the cell again.
+                    AnnounceBoundary(edge);
+                    Reread(Fields.Value);
+                }
+                else
+                {
+                    // The cell changed; the tick end reads it. The place
+                    // changed too, and speaking it on every move would
+                    // be chatter: it rides the focus reading only.
+                    Suppress(PlaceField);
+                    Touch();
                     PostChanged();
+                }
                 return true;
             }
             if (input.Kind == InputKind.Activate)
@@ -2856,11 +2875,12 @@ public class WidgetAuthoringTests
     {
         var (ui, grid) = GridUi();
 
-        // Focus announcement composes from the golden six it maintains.
+        // Focus announcement composes from the fields it declares — a
+        // core one (Value) and one of its own, spoken as the string it is.
         ui.Input(InputKind.SpeakFocus);
         Assert.Equal(new[] { "Board grid a1 row 1 column 1" }, ui.Spoken());
 
-        // Arrows navigate cells and announce them.
+        // Arrows navigate cells and the tick end reads them.
         ui.Input(InputKind.MoveRight);
         Assert.Equal(new[] { "b1" }, ui.Spoken());
         ui.Input(InputKind.MoveDown);
@@ -2871,6 +2891,8 @@ public class WidgetAuthoringTests
         ui.Input(InputKind.MoveDown);
         Assert.Equal(new[] { "bottom, b2" }, ui.Spoken());
         Assert.Equal("b2", grid.Cell);
+        ui.Input(InputKind.MoveRight);
+        Assert.Equal(new[] { "right, b2" }, ui.Spoken());
 
         // Its own deferred event delivers on drain.
         string? chosen = null;
@@ -2898,15 +2920,15 @@ public class WidgetAuthoringTests
 public class FocusCauseTests
 {
     /// <summary>Deliver queued output and return the causes of the
-    /// Focused events heard since the last call, in order.</summary>
+    /// focus arrivals heard since the last call, in order.</summary>
     private static List<FocusCause> Causes(TestApp ui)
     {
         ui.App.DispatchEvents();
         var causes = ui.Reader.Events
-            .OfType<AccessibilityEvent.Focused>()
+            .OfType<AccessibilityEvent.FocusArrived>()
             .Select(f => f.Cause)
             .ToList();
-        ui.Reader.Events.Clear();
+        ui.Reader.Ticks.Clear();
         return causes;
     }
 
@@ -3075,7 +3097,7 @@ public class SelectAllOnFocusTests
         var first = new EditBox(ui.App, "Name");
         var notes = new EditBox(ui.App, "Notes", "alpha beta", multiline: true);
         notes.Focus();
-        notes.SetSelectionSilently(0, 5);                    // "alpha"
+        notes.Selection = (0, 5);                            // "alpha"
         first.Focus();
 
         // Focus returns; the working selection is exactly as left.

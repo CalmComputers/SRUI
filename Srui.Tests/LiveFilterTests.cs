@@ -3,28 +3,27 @@ using Xunit;
 
 namespace Srui.Tests;
 
-/// <summary>The live-source seam on FilterListBox: OnFilterChanged runs
-/// before the results report, so a subclass that re-queries an external
-/// source per filter announces the fresh results, never the stale set.</summary>
-public class LiveFilterTests
+/// <summary>The live-source seams on FilterListBox: a bound pool that
+/// re-queries an external source per read, and OnFilterChanged for a
+/// stored pool swapped per filter — either way the tick end reads the
+/// fresh results, never a stale set.</summary>
+public partial class LiveFilterTests
 {
-    private sealed class Item : IListItem
+    private sealed partial class Item : Element
     {
         public Item(string text, int score)
         {
-            Text = text;
+            Value = text;
             Score = score;
         }
 
-        public string Text { get; }
+        [Field] public partial string? Value { get; set; }
 
         public int Score { get; }
-
-        public int? FilterScore(string query) => Score;
     }
 
-    /// <summary>A filter list over a fake live source: every filter
-    /// change swaps the whole item set for what the "engine" returns.</summary>
+    /// <summary>A filter list whose pool is whatever the "engine"
+    /// returns for the current filter, read live.</summary>
     private sealed class LiveList : FilterListBox<Item>
     {
         public Func<string, IReadOnlyList<Item>> Source { get; set; } =
@@ -33,32 +32,29 @@ public class LiveFilterTests
         public LiveList(IWidgetContainer parent)
             : base(parent, "Search", Array.Empty<Item>())
         {
-        }
-
-        protected override void OnFilterChanged(string filter) =>
-            SetItemsSilently(Source(filter));
-
-        /// <summary>A poll-driven swap, as a session draining async
-        /// results would do — keeping the selection on its item when
-        /// the item survived the swap.</summary>
-        public void Refresh()
-        {
-            var kept = SelectedItem?.Text;
-            SetItemsSilently(Source(Filter));
-            if (kept is null)
-                return;
-            var results = Results;
-            for (var i = 0; i < results.Count; i++)
-                if (results[i].Text == kept)
-                {
-                    SelectedResultIndex = i;
-                    return;
-                }
+            Score = static (item, _) => item.Score;
+            BindItems(() => Source(Filter ?? ""));
         }
     }
 
+    /// <summary>The stored-pool form: every filter change swaps the
+    /// whole item set through the OnFilterChanged seam.</summary>
+    private sealed class SwappingList : FilterListBox<Item>
+    {
+        public Func<string, IReadOnlyList<Item>> Source { get; set; } =
+            _ => Array.Empty<Item>();
+
+        public SwappingList(IWidgetContainer parent)
+            : base(parent, "Search", Array.Empty<Item>())
+        {
+            Score = static (item, _) => item.Score;
+        }
+
+        protected override void OnFilterChanged(string? filter) => Items = Source(filter ?? "");
+    }
+
     [Fact]
-    public void FilterReportReadsTheFreshlySwappedItems()
+    public void FilterReportReadsTheFreshlyQueriedItems()
     {
         using var ui = new TestApp();
         var list = new LiveList(ui.App)
@@ -73,11 +69,11 @@ public class LiveFilterTests
         var spoken = ui.Spoken();
         Assert.Contains(spoken, s => s.Contains("result for x") && s.Contains("2"));
 
-        Assert.Equal("result for x", list.SelectedItem?.Text);
+        Assert.Equal("result for x", list.SelectedItem?.Value);
     }
 
     [Fact]
-    public void ErasingTheFilterSwapsBackThroughTheSameSeam()
+    public void ErasingTheFilterQueriesAgain()
     {
         using var ui = new TestApp();
         var browse = new[] { new Item("browse entry", 1) };
@@ -93,51 +89,58 @@ public class LiveFilterTests
         ui.Input(InputKind.DeleteBackward);
         var spoken = ui.Spoken();
         Assert.Contains(spoken, s => s.Contains("browse entry"));
-        Assert.Equal("browse entry", list.SelectedItem?.Text);
+        Assert.Equal("browse entry", list.SelectedItem?.Value);
     }
 
     [Fact]
-    public void SilentReplacementAloneSaysNothing()
+    public void ALateArrivalReadsAsTheCursorLanding()
     {
         using var ui = new TestApp();
         var list = new LiveList(ui.App);
         list.Focus();
         ui.Drain();
 
-        // A poll-driven swap outside any filter change is the
-        // subclass's own business to voice (or not).
+        // The source gains an item outside any filter change: the
+        // cursor, on nothing, lands on it, and that is heard.
         list.Source = _ => new[] { new Item("late arrival", 1) };
-        list.Refresh();
-        Assert.Empty(ui.Spoken());
-
-        // The swapped items are live for focus and navigation.
-        ui.Input(InputKind.SpeakFocus);
         Assert.Contains(ui.Spoken(), s => s.Contains("late arrival"));
     }
 
     [Fact]
-    public void SelectionIdentitySurvivesAReorderingSwap()
+    public void SelectionIdentitySurvivesAReorderingQuery()
     {
         using var ui = new TestApp();
+        var alpha = new Item("alpha", 3);
+        var beta = new Item("beta", 2);
         var list = new LiveList(ui.App)
         {
-            Source = _ => new[] { new Item("alpha", 3), new Item("beta", 2) },
+            Source = _ => new[] { alpha, beta },
         };
         list.Focus();
         ui.Type('x');
         ui.Input(InputKind.MoveDown); // onto beta
         ui.Drain();
 
-        // New arrivals outrank beta; the cursor stays on beta anyway.
-        list.Source = _ => new[]
+        // New arrivals outrank beta; the cursor stays on beta anyway,
+        // and only its place is news.
+        list.Source = _ => new[] { new Item("newcomer", 9), alpha, beta };
+        Assert.Equal(new[] { "3 of 3" }, ui.Spoken());
+        Assert.Same(beta, list.SelectedItem);
+    }
+
+    [Fact]
+    public void OnFilterChangedSwapsAStoredPoolBeforeTheReading()
+    {
+        using var ui = new TestApp();
+        var list = new SwappingList(ui.App)
         {
-            new Item("newcomer", 9), new Item("alpha", 3), new Item("beta", 2),
+            Source = filter => filter.Length == 0
+                ? Array.Empty<Item>()
+                : new[] { new Item($"result for {filter}", 2) },
         };
-        list.Refresh();
-        Assert.Empty(ui.Spoken());
-        // Had the swap kept the raw position instead of the item, the
-        // cursor would sit on alpha (index 1 of the new order).
-        ui.Input(InputKind.SpeakFocus);
-        Assert.Contains(ui.Spoken(), s => s.Contains("beta"));
+        list.Focus();
+
+        ui.Type('x');
+        Assert.Equal(new[] { "result for x 1 of 1" }, ui.Spoken());
     }
 }

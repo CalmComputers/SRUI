@@ -71,18 +71,20 @@ public abstract class Harness : IDisposable
     {
         DispatchEvents();
         var result = Pending();
-        Reader.Events.Clear();
+        Reader.Ticks.Clear();
         return result;
     }
 
     /// <summary>The utterances heard so far in the current batch,
     /// without delivering or clearing anything — for a predicate that
     /// watches speech arrive during <see cref="Until"/>.</summary>
-    public List<string> Pending() =>
-        Reader.Events
-            .Select(e => SpeechRenderer.RenderEvent(e, Verbosity))
-            .OfType<string>()
-            .ToList();
+    public List<string> Pending()
+    {
+        var result = new List<string>();
+        foreach (var tick in Reader.Ticks)
+            result.AddRange(SpeechRenderer.Default.RenderTick(tick, Verbosity));
+        return result;
+    }
 
     /// <summary>Deliver queued output, discarding it. Every input step
     /// does this on entry; call it yourself only to open a batch after
@@ -90,7 +92,7 @@ public abstract class Harness : IDisposable
     public void Drain()
     {
         DispatchEvents();
-        Reader.Events.Clear();
+        Reader.Ticks.Clear();
     }
 
     /// <summary>One step: discard the previous batch, run the input,

@@ -3,11 +3,10 @@
 // wires behavior onto built-ins with lambdas, this app demonstrates the
 // subclassing path: built-ins extended by overriding their On* methods
 // and ReservesKey (TaskListBox, HistoryEditBox, ConfirmButton),
-// state-bearing list items that compose their own spoken lines
-// (TaskItem), silent state mutation paired with owned announcements
-// (SetTextSilently in the entry box), composite panels as Group
-// subclasses, and an application shell class instead of a top-level
-// script.
+// state-bearing list items that compose their own lines (TaskItem),
+// state changes paired with owned announcements (Suppress on the task
+// list's toggles), composite panels as Group subclasses, and an
+// application shell class instead of a top-level script.
 //
 // The app is a small to-do list with two views, Tasks and Summary. On
 // the task list: Space toggles done, Delete removes, Shift+Up/Down

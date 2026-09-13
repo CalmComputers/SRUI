@@ -1,91 +1,95 @@
 using Srui;
-using Srui.Core;
 using Srui.Testing;
 using Xunit;
 
 namespace Srui.Tests;
 
+/// <summary>The reference speech rendering: a tick's state becomes one
+/// utterance composed from the fields in NVDA order, and the verbosity
+/// trims what is not information.</summary>
 public class SpeechRendererTests
 {
-    private static WidgetInfo Info(
-        string? name, string role, string value = "", string stateText = "",
-        WidgetStates states = WidgetStates.None, string description = "",
-        params KeyCombo[] shortcuts) =>
-        new(name, role, value, stateText, states, description, shortcuts);
+    private static List<string> Render(IReadOnlyList<AccessibilityEvent> events, SpeechVerbosity? verbosity = null) =>
+        SpeechRenderer.Default.RenderTick(events, verbosity);
 
     private static readonly SruiApp App = SruiApp.Headless();
+
+    private static List<AccessibilityEvent> Arrival(Widget widget, params ContextEntry[] context)
+    {
+        var events = new List<AccessibilityEvent>
+        {
+            new AccessibilityEvent.FocusArrived(widget, FocusCause.Programmatic, context),
+        };
+        foreach (var (field, value) in widget.Describe().Entries)
+            events.Add(new AccessibilityEvent.FieldValue(widget, field, value, FieldScope.Control));
+        if (widget.CurrentItem is { } item)
+            foreach (var (field, value) in item.Describe().Entries)
+                events.Add(new AccessibilityEvent.FieldValue(widget, field, value, FieldScope.Item));
+        return events;
+    }
 
     [Fact]
     public void AnnounceButtonWithShortcut()
     {
-        var info = Info("Save", "button", shortcuts: KeyCombo.WithAlt(Key.Char('s')));
-        Assert.Equal("Save button alt s", SpeechRenderer.AnnounceFocus(info));
-
+        var save = new Button(App, "Save");
+        save.AddShortcut(KeyCombo.WithAlt(Key.Char('s')));
+        save.AddShortcut(KeyCombo.WithCtrl(Key.Char('s')));
         // Only the first shortcut is announced.
-        var two = Info(
-            "Save", "button",
-            shortcuts: [KeyCombo.WithAlt(Key.Char('s')), KeyCombo.WithCtrl(Key.Char('s'))]);
-        Assert.Equal("Save button alt s", SpeechRenderer.AnnounceFocus(two));
+        Assert.Equal(["Save button alt s"], Render(Arrival(save)));
     }
 
     [Fact]
     public void AnnounceCheckboxStates()
     {
-        Assert.Equal(
-            "Word Wrap check box not checked",
-            SpeechRenderer.AnnounceFocus(Info("Word Wrap", "check box", "not checked")));
-        Assert.Equal(
-            "Word Wrap check box checked",
-            SpeechRenderer.AnnounceFocus(Info("Word Wrap", "check box", "checked")));
+        var wrap = new CheckBox(App, "Word Wrap");
+        Assert.Equal(["Word Wrap check box not checked"], Render(Arrival(wrap)));
+        wrap.Checked = true;
+        Assert.Equal(["Word Wrap check box checked"], Render(Arrival(wrap)));
     }
 
     [Fact]
     public void AnnounceEditboxBlank()
     {
-        Assert.Equal(
-            "Notes edit blank",
-            SpeechRenderer.AnnounceFocus(Info("Notes", "edit", "blank")));
+        var notes = new EditBox(App, "Notes");
+        Assert.Equal(["Notes edit blank"], Render(Arrival(notes)));
     }
 
     [Fact]
     public void AnnounceListboxWithPosition()
     {
-        Assert.Equal(
-            "Files list readme.txt 1 of 3",
-            SpeechRenderer.AnnounceFocus(Info("Files", "list", "readme.txt", "1 of 3")));
+        var files = new ListBox(App, "Files", ["readme.txt", "b", "c"], numbered: true);
+        Assert.Equal(["Files list readme.txt 1 of 3"], Render(Arrival(files)));
     }
 
     [Fact]
     public void AnnounceRolelessWidgetSkipsRole()
     {
-        Assert.Equal("Arena", SpeechRenderer.AnnounceFocus(Info("Arena", "")));
-        Assert.Equal(
-            "Arena arrow keys move",
-            SpeechRenderer.AnnounceFocus(Info("Arena", "", description: "arrow keys move")));
+        var arena = new CustomWidget(App, "Arena");
+        Assert.Equal(["Arena"], Render(Arrival(arena)));
+        arena.Description = "arrow keys move";
+        Assert.Equal(["Arena arrow keys move"], Render(Arrival(arena)));
     }
 
     [Fact]
     public void AnnounceNamelessWidget()
     {
-        Assert.Equal("edit blank", SpeechRenderer.AnnounceFocus(Info(null, "edit", "blank")));
+        var edit = new EditBox(App, null);
+        Assert.Equal(["edit blank"], Render(Arrival(edit)));
     }
 
     [Fact]
     public void AnnounceDisabledRequired()
     {
-        Assert.Equal(
-            "Name edit unavailable required",
-            SpeechRenderer.AnnounceFocus(
-                Info("Name", "edit", states: WidgetStates.Disabled | WidgetStates.Required)));
+        var name = new EditBox(App, "Name", "x") { Required = true };
+        name.Disabled = true;
+        Assert.Equal(["Name edit x unavailable required"], Render(Arrival(name)));
     }
 
     [Fact]
     public void AnnounceWithDescription()
     {
-        Assert.Equal(
-            "Volume slider 50 master output",
-            SpeechRenderer.AnnounceFocus(
-                Info("Volume", "slider", "50", description: "master output")));
+        var vol = new Slider(App, "Volume", 50, 0, 100) { Description = "master output" };
+        Assert.Equal(["Volume slider 50 master output"], Render(Arrival(vol)));
     }
 
     [Fact]
@@ -100,104 +104,107 @@ public class SpeechRendererTests
     }
 
     [Fact]
-    public void RenderFocusedEvent()
-    {
-        var save = new Button(App, "Save");
-        var ev = new AccessibilityEvent.Focused(
-            save, Info("Save", "button"), [], FocusCause.Programmatic);
-        Assert.Equal("Save button", SpeechRenderer.RenderEvent(ev));
-    }
-
-    [Fact]
     public void RenderFocusedWithContext()
     {
         var ok = new Button(App, "OK");
-        var ev = new AccessibilityEvent.Focused(
-            ok, Info("OK", "button"), ["Confirm delete?"], FocusCause.Reannounce);
-        Assert.Equal("Confirm delete? OK button", SpeechRenderer.RenderEvent(ev));
+        var events = Arrival(ok,
+            new ContextEntry("Options", Role.Group), new ContextEntry("Confirm delete?", Role.Label));
+        Assert.Equal(["Options group Confirm delete? OK button"], Render(events));
     }
 
     [Fact]
     public void RenderAnnounce()
     {
-        var ev = new AccessibilityEvent.Announce("Nothing to delete");
-        Assert.Equal("Nothing to delete", SpeechRenderer.RenderEvent(ev));
+        Assert.Equal(["Nothing to delete"],
+            Render([new AccessibilityEvent.Announce("Nothing to delete")]));
     }
 
     [Fact]
-    public void RenderToggle()
+    public void RenderCheckedDelta()
     {
         var mute = new CheckBox(App, "Mute");
-        Assert.Equal("checked",
-            SpeechRenderer.RenderEvent(new AccessibilityEvent.Toggle(mute, true)));
-        Assert.Equal("not checked",
-            SpeechRenderer.RenderEvent(new AccessibilityEvent.Toggle(mute, false)));
+        Assert.Equal(["checked"],
+            Render([new AccessibilityEvent.FieldValue(mute, Fields.Checked, true, FieldScope.Control)]));
+        Assert.Equal(["not checked"],
+            Render([new AccessibilityEvent.FieldValue(mute, Fields.Checked, false, FieldScope.Control)]));
     }
 
     [Fact]
     public void RenderEditNoop()
     {
         var notes = new EditBox(App, "Notes");
-        Assert.Equal("No text", SpeechRenderer.RenderEvent(
-            new AccessibilityEvent.EditNoop(notes, EditNoopKind.NoText)));
-        Assert.Equal("Nothing to select", SpeechRenderer.RenderEvent(
-            new AccessibilityEvent.EditNoop(notes, EditNoopKind.NothingToSelect)));
-        Assert.Equal("Nothing to delete", SpeechRenderer.RenderEvent(
-            new AccessibilityEvent.EditNoop(notes, EditNoopKind.NothingToDelete)));
-        Assert.Equal("Already selected to bottom, word", SpeechRenderer.RenderEvent(
-            new AccessibilityEvent.EditNoop(notes, EditNoopKind.SelectedToBottom, "word")));
-        Assert.Equal("Already selected to top, word", SpeechRenderer.RenderEvent(
-            new AccessibilityEvent.EditNoop(notes, EditNoopKind.SelectedToTop, "word")));
+        Assert.Equal(["No text"], Render([new AccessibilityEvent.EditNoop(notes, EditNoopKind.NoText)]));
+        Assert.Equal(["Nothing to select"], Render([new AccessibilityEvent.EditNoop(notes, EditNoopKind.NothingToSelect)]));
+        Assert.Equal(["Nothing to delete"], Render([new AccessibilityEvent.EditNoop(notes, EditNoopKind.NothingToDelete)]));
+        Assert.Equal(["Already selected to bottom, word"],
+            Render([new AccessibilityEvent.EditNoop(notes, EditNoopKind.SelectedToBottom, "word")]));
+        Assert.Equal(["Already selected to top, word"],
+            Render([new AccessibilityEvent.EditNoop(notes, EditNoopKind.SelectedToTop, "word")]));
     }
 
     [Fact]
     public void RenderClipboard()
     {
         var notes = new EditBox(App, "Notes");
-        var ev = new AccessibilityEvent.Clipboard(notes, ClipboardOp.Copy);
-        Assert.Equal("Copy", SpeechRenderer.RenderEvent(ev));
+        Assert.Equal(["Copy"], Render([new AccessibilityEvent.Clipboard(notes, ClipboardOp.Copy)]));
     }
 
     [Fact]
     public void RenderSliderWithUnit()
     {
         var vol = new Slider(App, "Volume", 50, 0, 100, unit: "%");
-        var ev = new AccessibilityEvent.SliderChange(vol, 50, "%");
-        Assert.Equal("50%", SpeechRenderer.RenderEvent(ev));
+        Assert.Equal(["50%"],
+            Render([new AccessibilityEvent.FieldValue(vol, Fields.Number, 50.0, FieldScope.Control)]));
     }
 
     [Fact]
-    public void RenderTabChangeSpeaksNameOnly()
+    public void RenderTabLandingSpeaksNameOnly()
     {
         var tabs = new TabControl(App, "Views", ["Files", "Playlist", "FX"]);
-        var ev = new AccessibilityEvent.TabChange(tabs, "Playlist", (1, 3));
-        Assert.Equal("Playlist", SpeechRenderer.RenderEvent(ev));
+        tabs.ActiveIndex = 1;
+        var item = tabs.CurrentItem!;
+        Assert.Equal(["Playlist"], Render(
+        [
+            new AccessibilityEvent.ItemArrived(tabs, item),
+            new AccessibilityEvent.FieldValue(tabs, Fields.Value, "Playlist", FieldScope.Item),
+            new AccessibilityEvent.FieldValue(tabs, Fields.Checked, null, FieldScope.Item),
+        ]));
+    }
+
+    [Fact]
+    public void ABoundaryPrefixesTheReading()
+    {
+        var files = new ListBox(App, "Files", ["a"]);
+        Assert.Equal(["top, a"], Render(
+        [
+            new AccessibilityEvent.BoundaryHit(files, Boundary.Top),
+            new AccessibilityEvent.FieldValue(files, Fields.Value, "a", FieldScope.Item),
+        ]));
     }
 
     [Fact]
     public void VerbosityTrimsRoleShortcutAndExtras()
     {
-        var info = Info("Hand", "list", "Ace of Spades", "1 of 8",
-            WidgetStates.WithHelp, "Space selects.",
-            KeyCombo.WithAlt(Key.Char('h')));
+        var hand = new ListBox(App, "Hand", ["Ace of Spades", "b", "c", "d", "e", "f", "g", "h"], numbered: true)
+        {
+            KeyHelp = "Space selects.",
+            Description = "Space selects.",
+        };
+        hand.AddShortcut(KeyCombo.WithAlt(Key.Char('h')));
         Assert.Equal(
-            "Hand list Ace of Spades 1 of 8 with help Space selects. alt h",
-            SpeechRenderer.AnnounceFocus(info));
+            ["Hand list Ace of Spades 1 of 8 with help Space selects. alt h"],
+            Render(Arrival(hand)));
         var quiet = new SpeechVerbosity { Roles = false, Shortcuts = false, Extras = false };
-        Assert.Equal(
-            "Hand Ace of Spades 1 of 8",
-            SpeechRenderer.AnnounceFocus(info, quiet));
+        Assert.Equal(["Hand Ace of Spades 1 of 8"], Render(Arrival(hand), quiet));
     }
 
     [Fact]
     public void VerbosityNeverTrimsActionableStates()
     {
         var quiet = new SpeechVerbosity { Roles = false, Shortcuts = false, Extras = false };
-        var info = Info("Name", "edit", stateText: "no filter",
-            states: WidgetStates.Disabled | WidgetStates.Required | WidgetStates.Warning);
-        Assert.Equal(
-            "Name no filter unavailable required warning",
-            SpeechRenderer.AnnounceFocus(info, quiet));
+        var name = new FilterListBox(App, "Name", ["x"]) { Required = true, Warning = true };
+        name.Disabled = true;
+        Assert.Equal(["Name x 1 of 1 no filter unavailable required warning"], Render(Arrival(name), quiet));
     }
 
     [Fact]
@@ -207,15 +214,11 @@ public class SpeechRendererTests
         var save = new Button(App, "Save");
         // Echoes of parts the focus announcement suppressed stay silent;
         // a name change is never verbosity.
-        Assert.Null(SpeechRenderer.RenderEvent(
-            new AccessibilityEvent.StateChange(save, WidgetStates.WithHelp, true), quiet));
-        Assert.Null(SpeechRenderer.RenderEvent(
-            new AccessibilityEvent.LabelChange(save, LabelPart.Description, "new words"), quiet));
-        Assert.Equal("Store", SpeechRenderer.RenderEvent(
-            new AccessibilityEvent.LabelChange(save, LabelPart.Name, "Store"), quiet));
+        Assert.Empty(Render([new AccessibilityEvent.FieldValue(save, Fields.WithHelp, true, FieldScope.Control)], quiet));
+        Assert.Empty(Render([new AccessibilityEvent.FieldValue(save, Fields.Description, "new words", FieldScope.Control)], quiet));
+        Assert.Equal(["Store"], Render([new AccessibilityEvent.FieldValue(save, Fields.Name, "Store", FieldScope.Control)], quiet));
         // The actionable state echoes survive full quiet.
-        Assert.Equal("unavailable", SpeechRenderer.RenderEvent(
-            new AccessibilityEvent.StateChange(save, WidgetStates.Disabled, true), quiet));
+        Assert.Equal(["unavailable"], Render([new AccessibilityEvent.FieldValue(save, Fields.Disabled, true, FieldScope.Control)], quiet));
     }
 
     [Fact]
@@ -227,25 +230,25 @@ public class SpeechRendererTests
         var del = new AccessibilityEvent.Typing(box, "a", null, TypingKind.Delete);
         var delWord = new AccessibilityEvent.Typing(box, "", "hello", TypingKind.DeleteWord);
 
-        Assert.Equal("a", SpeechRenderer.RenderEvent(ch));
-        Assert.Equal("hello space", SpeechRenderer.RenderEvent(sep));
+        Assert.Equal(["a"], Render([ch]));
+        Assert.Equal(["hello space"], Render([sep]));
 
         var chars = new SpeechVerbosity { Echo = TypingEcho.Characters };
-        Assert.Equal("a", SpeechRenderer.RenderEvent(ch, chars));
-        Assert.Equal("space", SpeechRenderer.RenderEvent(sep, chars));
+        Assert.Equal(["a"], Render([ch], chars));
+        Assert.Equal(["space"], Render([sep], chars));
 
         var words = new SpeechVerbosity { Echo = TypingEcho.Words };
-        Assert.Null(SpeechRenderer.RenderEvent(ch, words));
-        Assert.Equal("hello", SpeechRenderer.RenderEvent(sep, words));
+        Assert.Empty(Render([ch], words));
+        Assert.Equal(["hello"], Render([sep], words));
 
         var none = new SpeechVerbosity { Echo = TypingEcho.None };
-        Assert.Null(SpeechRenderer.RenderEvent(ch, none));
-        Assert.Null(SpeechRenderer.RenderEvent(sep, none));
+        Assert.Empty(Render([ch], none));
+        Assert.Empty(Render([sep], none));
 
         // Deletion is confirmation of a destruction, not typing
         // chatter: it survives every mode.
-        Assert.Equal("a", SpeechRenderer.RenderEvent(del, none));
-        Assert.Equal("hello", SpeechRenderer.RenderEvent(delWord, none));
+        Assert.Equal(["a"], Render([del], none));
+        Assert.Equal(["hello"], Render([delWord], none));
     }
 
     [Fact]
@@ -261,80 +264,5 @@ public class SpeechRendererTests
         // Deletion speaks in every mode.
         ui.Press("backspace");
         ui.Expect("space");
-    }
-}
-
-public class CoalesceTests
-{
-    private static readonly SruiApp App = SruiApp.Headless();
-
-    private static CoreEvent FocusedEvent(string name)
-    {
-        var widget = new Button(App, name);
-        return new CoreEvent.Acc(new AccessibilityEvent.Focused(
-            widget,
-            new WidgetInfo(name, "button", "", "", WidgetStates.None, "", []),
-            [], FocusCause.UserNavigation));
-    }
-
-    [Fact]
-    public void CoalesceKeepsLastFocused()
-    {
-        var a = FocusedEvent("A");
-        var b = FocusedEvent("B");
-        var output = Coalesce.Apply([a, b]);
-        Assert.Equal(new[] { b }, output);
-    }
-
-    [Fact]
-    public void CoalesceKeepsAllAnnounces()
-    {
-        var one = new CoreEvent.Acc(new AccessibilityEvent.Announce("one"));
-        var two = new CoreEvent.Acc(new AccessibilityEvent.Announce("two"));
-        var output = Coalesce.Apply([one, two]);
-        Assert.Equal(new CoreEvent[] { one, two }, output);
-    }
-
-    [Fact]
-    public void CoalesceKeepsLastToggle()
-    {
-        var mute = new CheckBox(App, "Mute");
-        var on = new CoreEvent.Acc(new AccessibilityEvent.Toggle(mute, true));
-        var off = new CoreEvent.Acc(new AccessibilityEvent.Toggle(mute, false));
-        var output = Coalesce.Apply([on, off]);
-        Assert.Equal(new[] { off }, output);
-    }
-
-    [Fact]
-    public void CoalescePreservesActivationsAndCallbacks()
-    {
-        var a = FocusedEvent("A");
-        var b = FocusedEvent("B");
-        var w = new CoreEvent.Activated(new NodeId(3));
-        var output = Coalesce.Apply([a, w, b]);
-        Assert.Equal(new CoreEvent[] { w, b }, output);
-    }
-
-    [Fact]
-    public void CoalesceIsPerKindNotGlobal()
-    {
-        var f = FocusedEvent("A");
-        var list = new ListBox(App, "L", ["first"]);
-        var item = new CoreEvent.Acc(new AccessibilityEvent.ItemNav(list, "first", (0, 3), null));
-        // Focused and ItemNav are different kinds — both survive (the
-        // focus moves to the end of the batch).
-        var output = Coalesce.Apply([f, item]);
-        Assert.Equal(new CoreEvent[] { item, f }, output);
-    }
-
-    [Fact]
-    public void CoalesceDeliversSettledFocusLast()
-    {
-        // What happened is spoken before where you are: an announcement
-        // emitted after a focus change still precedes it in the batch.
-        var f = FocusedEvent("A");
-        var announce = new CoreEvent.Acc(new AccessibilityEvent.Announce("Created."));
-        var output = Coalesce.Apply([f, announce]);
-        Assert.Equal(new CoreEvent[] { announce, f }, output);
     }
 }

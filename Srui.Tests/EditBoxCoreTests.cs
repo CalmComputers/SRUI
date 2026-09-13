@@ -9,11 +9,7 @@ public class EditBoxCoreTests
     private static readonly Widget Node = new CustomWidget(SruiApp.Headless(), "editor");
 
     private static List<string> Speech(EditBoxCore.Result result) =>
-        result.Events
-            .Select(SpeechRenderer.RenderEvent)
-            .Where(s => s is not null)
-            .Select(s => s!)
-            .ToList();
+        SpeechRenderer.Default.RenderTick(result.Events);
 
     private static EditBoxCore.Result Handle(in InputEvent input, EditorState editor) =>
         EditBoxCore.Handle(Node, input, editor, new NoClipboard());
@@ -124,13 +120,13 @@ public class EditBoxCoreTests
         // A separator completes no word.
         Assert.Equal(new[] { "star" }, Speech(Handle(InputEvent.TypeChar(' '), editor)));
         Assert.Equal("hi ", editor.Text());
-        Assert.Equal("***", EditBoxCore.LabelValue(editor));
+        Assert.Equal("***", editor.CurrentLine());
         Assert.Equal(new[] { "star" }, Speech(Handle(Simple(InputKind.DeleteBackward), editor)));
         Assert.Equal(new[] { "star" }, Speech(Handle(Simple(InputKind.MoveLeft), editor)));
         Assert.Equal(new[] { "star" }, Speech(Handle(Simple(InputKind.MoveToLineStart), editor)));
         Assert.Equal(new[] { "**" }, Speech(Handle(Simple(InputKind.MoveWordRight), editor)));
         Assert.Equal(new[] { "** selected" }, Speech(Handle(Simple(InputKind.SelectAll), editor)));
-        Assert.Equal("selected **", EditBoxCore.LabelValue(editor));
+        Assert.Equal("**", EditBoxCore.SelectedText(editor));
         var copy = Handle(Simple(InputKind.Copy), editor);
         Assert.True(copy.Consumed);
         Assert.Empty(copy.Events);
@@ -176,33 +172,34 @@ public class EditBoxCoreTests
     }
 
     [Fact]
-    public void LabelValueEmpty()
+    public void ValueEmpty()
     {
         var editor = new EditorState("", false);
-        Assert.Equal("blank", EditBoxCore.LabelValue(editor));
+        Assert.Equal("blank", editor.CurrentLine());
+        Assert.Null(EditBoxCore.SelectedText(editor));
     }
 
     [Fact]
-    public void LabelValueCurrentLine()
+    public void ValueCurrentLine()
     {
         var editor = new EditorState("hello world\nsecond line", true);
-        Assert.Equal("hello world", EditBoxCore.LabelValue(editor));
+        Assert.Equal("hello world", editor.CurrentLine());
         editor.Cursor = 12;
-        Assert.Equal("second line", EditBoxCore.LabelValue(editor));
+        Assert.Equal("second line", editor.CurrentLine());
     }
 
     [Fact]
-    public void LabelValueSelection()
+    public void SelectedTextIsTheSelectionInSpokenForm()
     {
         var editor = new EditorState("hello world", false) { Selection = (0, 5), Cursor = 5 };
-        Assert.Equal("selected hello", EditBoxCore.LabelValue(editor));
+        Assert.Equal("hello", EditBoxCore.SelectedText(editor));
     }
 
     [Fact]
-    public void LabelValueSingleLine()
+    public void ValueSingleLine()
     {
         var editor = new EditorState("hello world", false);
-        Assert.Equal("hello world", EditBoxCore.LabelValue(editor));
+        Assert.Equal("hello world", editor.CurrentLine());
     }
 
     // ── Typing events ──

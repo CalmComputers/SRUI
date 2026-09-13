@@ -10,10 +10,10 @@ public enum Priority
 }
 
 /// <summary>A to-do entry displayed by <see cref="TaskListBox"/> — an
-/// <see cref="IListItem"/> whose spoken line is composed from its own
-/// state. The list reads the line live, so mutating a task needs no
-/// sync call — the handler just speaks the delta.</summary>
-public sealed class TaskItem(string title) : IListItem
+/// item whose line is composed from its own state. The list reads the
+/// line at the tick end, so mutating a task needs no sync call: the
+/// change itself is what the user hears.</summary>
+public sealed partial class TaskItem(string title) : Element
 {
     public string Title { get; } = title;
     public Priority Priority { get; set; } = Priority.Normal;
@@ -21,7 +21,8 @@ public sealed class TaskItem(string title) : IListItem
 
     /// <summary>The spoken line: the task, then whatever differs from the
     /// defaults ("Answer support mail, high priority, done").</summary>
-    public string Text
+    [Field]
+    public string Value
     {
         get
         {
@@ -41,12 +42,12 @@ public sealed class TaskItem(string title) : IListItem
 /// Delete removes, Shift+Up/Down reorders, and Left/Right sets priority;
 /// arrows, Home/End, and type-ahead are inherited. This is the subclass
 /// contract for state-bearing lists: the items themselves are the state
-/// (TaskItem composes its spoken line, which the list reads live), so a
-/// handler mutates the task or removes with RemoveAt, and owns only the
-/// editorial announcement — terse and value-only, exactly how the
-/// built-in speaks; the structural consequence (where the selection
-/// lands) is the base's. Declaring the claimed combos in ReservesKey
-/// keeps bind-dialog conflict warnings accurate for this subclass too.
+/// (TaskItem composes its line, which the tick end reads), so a handler
+/// mutates the task or removes with RemoveAt and owns only the editorial
+/// announcement — terse and value-only; the structural consequence (where
+/// the selection lands, what changed under it) is the framework's.
+/// Declaring the claimed combos in ReservesKey keeps bind-dialog conflict
+/// warnings accurate for this subclass too.
 ///
 /// Claiming Space costs multi-word type-ahead ("water t" would toggle at
 /// the space) — the kind of tradeoff every key-claiming subclass makes;
@@ -66,7 +67,7 @@ public class TaskListBox : ListBox<TaskItem>
         var keep = Items.Where(t => !t.Done).ToList();
         var removed = Items.Count - keep.Count;
         if (removed > 0)
-            SetItems(keep);
+            Items = keep;
         return removed;
     }
 
@@ -104,8 +105,10 @@ public class TaskListBox : ListBox<TaskItem>
     {
         var task = Selected;
         task.Done = !task.Done;
-        // The item's Text now carries ", done"; the list reads it live,
-        // so only the delta needs speaking.
+        // The item's line now carries ", done", and the tick end would
+        // read the whole line; the delta is terser, so the line is
+        // kept out of this tick and the word said instead.
+        Suppress(Fields.Value);
         Announce(task.Done ? "Done." : "Not done.");
         PostChanged();
         return true;
@@ -113,8 +116,8 @@ public class TaskListBox : ListBox<TaskItem>
 
     private bool RemoveSelected()
     {
-        // Editorial first; RemoveAt speaks where the selection lands (a
-        // survivor with its position, or "empty").
+        // Editorial first; the tick end reads where the selection lands
+        // (a survivor with its position, or "empty").
         Announce($"Deleted {Selected.Title}.");
         RemoveAt(SelectedIndex);
         PostChanged();
@@ -129,16 +132,15 @@ public class TaskListBox : ListBox<TaskItem>
         {
             // At the edge: re-announce in place with the boundary, the
             // same vocabulary list navigation uses.
-            AnnounceItem(Items[from].Text, (from, Items.Count),
-                direction < 0 ? Boundary.Top : Boundary.Bottom);
+            AnnounceBoundary(direction < 0 ? Boundary.Top : Boundary.Bottom);
             return true;
         }
         var moving = Items[from];
         SetItem(from, Items[to]);
         SetItem(to, moving);
-        // The public setter shares the user-driven emission: the item
-        // with its new position ("Water the plants, 2 of 4").
-        SelectedIndex = to;
+        // The cursor follows its item: the tick end reads the new
+        // position ("2 of 4").
+        SelectedItem = moving;
         PostChanged();
         return true;
     }
@@ -149,7 +151,9 @@ public class TaskListBox : ListBox<TaskItem>
         var target = (Priority)Math.Clamp((int)task.Priority + direction, 0, (int)Priority.High);
         var moved = target != task.Priority;
         task.Priority = target;
-        // Announce even when clamped at an edge, like a slider.
+        // Announce even when clamped at an edge, like a slider; the
+        // line's own change is the same fact, so it stays out.
+        Suppress(Fields.Value);
         Announce($"{PriorityWord(target)} priority.");
         if (moved)
             PostChanged();

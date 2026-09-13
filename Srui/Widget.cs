@@ -24,24 +24,22 @@ public interface IWidgetContainer
 /// <summary>
 /// Base class for widgets. A widget IS its node in the semantic tree:
 /// one object holds the application-facing surface, the widget's state,
-/// and its input behavior. Extend by composition (subscribe to the
-/// events), by subclassing a built-in widget (override the <c>On*</c>
-/// methods, keep the base call so composition subscribers still fire), or
-/// by authoring a new widget kind from this base: override
-/// <see cref="OnInput"/> to claim input, expose the label's derived
-/// fields as functions of widget state
-/// (<see cref="ValueText"/>/<see cref="StateText"/>), and describe what
-/// the user should perceive with <see cref="Announce"/>/
-/// <see cref="AnnounceItem"/>/<see cref="Promulgate"/>. A widget authored
-/// that way is a full citizen:
-/// tab ring, focus recovery, dialog layers, shortcuts, and readers all
-/// apply to it exactly as to the built-ins.
+/// and its input behavior. What the user hears about it is its fields
+/// (<see cref="Element"/>): declare them as [Field] properties, change
+/// them freely, and the tick end speaks the difference between what the
+/// user last heard and what is now under the cursor — nothing in a
+/// widget decides when to speak state. Extend by composition (subscribe
+/// to the events), by subclassing a built-in widget (override the
+/// <c>On*</c> methods, keep the base call so composition subscribers
+/// still fire), or by authoring a new widget kind from this base:
+/// override <see cref="OnInput"/> to claim input, mutate your fields,
+/// and emit action events (<see cref="Announce"/>, <see cref="Promulgate"/>)
+/// for what is not state — an edge hit, a refusal. A widget authored
+/// that way is a full citizen: tab ring, focus recovery, dialog layers,
+/// shortcuts, and readers all apply to it exactly as to the built-ins.
 /// </summary>
-public abstract class Widget : IWidgetContainer
+public abstract partial class Widget : Element, IWidgetContainer
 {
-    /// <summary>The default role text of a <see cref="Group"/>.</summary>
-    public const string GroupRole = "group";
-
     public SruiApp App { get; }
 
     /// <summary>The engine handle this widget embodies. Identity on the
@@ -63,18 +61,18 @@ public abstract class Widget : IWidgetContainer
     private WidgetLabel? Label => Engine.Label(Node);
 
     /// <summary>Create the widget's node under the container.
-    /// <paramref name="roleText"/> is the spoken role ("button", "table");
-    /// empty announces role-less. Widgets created with
+    /// <paramref name="role"/> is the widget's kind (<see cref="Srui.Role.Button"/>,
+    /// a program's own); null is role-less. Widgets created with
     /// <paramref name="focusable"/> false (labels, groups) are skipped by
     /// the tab ring and focus recovery, though hierarchy navigation can
     /// still land on them.</summary>
-    protected Widget(IWidgetContainer parent, string? name, string roleText = "", bool focusable = true)
-        : this(parent, name, roleText, focusable, isContextLabel: false)
+    protected Widget(IWidgetContainer parent, string? name, Role? role = null, bool focusable = true)
+        : this(parent, name, role, focusable, isContextLabel: false)
     {
     }
 
     private protected Widget(
-        IWidgetContainer parent, string? name, string roleText, bool focusable, bool isContextLabel)
+        IWidgetContainer parent, string? name, Role? role, bool focusable, bool isContextLabel)
     {
         App = parent.App;
         Container = parent;
@@ -86,12 +84,10 @@ public abstract class Widget : IWidgetContainer
                 "widgets can only be created inside an SruiApp, a Dialog, or another widget",
                 nameof(parent)),
         };
-        var label = new WidgetLabel(name, roleText)
-        {
-            Focusable = focusable,
-            IsContextLabel = isContextLabel,
-        };
-        Node = Engine.Insert(parentNode, label, this);
+        Node = Engine.Insert(parentNode, new WidgetLabel(focusable, isContextLabel), this);
+        Name = name;
+        Role = role ?? Role.None;
+        Description = "";
     }
 
     // ── Focus and lifetime ──
@@ -100,84 +96,79 @@ public abstract class Widget : IWidgetContainer
 
     public bool IsFocused => Engine.Focus == Node;
 
-    /// <summary>Focus just landed on this widget, before the focus
-    /// announcement is built — a hook for state the widget reshapes on
-    /// entry (see <see cref="EditBox.SelectAllOnFocus"/>). Reshape
-    /// silently; the focus announcement itself does the speaking.</summary>
+    /// <summary>Focus just landed on this widget, before the tick end
+    /// describes it — a hook for state the widget reshapes on entry
+    /// (see <see cref="EditBox.SelectAllOnFocus"/>).</summary>
     protected internal virtual void OnFocusGained()
     {
     }
 
     /// <summary>Remove this widget's node (and everything created inside
-    /// it) from the tree. Focus recovers (with an announcement) if it was
-    /// inside. The object stays readable but mutations no longer land
-    /// anywhere.</summary>
+    /// it) from the tree. Focus recovers if it was inside. The object
+    /// stays readable but mutations no longer land anywhere.</summary>
     public void Remove() => Engine.Remove(Node);
 
-    // ── The golden six as properties ──
+    // ── Fields every widget has ──
 
-    /// <summary>The widget's spoken name; setting speaks the new name
-    /// when focused. Null announces as role and value only.</summary>
-    public string? Name
-    {
-        get => Label?.Name;
-        set => Engine.UpdateLabel(Node, label => label.Name = value);
-    }
+    /// <summary>The spoken name. Null announces as role and value only.</summary>
+    [Field] public partial string? Name { get; set; }
 
-    /// <summary>Rename without the focused-delta announcement — for
-    /// subclass handlers whose flow speaks the transition itself (a
-    /// directory pane adopting the folder it navigated into). The new
-    /// name still reads on every later announcement.</summary>
-    protected void SetNameSilently(string? name) =>
-        Engine.UpdateLabelSilently(Node, label => label.Name = name);
+    /// <summary>The widget's kind. Readers map it to a word.</summary>
+    [Field] public partial Role Role { get; set; }
 
-    /// <summary>The widget's spoken description; setting speaks the new
-    /// description when focused. For explaining an esoteric name — never
-    /// for keys or actions, which belong in <see cref="KeyHelp"/>
+    /// <summary>Explanatory text for an esoteric name — never keys or
+    /// actions, which belong in <see cref="KeyHelp"/>
     /// (docs/accessibility-guidelines.md, section 4).</summary>
-    public string Description
+    [Field] public partial string Description { get; set; }
+
+    /// <summary>The shortcuts attached to this widget, first added first.</summary>
+    [Field]
+    public IReadOnlyList<KeyCombo> Shortcuts
     {
-        get => Label?.Description ?? "";
-        set => Engine.UpdateLabel(Node, label => label.Description = value);
+        get
+        {
+            var shortcuts = Label?.Shortcuts;
+            if (shortcuts is null || shortcuts.Count == 0)
+                return EmptyShortcuts;
+            var result = new KeyCombo[shortcuts.Count];
+            for (var i = 0; i < result.Length; i++)
+                result[i] = shortcuts[i].Combo;
+            return result;
+        }
     }
+
+    private static readonly KeyCombo[] EmptyShortcuts = [];
 
     /// <summary>Hide/show this widget and its subtree. Focus recovers
-    /// (with an announcement) if it was inside.</summary>
+    /// if it was inside; the recovery is what the user hears.</summary>
     public bool Hidden
     {
-        get => Label is { } l && (l.States & WidgetStates.Hidden) != 0;
+        get => Label?.Hidden == true;
         set => Engine.SetHidden(Node, value);
     }
 
     /// <summary>Enable/disable this widget. A disabled widget stays in
     /// the tab ring — discoverable, announced "unavailable" — but is
     /// inert: input, key bindings, shortcuts, and primary/cancel
-    /// activation all pass it by. Toggling while focused speaks the
-    /// transition ("unavailable", "available") and focus stays put.</summary>
+    /// activation all pass it by.</summary>
+    [Field]
     public bool Disabled
     {
-        get => Label is { } l && (l.States & WidgetStates.Disabled) != 0;
-        set => Engine.SetState(Node, WidgetStates.Disabled, value);
+        get => Label?.Disabled == true;
+        set => Engine.SetDisabled(Node, value);
     }
 
-    /// <summary>Spoken as "required" in the focus announcement; toggling
-    /// while focused speaks the transition ("required", "not required").</summary>
-    public bool Required
-    {
-        get => Label is { } l && (l.States & WidgetStates.Required) != 0;
-        set => Engine.SetState(Node, WidgetStates.Required, value);
-    }
+    /// <summary>Spoken as "required" by the speech reader.</summary>
+    [Field] public partial bool Required { get; set; }
 
-    /// <summary>Spoken as "warning" in the focus announcement; toggling
-    /// while focused speaks the transition ("warning", "warning cleared").</summary>
-    public bool Warning
-    {
-        get => Label is { } l && (l.States & WidgetStates.Warning) != 0;
-        set => Engine.SetState(Node, WidgetStates.Warning, value);
-    }
+    /// <summary>Spoken as "warning" by the speech reader.</summary>
+    [Field] public partial bool Warning { get; set; }
 
     private string? _keyHelp;
     private bool _announceHelp = true;
+
+    /// <summary>Whether the widget carries key help and says so.</summary>
+    [Field] public bool WithHelp => _keyHelp is not null && _announceHelp;
 
     /// <summary>Help text for the widget's extra keys and actions — the
     /// home for anything a user could not predict from the name and role
@@ -187,14 +178,14 @@ public abstract class Widget : IWidgetContainer
     /// text in a reviewable status dialog on F1, which
     /// <see cref="ReservesKey"/> then reports reserved. Null (the default)
     /// removes the state and the F1 claim. Not a second description: text
-    /// the user needs on every focus visit belongs in the label fields.</summary>
+    /// the user needs on every focus visit belongs in the fields.</summary>
     public string? KeyHelp
     {
         get => _keyHelp;
         set
         {
             _keyHelp = value;
-            Engine.SetState(Node, WidgetStates.WithHelp, value is not null && _announceHelp);
+            Engine.Touch();
         }
     }
 
@@ -202,17 +193,90 @@ public abstract class Widget : IWidgetContainer
     /// (the "with help" state). False keeps the F1 dialog and its key
     /// reservation but drops the spoken state — for apps where help is
     /// so ubiquitous that the phrase would ride every focus visit and
-    /// carry no information. Best set at construction; flipped on a
-    /// focused widget it speaks the state transition like any other
-    /// state flag.</summary>
+    /// carry no information.</summary>
     public bool AnnounceHelp
     {
         get => _announceHelp;
         set
         {
             _announceHelp = value;
-            Engine.SetState(Node, WidgetStates.WithHelp, _keyHelp is not null && value);
+            Engine.Touch();
         }
+    }
+
+    /// <summary>The item under this widget's cursor, whose fields are
+    /// read with the widget's as its item scope: a list's selected item,
+    /// a tree's cursor node, a tab control's active tab. Null for
+    /// widgets without a cursor. When it changes to another item, the
+    /// tick end reads the landed item in full.</summary>
+    protected internal virtual Element? CurrentItem => null;
+
+    /// <summary>The engine's dirty flag: a field write on any widget may
+    /// have changed what the user perceives.</summary>
+    protected override void OnFieldWritten(Field field) => Touch();
+
+    /// <summary>Tell the engine something may have changed — for a
+    /// widget whose computed fields read private state it just moved
+    /// (a cell cursor), so the loop's next tick end describes it. Field
+    /// writes through generated properties do this by themselves.</summary>
+    protected void Touch() => Engine.Touch();
+
+    // ── Per-tick requests ──
+
+    private HashSet<Field>? _suppressed;
+    private bool _suppressAll;
+    private HashSet<Field>? _reread;
+    private bool _rereadItem;
+
+    /// <summary>Keep changes in these fields of this widget out of this
+    /// tick's reading (no fields means all of them). For the rare
+    /// widget whose own action events are the better voice for a
+    /// change — an edit box speaking the character typed rather than
+    /// the line it changed. Never affects a focus arrival, which always
+    /// reads in full. Cleared at the tick end.</summary>
+    public void Suppress(params Field[] fields)
+    {
+        if (fields.Length == 0)
+            _suppressAll = true;
+        else
+            foreach (var field in fields)
+                (_suppressed ??= new HashSet<Field>(ReferenceEqualityComparer.Instance)).Add(field);
+        Engine.NoteTickRequest(this);
+    }
+
+    /// <summary>Put these fields into this tick's reading whether or
+    /// not they changed — a slider at its edge re-saying its number.
+    /// Cleared at the tick end.</summary>
+    public void Reread(params Field[] fields)
+    {
+        foreach (var field in fields)
+            (_reread ??= new HashSet<Field>(ReferenceEqualityComparer.Instance)).Add(field);
+        Engine.NoteTickRequest(this);
+    }
+
+    /// <summary>Put every field of the item under the cursor, and the
+    /// cursor's <see cref="Fields.Position"/>, into this tick's reading
+    /// — the answer to an edge hit or a typeahead miss, where the user
+    /// needs to hear where they still are.</summary>
+    public void RereadItem()
+    {
+        _rereadItem = true;
+        Engine.NoteTickRequest(this);
+    }
+
+    internal bool IsSuppressed(Field field) =>
+        _suppressAll || _suppressed?.Contains(field) == true;
+
+    internal bool IsRereadRequested(Field field, FieldScope scope) =>
+        (_rereadItem && (scope == FieldScope.Item || ReferenceEquals(field, Fields.Position)))
+        || _reread?.Contains(field) == true;
+
+    internal void ClearTickRequests()
+    {
+        _suppressed?.Clear();
+        _suppressAll = false;
+        _reread?.Clear();
+        _rereadItem = false;
     }
 
     // ── Physical key bindings (the game-input stream) ──
@@ -296,8 +360,10 @@ public abstract class Widget : IWidgetContainer
 
     // ── Events ──
 
-    /// <summary>The widget's state changed (text edited, selection moved,
-    /// slider adjusted, tab switched, combo captured).</summary>
+    /// <summary>The user changed the widget's state (text edited,
+    /// selection moved, slider adjusted, tab switched, combo captured).
+    /// A program notification, not a speech mechanism: what the user
+    /// hears is the tick end's own affair.</summary>
     public event Action? Changed;
 
     /// <summary>The widget was activated: pressed directly, triggered as
@@ -316,13 +382,12 @@ public abstract class Widget : IWidgetContainer
     /// <summary>Handle a logical input directed at this widget while it
     /// is focused; the focused widget gets first claim, before framework
     /// navigation and shortcuts. Return true to consume. Mutate your own
-    /// state (the label follows by itself — <see cref="ValueText"/> and
-    /// <see cref="StateText"/> are functions of it), describe the
-    /// perceptual result with <see cref="Announce"/>/
-    /// <see cref="AnnounceItem"/>/<see cref="Promulgate"/>, and defer
-    /// program notifications with <see cref="Post"/>/
-    /// <see cref="PostChanged"/> — handlers run after dispatch settles,
-    /// so they may freely open dialogs or remove widgets.</summary>
+    /// fields (the tick end speaks what changed), emit action events for
+    /// what is not state (<see cref="Announce"/>, <see cref="Promulgate"/>,
+    /// <see cref="RereadItem"/> on an edge), and defer program
+    /// notifications with <see cref="Post"/>/<see cref="PostChanged"/> —
+    /// handlers run after dispatch settles, so they may freely open
+    /// dialogs or remove widgets.</summary>
     protected virtual bool OnInput(in InputEvent input) => false;
 
     internal bool HandleEngineInput(in InputEvent input)
@@ -339,43 +404,28 @@ public abstract class Widget : IWidgetContainer
         return false;
     }
 
-    /// <summary>The label's value field — the third of the golden six (a
-    /// list's selected item, an editor's current line). A function of
-    /// widget state, never stored: the framework pulls it whenever an
-    /// announcement or snapshot needs it, so it can never go stale.
-    /// Override with a cheap, side-effect-free computation over your own
-    /// state; the base has no value.</summary>
-    protected internal virtual string ValueText => "";
+    // Out to the user: action events. State is never emitted; the tick
+    // end reads it.
 
-    /// <summary>The label's dynamic state text, spoken before the flag
-    /// states in focus announcements ("no filter"). A function of widget
-    /// state, pulled like <see cref="ValueText"/>.</summary>
-    protected internal virtual string StateText => "";
-
-    /// <summary>Change the spoken role text; speaks the new role text
-    /// when focused.</summary>
-    protected void SetRoleText(string roleText) =>
-        Engine.UpdateLabel(Node, label => label.RoleText = roleText);
-
-    // Out to the user: the Announce family (Promulgate is the raw form).
-
-    /// <summary>Queue a free-form announcement attributed to this widget
-    /// (polite: speaks after whatever is already queued).</summary>
+    /// <summary>Queue a free-form announcement attributed to this widget.
+    /// It speaks, in order with the tick's other announcements and
+    /// before its state, only when this widget is where focus settles
+    /// at the tick end — so a confirmation that moves focus to its
+    /// result is heard as the result, not twice.</summary>
     protected void Announce(string text) =>
         Promulgate(new AccessibilityEvent.Announce(text, this));
 
-    /// <summary>Queue an item-navigation event for this widget: the
-    /// selected item's text, its position ((index, total), or null when
-    /// the widget has no indexable concept), the boundary that was hit,
-    /// if any, and — for multi-select widgets — the item's checked state
-    /// (spoken as "checked" when true, nothing when false; null for
-    /// widgets with no checked concept).</summary>
-    protected void AnnounceItem(
-        string item, (int Index, int Total)? position, Boundary? boundary, bool? isChecked = null) =>
-        Promulgate(new AccessibilityEvent.ItemNav(this, item, position, boundary, isChecked));
+    /// <summary>Queue an edge hit: navigation had nowhere to go. The
+    /// item under the cursor is reread alongside, so the reader can say
+    /// "top, Apple".</summary>
+    protected void AnnounceBoundary(Boundary edge)
+    {
+        Promulgate(new AccessibilityEvent.BoundaryHit(this, edge));
+        RereadItem();
+    }
 
     /// <summary>Queue a structured accessibility event for the readers —
-    /// the raw form under the Announce family, for events the
+    /// the raw form under <see cref="Announce"/>, for action events the
     /// conveniences don't cover.</summary>
     protected void Promulgate(AccessibilityEvent e) => Engine.EmitAccessibility(e);
 

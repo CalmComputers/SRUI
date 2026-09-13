@@ -46,9 +46,9 @@ internal partial class Program
 /// output is the full transcript even when the run fails early.</summary>
 internal sealed class PrintingReader : IReader
 {
-    public void OnEvent(AccessibilityEvent e)
+    public void OnTick(IReadOnlyList<AccessibilityEvent> events)
     {
-        if (SpeechRenderer.RenderEvent(e) is string s)
+        foreach (var s in SpeechRenderer.Default.RenderTick(events))
             Console.WriteLine(s);
     }
 }

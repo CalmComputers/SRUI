@@ -118,24 +118,25 @@ namespace MultiAppDemo
 
     /// <summary>A task-list entry: the line is the hosted app's name,
     /// read live, so a renamed app needs no list refresh.</summary>
-    public sealed class AppTask : IListItem
+    public sealed partial class AppTask : Element
     {
         public HostedApp Hosted { get; }
 
         public AppTask(HostedApp hosted) => Hosted = hosted;
 
-        public string Text => Hosted.Name;
+        [Field] public string Value => Hosted.Name;
     }
 
-    /// <summary>Read-only elapsed display: the value is computed when an
-    /// announcement needs it, never stored.</summary>
-    public sealed class ElapsedWidget : CustomWidget
+    /// <summary>Read-only elapsed display: the value is computed when
+    /// the tick end reads it, never stored — and while the widget is
+    /// focused, every second that passes is read as it passes.</summary>
+    public sealed partial class ElapsedWidget : CustomWidget
     {
         private readonly Func<ulong> _elapsedMs;
 
         public ElapsedWidget(IWidgetContainer parent, Func<ulong> elapsedMs)
             : base(parent, "Elapsed") => _elapsedMs = elapsedMs;
 
-        protected override string ValueText => $"{_elapsedMs() / 1000} seconds";
+        [Field] public string Value => $"{_elapsedMs() / 1000} seconds";
     }
 }

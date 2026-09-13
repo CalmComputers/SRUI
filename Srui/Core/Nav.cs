@@ -63,7 +63,7 @@ internal static class Nav
                 foreach (var child in tree.Children(current))
                 {
                     var node = tree.Get(child);
-                    if (node is not null && (node.Label.States & WidgetStates.Hidden) == 0)
+                    if (node is not null && !node.Label.Hidden)
                         return child;
                 }
                 return NodeId.None;
@@ -140,7 +140,7 @@ internal static class Nav
         var node = tree.Get(id);
         if (node is null)
             return;
-        if ((node.Label.States & WidgetStates.Hidden) != 0)
+        if (node.Label.Hidden)
             return;
         if (node.Label.IsFocusableNow)
             output.Add(id);
@@ -158,7 +158,7 @@ internal static class Nav
         foreach (var sibling in raw)
         {
             var node = tree.Get(sibling);
-            if (node is not null && (node.Label.States & WidgetStates.Hidden) == 0)
+            if (node is not null && !node.Label.Hidden)
                 result.Add(sibling);
         }
         return result;

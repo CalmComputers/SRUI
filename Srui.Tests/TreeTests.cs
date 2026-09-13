@@ -7,7 +7,7 @@ namespace Srui.Tests;
 public class TreeTests
 {
     private static WidgetLabel MakeLabel(string name, string roleText = "button", bool focusable = true) =>
-        new(name, roleText) { Focusable = focusable };
+        new(focusable);
 
     [Fact]
     public void InsertRootNodes()
@@ -153,7 +153,6 @@ public class TreeTests
 
         tree.PushLayer();
         Assert.NotNull(tree.Get(a));
-        Assert.Equal("A", tree.Get(a)!.Label.Name);
     }
 
     [Fact]
@@ -186,9 +185,9 @@ public class FocusMemoryTests
     public void RememberAndRecall()
     {
         var tree = new Tree();
-        var group = tree.Insert(NodeId.None, 0, new WidgetLabel("G", "group") { Focusable = false });
-        var a = tree.Insert(group, 0, new WidgetLabel("A", "button"));
-        var b = tree.Insert(group, 1, new WidgetLabel("B", "button"));
+        var group = tree.Insert(NodeId.None, 0, new WidgetLabel(focusable: false));
+        var a = tree.Insert(group, 0, new WidgetLabel());
+        var b = tree.Insert(group, 1, new WidgetLabel());
 
         var memory = new FocusMemory();
         Assert.Equal(NodeId.None, memory.Recall(group));
@@ -204,8 +203,8 @@ public class FocusMemoryTests
     public void GcDropsDeadEntries()
     {
         var tree = new Tree();
-        var group = tree.Insert(NodeId.None, 0, new WidgetLabel("G", "group") { Focusable = false });
-        var a = tree.Insert(group, 0, new WidgetLabel("A", "button"));
+        var group = tree.Insert(NodeId.None, 0, new WidgetLabel(focusable: false));
+        var a = tree.Insert(group, 0, new WidgetLabel());
 
         var memory = new FocusMemory();
         memory.Remember(group, a);
@@ -219,8 +218,8 @@ public class FocusMemoryTests
     public void GcDropsEntryWhenContainerRemoved()
     {
         var tree = new Tree();
-        var group = tree.Insert(NodeId.None, 0, new WidgetLabel("G", "group") { Focusable = false });
-        var a = tree.Insert(group, 0, new WidgetLabel("A", "button"));
+        var group = tree.Insert(NodeId.None, 0, new WidgetLabel(focusable: false));
+        var a = tree.Insert(group, 0, new WidgetLabel());
 
         var memory = new FocusMemory();
         memory.Remember(group, a);

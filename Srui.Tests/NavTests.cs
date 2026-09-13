@@ -6,18 +6,17 @@ namespace Srui.Tests;
 
 public class NavTests
 {
-    private static WidgetLabel MakeLabel(string name, string roleText = "button", bool focusable = true) =>
-        new(name, roleText) { Focusable = focusable };
+    private static WidgetLabel MakeLabel(bool focusable = true) => new(focusable);
 
     private static (Tree Tree, NodeId[] Ids) BuildDemoTree()
     {
         // Save (button), Options (group) -> [WordWrap (checkbox), Files (listbox)], Notes (editbox)
         var tree = new Tree();
-        var save = tree.Insert(NodeId.None, 0, MakeLabel("Save"));
-        var options = tree.Insert(NodeId.None, 1, MakeLabel("Options", "group", focusable: false));
-        var wrap = tree.Insert(options, 0, MakeLabel("Word Wrap", "check box"));
-        var files = tree.Insert(options, 1, MakeLabel("Recent Files", "list"));
-        var notes = tree.Insert(NodeId.None, 2, MakeLabel("Notes", "edit"));
+        var save = tree.Insert(NodeId.None, 0, MakeLabel());
+        var options = tree.Insert(NodeId.None, 1, MakeLabel(focusable: false));
+        var wrap = tree.Insert(options, 0, MakeLabel());
+        var files = tree.Insert(options, 1, MakeLabel());
+        var notes = tree.Insert(NodeId.None, 2, MakeLabel());
         return (tree, new[] { save, options, wrap, files, notes });
     }
 
@@ -91,12 +90,12 @@ public class NavTests
     public void HiddenSubtreeSkippedByTab()
     {
         var tree = new Tree();
-        var a = tree.Insert(NodeId.None, 0, MakeLabel("A"));
-        var g = tree.Insert(NodeId.None, 1, MakeLabel("G", "group", focusable: false));
-        var b = tree.Insert(g, 0, MakeLabel("B"));
-        var c = tree.Insert(NodeId.None, 2, MakeLabel("C"));
+        var a = tree.Insert(NodeId.None, 0, MakeLabel());
+        var g = tree.Insert(NodeId.None, 1, MakeLabel(focusable: false));
+        var b = tree.Insert(g, 0, MakeLabel());
+        var c = tree.Insert(NodeId.None, 2, MakeLabel());
 
-        tree.Get(g)!.Label.States |= WidgetStates.Hidden;
+        tree.Get(g)!.Label.Hidden = true;
 
         Assert.Equal(a, Nav.TabNext(tree, NodeId.None));
         Assert.Equal(c, Nav.TabNext(tree, a));
@@ -109,11 +108,11 @@ public class NavTests
     public void HiddenNodeSkippedByTab()
     {
         var tree = new Tree();
-        var a = tree.Insert(NodeId.None, 0, MakeLabel("A"));
-        var b = tree.Insert(NodeId.None, 1, MakeLabel("B"));
-        var c = tree.Insert(NodeId.None, 2, MakeLabel("C"));
+        var a = tree.Insert(NodeId.None, 0, MakeLabel());
+        var b = tree.Insert(NodeId.None, 1, MakeLabel());
+        var c = tree.Insert(NodeId.None, 2, MakeLabel());
 
-        tree.Get(b)!.Label.States |= WidgetStates.Hidden;
+        tree.Get(b)!.Label.Hidden = true;
 
         Assert.Equal(c, Nav.TabNext(tree, a));
         Assert.Equal(a, Nav.TabNext(tree, c));
@@ -123,11 +122,11 @@ public class NavTests
     public void TreeNavDownSkipsHiddenChild()
     {
         var tree = new Tree();
-        var g = tree.Insert(NodeId.None, 0, MakeLabel("G", "group", focusable: false));
-        var hidden = tree.Insert(g, 0, MakeLabel("H"));
-        var visible = tree.Insert(g, 1, MakeLabel("V"));
+        var g = tree.Insert(NodeId.None, 0, MakeLabel(focusable: false));
+        var hidden = tree.Insert(g, 0, MakeLabel());
+        var visible = tree.Insert(g, 1, MakeLabel());
 
-        tree.Get(hidden)!.Label.States |= WidgetStates.Hidden;
+        tree.Get(hidden)!.Label.Hidden = true;
 
         Assert.Equal(visible, Nav.TreeNav(tree, g, TreeDirection.Down));
     }
@@ -136,11 +135,11 @@ public class NavTests
     public void SiblingNavSkipsHidden()
     {
         var tree = new Tree();
-        var a = tree.Insert(NodeId.None, 0, MakeLabel("A"));
-        var b = tree.Insert(NodeId.None, 1, MakeLabel("B"));
-        var c = tree.Insert(NodeId.None, 2, MakeLabel("C"));
+        var a = tree.Insert(NodeId.None, 0, MakeLabel());
+        var b = tree.Insert(NodeId.None, 1, MakeLabel());
+        var c = tree.Insert(NodeId.None, 2, MakeLabel());
 
-        tree.Get(b)!.Label.States |= WidgetStates.Hidden;
+        tree.Get(b)!.Label.Hidden = true;
 
         Assert.Equal(c, Nav.TreeNav(tree, a, TreeDirection.Right));
         Assert.Equal(a, Nav.TreeNav(tree, c, TreeDirection.Left));
@@ -162,40 +161,22 @@ public class NavTests
 
     // ── Property tests (ported from proptest, seeded random) ──
 
-    private static (string RoleText, bool Focusable) RandomRole(Random rng) => rng.Next(7) switch
-    {
-        0 => ("button", true),
-        1 => ("check box", true),
-        2 => ("edit", true),
-        3 => ("list", true),
-        4 => ("group", false),
-        5 => ("label", false),
-        _ => ("tab control", true),
-    };
-
-    private static WidgetStates RandomStates(Random rng) =>
-        (WidgetStates)(uint)rng.Next(64)
-        & (WidgetStates.Disabled | WidgetStates.Required | WidgetStates.Warning | WidgetStates.Hidden);
-
     private static Tree BuildRandomTree(Random rng)
     {
         var tree = new Tree();
         var rootCount = rng.Next(1, 10);
         for (var i = 0; i < rootCount; i++)
         {
-            var (roleText, focusable) = RandomRole(rng);
-            var label = new WidgetLabel($"node_{i}", roleText)
+            // Two kinds in seven are containers (groups, labels).
+            var label = new WidgetLabel(focusable: rng.Next(7) < 5)
             {
-                Focusable = focusable,
-                States = RandomStates(rng),
+                Hidden = rng.Next(4) == 0,
+                Disabled = rng.Next(4) == 0,
             };
             var id = tree.Insert(NodeId.None, i, label);
             var children = rng.Next(4);
             for (var c = 0; c < children; c++)
-            {
-                var childRole = c % 2 == 0 ? "button" : "check box";
-                tree.Insert(id, c, new WidgetLabel($"child_{i}_{c}", childRole));
-            }
+                tree.Insert(id, c, new WidgetLabel());
         }
         return tree;
     }

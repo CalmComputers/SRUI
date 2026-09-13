@@ -15,28 +15,12 @@ internal readonly record struct NodeId(ulong Value)
 /// announcements speak.</summary>
 internal readonly record struct WidgetShortcut(KeyCombo Combo, ShortcutAction Action);
 
-/// <summary>The authored subset of the golden six (name, role,
-/// description, flag states, shortcuts) plus the navigation traits the
-/// tree machinery needs (Focusable, IsContextLabel). The derived fields
-/// — value and dynamic state text — are not stored: they are functions
-/// of widget state, pulled from the owning widget
-/// (<see cref="Srui.Widget.ValueText"/>/<see cref="Srui.Widget.StateText"/>)
-/// whenever an announcement or snapshot needs them. Role is carried as
-/// its spoken text; what a role reserves during interaction is the
-/// owning widget's affair (<see cref="Srui.Widget.ReservesKey"/>). Name
-/// is nullable because a small number of widgets have no user-facing
-/// name and announce as "role value" only.</summary>
+/// <summary>The navigation traits the tree machinery needs: what the
+/// engine itself consults to decide reachability, dispatch, and
+/// shortcut matching. Nothing spoken lives here — every spoken fact is
+/// a field of the owning widget, described at tick end.</summary>
 internal sealed class WidgetLabel
 {
-    public string? Name;
-    /// <summary>Spoken role text ("button", "edit read only"). Empty for
-    /// role-less widgets — speech skips the empty field.</summary>
-    public string RoleText = "";
-    public WidgetStates States;
-    public string Description = "";
-    /// <summary>Shortcuts attached to the widget (see Widget.AddShortcut).
-    /// Focus announcements speak the first one.</summary>
-    public List<WidgetShortcut> Shortcuts = new();
     /// <summary>Whether this widget kind participates in the tab ring and
     /// focus recovery. False for labels and groups (hierarchy navigation
     /// can still land on a group). Fixed at creation.</summary>
@@ -44,36 +28,18 @@ internal sealed class WidgetLabel
     /// <summary>True for Label widgets: their names become context labels
     /// for following siblings in context re-announcements.</summary>
     public bool IsContextLabel;
+    /// <summary>Hidden leaves navigation (with the subtree); disabled
+    /// stays reachable but inert.</summary>
+    public bool Hidden;
+    public bool Disabled;
+    /// <summary>Shortcuts attached to the widget (see Widget.AddShortcut).
+    /// Focus announcements speak the first one.</summary>
+    public List<WidgetShortcut> Shortcuts = new();
 
-    public WidgetLabel(string? name, string roleText)
+    public WidgetLabel(bool focusable = true, bool isContextLabel = false)
     {
-        Name = name;
-        RoleText = roleText;
-    }
-
-    /// <summary>The public golden-six snapshot, taken at event emission.
-    /// The derived fields are the caller's pulls from the owning widget.</summary>
-    public WidgetInfo ToInfo(string value, string stateText)
-    {
-        var shortcuts = Shortcuts.Count == 0
-            ? EmptyShortcuts
-            : Shortcuts.Select(s => s.Combo).ToArray();
-        return new WidgetInfo(Name, RoleText, value, stateText, States, Description, shortcuts);
-    }
-
-    private static readonly KeyCombo[] EmptyShortcuts = [];
-
-    public WidgetLabel Clone()
-    {
-        var copy = new WidgetLabel(Name, RoleText)
-        {
-            States = States,
-            Description = Description,
-            Shortcuts = new List<WidgetShortcut>(Shortcuts),
-            Focusable = Focusable,
-            IsContextLabel = IsContextLabel,
-        };
-        return copy;
+        Focusable = focusable;
+        IsContextLabel = isContextLabel;
     }
 
     /// <summary>Whether the widget can currently receive tab-ring focus:
@@ -81,12 +47,10 @@ internal sealed class WidgetLabel
     /// keyboard-only, screen-reader-first UI keeps them discoverable
     /// ("unavailable") rather than skipping them; they are inert, not
     /// invisible.</summary>
-    public bool IsFocusableNow =>
-        Focusable && (States & WidgetStates.Hidden) == 0;
+    public bool IsFocusableNow => Focusable && !Hidden;
 
     /// <summary>Whether the widget can currently act: focusable now and
     /// not disabled. Gates input dispatch, key bindings, shortcuts, and
     /// primary/cancel activation.</summary>
-    public bool IsInteractiveNow =>
-        IsFocusableNow && (States & WidgetStates.Disabled) == 0;
+    public bool IsInteractiveNow => IsFocusableNow && !Disabled;
 }

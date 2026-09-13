@@ -6,7 +6,7 @@ namespace Srui;
 public class Label : Widget
 {
     public Label(IWidgetContainer parent, string text)
-        : base(parent, text, "label", focusable: false, isContextLabel: true)
+        : base(parent, text, Role.Label, focusable: false, isContextLabel: true)
     {
     }
 }
@@ -17,12 +17,12 @@ public class Label : Widget
 /// the widget it lands on ("Options group Word Wrap check box not
 /// checked"); moves within it do not repeat it. A group with no name
 /// and the default role is structure only and speaks nothing on entry;
-/// <c>roleText</c> replaces "group" for a container that
-/// is a thing in its own right ("console").</summary>
+/// another role marks a container that is a thing in its own right
+/// (<c>new Role("console")</c>).</summary>
 public class Group : Widget
 {
-    public Group(IWidgetContainer parent, string? name, string roleText = GroupRole)
-        : base(parent, name, roleText, focusable: false)
+    public Group(IWidgetContainer parent, string? name, Role? role = null)
+        : base(parent, name, role ?? Role.Group, focusable: false)
     {
     }
 }
@@ -44,7 +44,7 @@ public class CustomWidget : Widget
 /// primary; Escape anywhere, as the cancel).</summary>
 public class Button : Widget
 {
-    public Button(IWidgetContainer parent, string name) : base(parent, name, "button")
+    public Button(IWidgetContainer parent, string name) : base(parent, name, Role.Button)
     {
     }
 
@@ -77,34 +77,17 @@ public class Button : Widget
 
 /// <summary>Space toggles; Enter falls through to the layer's primary
 /// (Windows dialog convention).</summary>
-public class CheckBox : Widget
+public partial class CheckBox : Widget
 {
-    private bool _checked;
-
     public CheckBox(IWidgetContainer parent, string name, bool isChecked = false)
-        : base(parent, name, "check box")
+        : base(parent, name, Role.CheckBox)
     {
-        _checked = isChecked;
+        Checked = isChecked;
     }
 
-    /// <summary>"checked" / "not checked", pulled at announcement time.</summary>
-    protected internal override string ValueText => _checked ? "checked" : "not checked";
-
-    /// <summary>The checked state. A programmatic change while focused
-    /// speaks the new value exactly as a user-driven toggle would; it does
-    /// not raise Toggled (the program already knows).</summary>
-    public bool Checked
-    {
-        get => _checked;
-        set
-        {
-            if (value == _checked)
-                return;
-            _checked = value;
-            if (IsFocused)
-                Promulgate(new AccessibilityEvent.Toggle(this, value));
-        }
-    }
+    /// <summary>The checked state. Bind it to the model and the box
+    /// writes itself.</summary>
+    [Field] public partial bool Checked { get; set; }
 
     /// <summary>The user toggled the box; the argument is the new state.</summary>
     public event Action<bool>? Toggled;
@@ -120,10 +103,9 @@ public class CheckBox : Widget
     {
         if (input.IsChar(' '))
         {
-            _checked = !_checked;
-            var isChecked = _checked;
+            Checked = !Checked;
+            var isChecked = Checked;
             Post(() => OnToggled(isChecked));
-            Promulgate(new AccessibilityEvent.Toggle(this, isChecked));
             return true;
         }
         return false;

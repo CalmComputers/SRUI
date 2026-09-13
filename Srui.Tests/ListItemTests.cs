@@ -3,28 +3,29 @@ using Xunit;
 
 namespace Srui.Tests;
 
-/// <summary>Item operations and the IListItem contract: structural
-/// consequences (selection clamping, what the user hears about where the
-/// selection landed) belong to the framework; editorial feedback
-/// ("Deleted X.") belongs to the caller.</summary>
-public class ListItemTests
+/// <summary>Item operations and the item contract: an item is an
+/// Element whose fields the reader speaks when the cursor lands on
+/// it, and whose identity the cursor follows. Where the cursor lands
+/// after a structural change is the tick end's to read; editorial
+/// feedback ("Deleted X.") belongs to the caller.</summary>
+public partial class ListItemTests
 {
-    /// <summary>An item whose spoken line is computed from mutable
-    /// state — the live-read consumer.</summary>
-    private sealed class Chore(string title) : IListItem
+    /// <summary>An item whose line is computed from mutable state — the
+    /// live-read consumer.</summary>
+    private sealed partial class Chore(string title) : Element
     {
         public bool Done { get; set; }
 
-        public string Text => Done ? $"{title}, done" : title;
+        [Field] public string Value => Done ? $"{title}, done" : title;
     }
 
-    /// <summary>A command-palette item: it ranks itself against the
-    /// query, and "hidden" opts out of matching entirely.</summary>
-    private sealed class Command(string name, int rank) : IListItem
+    /// <summary>A command-palette item carrying its own rank; the list's
+    /// Score consults it, and "hidden" opts out of matching entirely.</summary>
+    private sealed partial class Command(string name, int rank) : Element
     {
-        public string Text => name;
+        [Field] public string Value => name;
 
-        public int? FilterScore(string query) => name == "hidden" ? null : rank;
+        public int? Rank => name == "hidden" ? null : rank;
     }
 
     private static (TestApp Ui, ListBox List) FocusedList(params string[] items)
@@ -37,7 +38,7 @@ public class ListItemTests
     }
 
     [Fact]
-    public void RemoveAtSelectedSpeaksTheSurvivor()
+    public void RemoveAtSelectedReadsTheSurvivor()
     {
         var (ui, list) = FocusedList("a", "b", "c");
         ui.Input(InputKind.MoveDown); // b
@@ -49,7 +50,7 @@ public class ListItemTests
     }
 
     [Fact]
-    public void RemoveAtLastSelectedClampsAndSpeaks()
+    public void RemoveAtLastSelectedClampsAndReads()
     {
         var (ui, list) = FocusedList("a", "b");
         ui.Input(InputKind.MoveDown); // b
@@ -71,16 +72,18 @@ public class ListItemTests
     }
 
     [Fact]
-    public void RemoveAtElsewhereIsSilentAndKeepsTheItem()
+    public void RemoveAtElsewhereKeepsTheItemAndReadsThePosition()
     {
         var (ui, list) = FocusedList("a", "b", "c");
         ui.Input(InputKind.MoveDown); // b
         ui.Drain();
 
+        // The cursor's item survives; only its place changed, and that
+        // is what the reading carries.
         list.RemoveAt(0);
-        Assert.Empty(ui.Spoken());
+        Assert.Equal(new[] { "1 of 2" }, ui.Spoken());
         Assert.Equal(0, list.SelectedIndex);
-        Assert.Equal("b", list.SelectedItem?.Text);
+        Assert.Equal("b", list.SelectedItem?.Value);
     }
 
     [Fact]
@@ -94,28 +97,28 @@ public class ListItemTests
 
         list.RemoveAt(0);
         Assert.Empty(ui.Spoken());
-        Assert.Equal("b", list.SelectedItem?.Text);
+        Assert.Equal("b", list.SelectedItem?.Value);
     }
 
     [Fact]
-    public void InsertIsSilentAndKeepsTheSelectedItem()
+    public void InsertKeepsTheSelectedItem()
     {
         var (ui, list) = FocusedList("a", "b");
         ui.Input(InputKind.MoveDown); // b
         ui.Drain();
 
         list.Insert(0, "start");
-        Assert.Empty(ui.Spoken());
+        Assert.Equal(new[] { "3 of 3" }, ui.Spoken());
         Assert.Equal(2, list.SelectedIndex);
-        Assert.Equal("b", list.SelectedItem?.Text);
+        Assert.Equal("b", list.SelectedItem?.Value);
 
         list.Add("end");
-        Assert.Empty(ui.Spoken());
+        Assert.Equal(new[] { "3 of 4" }, ui.Spoken());
         Assert.Equal(4, list.Items.Count);
     }
 
     [Fact]
-    public void InsertIntoEmptyFocusedListSpeaksTheItem()
+    public void InsertIntoEmptyFocusedListReadsTheItem()
     {
         var ui = new TestApp();
         var list = new ListBox(ui.App, "Tasks", Array.Empty<string>(), numbered: true);
@@ -126,9 +129,9 @@ public class ListItemTests
         Assert.Equal(new[] { "water 1 of 1" }, ui.Spoken());
         Assert.Equal(0, list.SelectedIndex);
 
-        // Only the transition out of empty speaks; a further Add is silent.
+        // A further Add changes only the count the position carries.
         list.Add("feed");
-        Assert.Empty(ui.Spoken());
+        Assert.Equal(new[] { "1 of 2" }, ui.Spoken());
     }
 
     [Fact]
@@ -145,30 +148,30 @@ public class ListItemTests
     }
 
     [Fact]
-    public void SetItemIsSilentAndFocusAnnouncementsStayCurrent()
+    public void SetItemOnTheCursorReadsTheReplacement()
     {
         var (ui, list) = FocusedList("a", "b");
         list.SetItem(0, "alpha");
-        Assert.Empty(ui.Spoken());
+        Assert.Equal(new[] { "alpha 1 of 2" }, ui.Spoken());
 
-        ui.Input(InputKind.SpeakFocus);
-        Assert.Contains("alpha", Assert.Single(ui.Spoken()));
+        // Elsewhere: nothing to hear.
+        list.SetItem(1, "beta");
+        Assert.Empty(ui.Spoken());
     }
 
     [Fact]
-    public void MutatedItemLinesAreReadLiveAtAnnouncement()
+    public void MutatedItemLinesAreReadLive()
     {
         var ui = new TestApp();
         var chore = new Chore("sweep");
-        var list = new ListBox(ui.App, "Chores", [chore]);
+        var list = new ListBox<Chore>(ui.App, "Chores", [chore]);
         list.Focus();
         ui.Drain();
 
-        // No sync call of any kind: the label is pulled fresh when the
-        // announcement is composed.
+        // No sync call of any kind: the line changed under the cursor,
+        // and the tick end reads the change.
         chore.Done = true;
-        ui.Input(InputKind.SpeakFocus);
-        Assert.Contains("sweep, done", Assert.Single(ui.Spoken()));
+        Assert.Equal(new[] { "sweep, done" }, ui.Spoken());
     }
 
     [Fact]
@@ -176,7 +179,7 @@ public class ListItemTests
     {
         var ui = new TestApp();
         var chore = new Chore("sweep");
-        var list = new ListBox(ui.App, "Chores", [chore]);
+        var list = new ListBox<Chore>(ui.App, "Chores", [chore]);
         var other = new Button(ui.App, "Other");
         list.Focus();
         ui.Drain();
@@ -189,11 +192,11 @@ public class ListItemTests
     }
 
     [Fact]
-    public void TypeaheadMatchesTheItemText()
+    public void TypeaheadMatchesTheItemLine()
     {
         var ui = new TestApp();
         var done = new Chore("sweep") { Done = true };
-        var list = new ListBox(ui.App, "Chores", [new Chore("dust"), done]);
+        var list = new ListBox<Chore>(ui.App, "Chores", [new Chore("dust"), done]);
         list.Focus();
         ui.Drain();
 
@@ -203,17 +206,20 @@ public class ListItemTests
     }
 
     [Fact]
-    public void FilterScoreDrivesMatchingAndRanking()
+    public void ScoreDrivesMatchingAndRanking()
     {
         var ui = new TestApp();
-        var list = new FilterListBox(ui.App, "Palette",
-            [new Command("open file", 1), new Command("open recent", 5), new Command("hidden", 9)]);
+        var list = new FilterListBox<Command>(ui.App, "Palette",
+            [new Command("open file", 1), new Command("open recent", 5), new Command("hidden", 9)])
+        {
+            Score = static (item, _) => item.Rank,
+        };
         list.Focus();
 
         ui.Type('o');
         // "hidden" excludes itself (null); "open recent" outranks by score.
         Assert.Equal(new[] { "open recent", "open file" },
-            list.Results.Select(r => r.Text));
+            list.Results.Select(r => r.Value));
         Assert.Equal(new[] { "open recent 1 of 2" }, ui.Spoken());
     }
 
@@ -221,10 +227,13 @@ public class ListItemTests
     public void EmptyQueryBypassesScoresAndKeepsListOrder()
     {
         var ui = new TestApp();
-        var list = new FilterListBox(ui.App, "Palette",
-            [new Command("beta", 1), new Command("alpha", 5)]);
+        var list = new FilterListBox<Command>(ui.App, "Palette",
+            [new Command("beta", 1), new Command("alpha", 5)])
+        {
+            Score = static (item, _) => item.Rank,
+        };
 
-        Assert.Equal(new[] { "beta", "alpha" }, list.Results.Select(r => r.Text));
+        Assert.Equal(new[] { "beta", "alpha" }, list.Results.Select(r => r.Value));
     }
 
     [Fact]
@@ -241,7 +250,7 @@ public class ListItemTests
         Assert.Same(sweep, selected);
 
         // The typed surface supports LINQ over item state directly.
-        list.SetItems(list.Items.Where(c => !ReferenceEquals(c, sweep)).ToList());
+        list.Items = list.Items.Where(c => !ReferenceEquals(c, sweep)).ToList();
         ui.Drain();
         Assert.Same(dust, list.SelectedItem);
         Assert.All(list.Items, c => Assert.False(c.Done));
@@ -253,7 +262,10 @@ public class ListItemTests
         var ui = new TestApp();
         var open = new Command("open file", 1);
         var list = new FilterListBox<Command>(ui.App, "Palette",
-            [open, new Command("hidden", 9)]);
+            [open, new Command("hidden", 9)])
+        {
+            Score = static (item, _) => item.Rank,
+        };
         list.Focus();
 
         ui.Type('o');
@@ -263,7 +275,7 @@ public class ListItemTests
     }
 
     [Fact]
-    public void FilterWithNoResultsAnswersArrowsWithEmpty()
+    public void FilterWithNoResultsAnswersArrowsWithNoResults()
     {
         var ui = new TestApp();
         var list = new FilterListBox(ui.App, "Palette", ["alpha"]);
@@ -272,6 +284,33 @@ public class ListItemTests
         ui.Type('z');
 
         Assert.True(ui.Input(InputKind.MoveDown));
-        Assert.Equal(new[] { "empty" }, ui.Spoken());
+        Assert.Equal(new[] { "no results" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void BoundItemsFollowTheModelWithNoCallToTheList()
+    {
+        var ui = new TestApp();
+        var model = new List<Chore> { new("sweep"), new("dust"), new("mop") };
+        var list = new ListBox<Chore>(ui.App, "Chores", [], numbered: true);
+        list.BindItems(() => model);
+        list.Focus();
+        ui.Input(InputKind.MoveDown); // dust
+        ui.Drain();
+
+        // The model changes; the list is never told. The cursor keeps
+        // its item through a reorder...
+        var dust = model[1];
+        model.RemoveAt(1);
+        model.Add(dust);
+        Assert.Equal(new[] { "3 of 3" }, ui.Spoken());
+        Assert.Equal("dust", list.SelectedItem?.Value);
+
+        // ...and lands on the survivor at its place when its item goes.
+        model.Remove(dust);
+        Assert.Equal(new[] { "mop 2 of 2" }, ui.Spoken());
+
+        // Structural calls belong to the model now.
+        Assert.Throws<InvalidOperationException>(() => list.RemoveAt(0));
     }
 }

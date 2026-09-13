@@ -52,7 +52,7 @@ greet.AddShortcut(KeyCombo.WithCtrl(Key.Char('g')), ShortcutAction.Activate);
 // Arrowing the slider slides the ping across a lane two units ahead.
 position.Changed += () =>
 {
-    entity.SetPosition(position.Value, 2.0f, 0.0f);
+    entity.SetPosition((float)position.Number, 2.0f, 0.0f);
     ping.Stop();
     ping.Play();
 };

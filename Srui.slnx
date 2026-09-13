@@ -4,6 +4,7 @@
   <Project Path="samples/AudioExample/AudioExample.csproj" />
   <Project Path="samples/MultiAppDemo/MultiAppDemo.csproj" />
   <Project Path="Srui.Audio/Srui.Audio.csproj" />
+  <Project Path="Srui.Generators/Srui.Generators.csproj" />
   <Project Path="Srui.Testing/Srui.Testing.csproj" />
   <Project Path="Srui.Tests/Srui.Tests.csproj" />
   <Project Path="Srui/Srui.csproj" />

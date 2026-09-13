@@ -50,7 +50,6 @@ public sealed class ListNavSound : IDisposable
 public class SoundListBox : ListBox
 {
     private readonly ListNavSound _nav;
-    private int _count;
 
     public SoundListBox(
         IWidgetContainer parent, string name, IReadOnlyList<string> items,
@@ -58,19 +57,12 @@ public class SoundListBox : ListBox
         : base(parent, name, items, numbered)
     {
         _nav = nav;
-        _count = items.Count;
-    }
-
-    public override void SetItems(IReadOnlyList<IListItem> items)
-    {
-        _count = items.Count;
-        base.SetItems(items);
     }
 
     protected override void OnChanged()
     {
         base.OnChanged();
-        _nav.Play(SelectedIndex, _count);
+        _nav.Play(SelectedIndex, Items.Count);
     }
 }
 

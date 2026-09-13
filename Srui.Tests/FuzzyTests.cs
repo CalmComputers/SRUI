@@ -119,9 +119,11 @@ public class FuzzyTests
         var filtered = Fuzzy.FilterItems("find", items);
         Assert.Equal("Find, control f", filtered[0]);
 
-        // The same rule through the IListItem overload.
+        // The same rule through the scored overload.
         var wrapped = ListBox.Wrap(items);
-        Assert.Equal("Find, control f", Fuzzy.FilterItems("find", wrapped)[0].Text);
+        var scored = Fuzzy.FilterItems(
+            "find", wrapped, static (item, q) => Fuzzy.FuzzyScore(q, item.Value ?? ""), static item => item.Value ?? "");
+        Assert.Equal("Find, control f", scored[0].Value);
     }
 
     [Fact]

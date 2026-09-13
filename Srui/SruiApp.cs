@@ -218,8 +218,8 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
 
     // ── Readers ──
 
-    /// <summary>Attach a reader: it receives every accessibility event
-    /// the drain delivers, alongside the default speech reader.</summary>
+    /// <summary>Attach a reader: it receives every tick's events,
+    /// alongside the default speech reader.</summary>
     public void AddReader(IReader reader) => _readers.Add(reader);
 
     /// <summary>Detach a reader. True when it was attached.</summary>
@@ -331,16 +331,18 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     /// <summary>Escape anywhere presses this widget.</summary>
     public void SetCancel(Widget widget) => Engine.SetCancel(widget.Node);
 
-    /// <summary>Queue a free-form announcement (polite: speaks after
-    /// whatever is already being said). There is deliberately no urgent
-    /// variant: a physical keypress already silences speech, and cutting
-    /// speech off from a timer is bad screen-reader manners — use an
-    /// earcon for asynchronous urgency.</summary>
+    /// <summary>Queue a free-form app-level announcement. It speaks in
+    /// the order announced, before the tick's state, whatever widget
+    /// focus settles on. There is deliberately no urgent variant: a
+    /// physical keypress already silences speech, and cutting speech
+    /// off from a timer is bad screen-reader manners — use an earcon
+    /// for asynchronous urgency.</summary>
     public void Announce(string text) => Engine.Announce(text);
 
-    /// <summary>Re-announce the focused widget with its context labels
-    /// (preceding Label siblings) — the dialog-open announcement.</summary>
-    public void ReannounceWithContext() => Engine.ReannounceWithContext();
+    /// <summary>Have the tick end read the focused widget in full, with
+    /// its context labels (preceding Label siblings) — the dialog-open
+    /// announcement.</summary>
+    public void ReannounceWithContext() => Engine.RequestReread(withContextLabels: true);
 
     /// <summary>Focus the first focusable widget if nothing is focused.</summary>
     public bool EnsureFocus() => Engine.EnsureFocus();
@@ -420,11 +422,19 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
         return UnhandledKey?.Invoke(key) == true;
     }
 
-    /// <summary>Drain the engine until quiescent, delivering
-    /// accessibility events to the readers and widget/tick notifications
-    /// to their objects. Handlers may queue more output (announcements,
-    /// dialogs); it is delivered in the same call.</summary>
-    public void DispatchEvents()
+    private readonly List<AccessibilityEvent> _tick = new();
+
+    /// <summary>End the tick: drain the engine until quiescent,
+    /// delivering widget and ticker notifications to their objects
+    /// (handlers may queue more output, delivered in the same call),
+    /// then describe the focused widget against what the user last
+    /// heard and hand every reader the tick's events in one list —
+    /// announcements and action events in order, the settled state
+    /// after them. The explicit call always describes; the event loop
+    /// skips the description on an iteration where nothing happened.</summary>
+    public void DispatchEvents() => EndTick(force: true);
+
+    private void EndTick(bool force)
     {
         while (true)
         {
@@ -434,6 +444,14 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
             foreach (var ev in batch)
                 Dispatch(ev);
         }
+        if (!force && !Engine.Dirty && _tick.Count == 0)
+            return;
+        Engine.EndTick(_tick);
+        if (_tick.Count == 0)
+            return;
+        foreach (var reader in _readers)
+            reader.OnTick(_tick);
+        _tick.Clear();
     }
 
     private void Dispatch(CoreEvent ev)
@@ -441,8 +459,7 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
         switch (ev)
         {
             case CoreEvent.Acc(var acc):
-                foreach (var reader in _readers)
-                    reader.OnEvent(acc);
+                _tick.Add(acc);
                 break;
             case CoreEvent.Activated(var node):
                 Engine.OwnerOf(node)?.InvokeActivated();
@@ -551,7 +568,7 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
                 }
             }
         }
-        DispatchEvents();
+        EndTick(force: false);
         return !_quit;
     }
 

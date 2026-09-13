@@ -4,45 +4,33 @@ namespace Srui;
 /// including Alt+arrows and mnemonics, which it claims before the
 /// framework can interpret them. Delete/Backspace clear it; Tab and
 /// Escape still leave the field so the keyboard user is never trapped.</summary>
-public class ShortcutField : Widget
+public partial class ShortcutField : Widget
 {
-    private KeyCombo? _combo;
-
     public ShortcutField(IWidgetContainer parent, string name)
-        : base(parent, name, "shortcut field")
+        : base(parent, name, Role.ShortcutField)
     {
     }
 
-    /// <summary>The captured combo's display form, or "blank".</summary>
-    protected internal override string ValueText =>
-        _combo is KeyCombo combo ? combo.DisplayName() : "blank";
+    /// <summary>The captured combo, or null when blank.</summary>
+    [Field] public partial KeyCombo? Combo { get; set; }
+
+    /// <summary>The combo's display form; null when blank.</summary>
+    [Field] public string? Value => Combo?.DisplayName();
 
     /// <summary>When false, capturing a combo produces no speech feedback
     /// (for bind dialogs that narrate on their own terms).</summary>
     public bool Echo { get; set; } = true;
 
-    /// <summary>The captured combo, or null when blank. Setting speaks
-    /// the new value when focused ("control p", "blank").</summary>
-    public KeyCombo? Combo
-    {
-        get => _combo;
-        set => Engine.UpdateLabel(Node, _ => _combo = value);
-    }
-
     // A shortcut field captures any keypress as its value.
     public override bool ReservesKey(KeyCombo combo) => true;
 
-    private void Capture(KeyCombo combo)
+    private void Capture(KeyCombo? combo)
     {
-        _combo = combo;
-        if (Echo)
-            SayValue(combo.DisplayName());
+        Combo = combo;
+        if (!Echo)
+            Suppress(Fields.Value, ComboField);
         PostChanged();
     }
-
-    /// <summary>A shortcut field has no indexable concept, so its value
-    /// changes ride ItemNav with no position.</summary>
-    private void SayValue(string value) => AnnounceItem(value, null, null);
 
     protected override bool OnInput(in InputEvent input)
     {
@@ -57,12 +45,8 @@ public class ShortcutField : Widget
                     Capture(del);
                     return true;
                 }
-                if (_combo is not null)
-                {
-                    _combo = null;
-                    SayValue("blank");
-                    PostChanged();
-                }
+                if (Combo is not null)
+                    Capture(null);
                 return true;
 
             // Let Tab, Escape, and framework inputs through so the

@@ -3,10 +3,10 @@ using Xunit;
 
 namespace Srui.Tests;
 
-/// <summary>Multi-select lists: the "multi select list" role, checked
-/// items speaking "checked" (and unchecked ones nothing), the Enter and
-/// Space toggle modes, the programmatic checked surface, and checked
-/// state surviving the item operations.</summary>
+/// <summary>Multi-select lists: the "multi select list" reading,
+/// checked items speaking "checked" (and unchecked ones nothing) as
+/// the cursor lands, the Enter and Space toggle modes, the checked
+/// state living on the item, and checks surviving the item operations.</summary>
 public class MultiSelectListTests
 {
     private static (TestApp Ui, ListBox List) FocusedList(
@@ -60,6 +60,20 @@ public class MultiSelectListTests
     }
 
     [Fact]
+    public void LandingOnACheckedItemFromACheckedItemStillSaysChecked()
+    {
+        var (ui, list) = FocusedList();
+        list.SetChecked(0, true);
+        list.SetChecked(1, true);
+        ui.Spoken();
+
+        // The value did not change between the two items; the landing
+        // reads the item in full regardless.
+        ui.Input(InputKind.MoveDown);
+        Assert.Equal(new[] { "banana checked" }, ui.Spoken());
+    }
+
+    [Fact]
     public void CheckedRidesBeforePositionWhenNumbered()
     {
         var (ui, list) = FocusedList(numbered: true);
@@ -92,8 +106,8 @@ public class MultiSelectListTests
     public void ItemToggledReportsItemAndState()
     {
         var (ui, list) = FocusedList();
-        var toggles = new List<(string Text, bool Checked)>();
-        list.ItemToggled += (item, isChecked) => toggles.Add((item.Text, isChecked));
+        var toggles = new List<(string? Text, bool Checked)>();
+        list.ItemToggled += (item, isChecked) => toggles.Add((item.Value, isChecked));
 
         ui.Input(InputKind.Activate);
         ui.Input(InputKind.Activate);
@@ -132,21 +146,22 @@ public class MultiSelectListTests
         ui.Type('d');
         ui.Type(' ');
         ui.Type('b');
-        Assert.Equal("red berry", list.SelectedItem?.Text);
+        Assert.Equal("red berry", list.SelectedItem?.Value);
         Assert.False(list.IsChecked(1));
     }
 
     [Fact]
-    public void SetCheckedSpeaksOnlyForTheFocusedSelection()
+    public void SetCheckedReadsOnlyForTheFocusedSelection()
     {
         var (ui, list) = FocusedList();
         ui.Spoken();
 
-        // Unselected item: silent.
+        // Unselected item: not under the cursor, nothing to hear.
         list.SetChecked(2, true);
         Assert.Empty(ui.Spoken());
 
-        // The selected item while focused: speaks like a user toggle.
+        // The selected item while focused: the state changed under
+        // the cursor.
         list.SetChecked(0, true);
         Assert.Equal(new[] { "checked" }, ui.Spoken());
 
@@ -154,22 +169,25 @@ public class MultiSelectListTests
         list.SetChecked(0, true);
         Assert.Empty(ui.Spoken());
 
-        Assert.Equal(new[] { "apple", "cherry" }, list.CheckedItems.Select(i => i.Text));
+        Assert.Equal(new[] { "apple", "cherry" }, list.CheckedItems.Select(i => i.Value));
     }
 
     [Fact]
-    public void SetCheckedSilentlyNeverSpeaksEvenOnTheFocusedSelection()
+    public void SuppressKeepsAProgramsCheckOutOfTheReading()
     {
         var (ui, list) = FocusedList();
         ui.Spoken();
 
-        list.SetCheckedSilently(0, true);
+        // A bulk sweep the caller narrates itself: the field changes,
+        // the tick end leaves it out.
+        list.Suppress(Fields.Checked);
+        list.SetChecked(0, true);
         Assert.Empty(ui.Spoken());
         Assert.True(list.IsChecked(0));
 
-        list.SetCheckedSilently(0, false);
-        Assert.Empty(ui.Spoken());
-        Assert.False(list.IsChecked(0));
+        // The suppression lasted one tick.
+        list.SetChecked(0, false);
+        Assert.Equal(new[] { "not checked" }, ui.Spoken());
     }
 
     [Fact]
@@ -188,46 +206,56 @@ public class MultiSelectListTests
     }
 
     [Fact]
-    public void ItemOperationsDropOrphanedChecks()
+    public void ChecksLiveOnTheItems()
     {
         var (ui, list) = FocusedList();
         list.SetChecked(0, true);
         list.SetChecked(1, true);
         ui.Spoken();
 
-        // Removing a checked item forgets its check; the others keep theirs.
+        // A removed item takes its check with it; the others keep theirs.
         list.RemoveAt(0);
-        Assert.Equal(new[] { "banana" }, list.CheckedItems.Select(i => i.Text));
+        Assert.Equal(new[] { "banana" }, list.CheckedItems.Select(i => i.Value));
         Assert.True(list.IsChecked(0));
 
-        // Replacing an item drops the old item's check.
+        // A replacement item arrives unchecked.
         list.SetItem(0, "blueberry");
         Assert.Empty(list.CheckedItems);
     }
 
     [Fact]
-    public void SetItemsKeepsChecksOnSurvivingItemObjects()
+    public void ReplacingTheItemsKeepsChecksOnSurvivingItemObjects()
     {
         var ui = new TestApp();
         var a = new ListItem("a");
         var b = new ListItem("b");
-        var list = new ListBox(ui.App, "L", new IListItem[] { a, b }, multiSelect: true);
+        var list = new ListBox(ui.App, "L", new ListItem[] { a, b }, multiSelect: true);
         list.SetChecked(0, true);
         list.SetChecked(1, true);
 
-        list.SetItems(new IListItem[] { b, new ListItem("c") });
-        Assert.Equal(new[] { "b" }, list.CheckedItems.Select(i => i.Text));
+        list.Items = new ListItem[] { b, new ListItem("c") };
+        Assert.Equal(new[] { "b" }, list.CheckedItems.Select(i => i.Value));
     }
 
     [Fact]
-    public void SingleSelectSurfaceStaysInert()
+    public void SingleSelectListHasNoToggleButItemsKeepTheirField()
     {
         var ui = new TestApp();
         var list = new ListBox(ui.App, "L", ["a"]);
+        list.Focus();
+        ui.Drain();
         Assert.False(list.MultiSelect);
         Assert.False(list.IsChecked(0));
         Assert.Empty(list.CheckedItems);
-        Assert.Throws<InvalidOperationException>(() => list.SetChecked(0, true));
+
+        // Enter is not a toggle here.
+        Assert.False(ui.Input(InputKind.Activate));
+        Assert.False(list.IsChecked(0));
+
+        // The item's field is the item's, and a program may still set
+        // it; the reading is honest about it.
+        list.SetChecked(0, true);
+        Assert.Equal(new[] { "checked" }, ui.Spoken());
     }
 
     private sealed class LockingListBox : ListBox
@@ -235,9 +263,9 @@ public class MultiSelectListTests
         public LockingListBox(SruiApp app)
             : base(app, "L", new[] { "free", "locked" }, multiSelect: true) { }
 
-        protected override bool CanToggle(IListItem item)
+        protected override bool CanToggle(ListItem item)
         {
-            if (item.Text != "locked")
+            if (item.Value != "locked")
                 return true;
             Announce("item is locked");
             return false;

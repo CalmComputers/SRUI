@@ -76,9 +76,9 @@ public sealed class Speech : IDisposable
         && speaking;
 }
 
-/// <summary>The reference self-voicing reader: renders accessibility
-/// events to utterances with <see cref="SpeechRenderer"/> and forwards
-/// them to a Prism voice. Installed out of the box by a windowed
+/// <summary>The reference self-voicing reader: renders each tick's
+/// events to utterances with <see cref="SpeechRenderer.Default"/> and
+/// forwards them to a Prism voice. Installed out of the box by a windowed
 /// <see cref="SruiApp"/>; interruption policy (silencing on a keypress)
 /// lives here, not in the engine.</summary>
 public sealed class SpeechReader : IReader, IDisposable
@@ -99,10 +99,9 @@ public sealed class SpeechReader : IReader, IDisposable
     /// verbosity live.</summary>
     public SpeechVerbosity Verbosity { get; } = new();
 
-    public void OnEvent(AccessibilityEvent e)
+    public void OnTick(IReadOnlyList<AccessibilityEvent> events)
     {
-        // An event that renders to silence is skipped.
-        if (SpeechRenderer.RenderEvent(e, Verbosity) is string text)
+        foreach (var text in SpeechRenderer.Default.RenderTick(events, Verbosity))
             Voice.Speak(text);
     }
 

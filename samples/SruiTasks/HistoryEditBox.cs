@@ -6,11 +6,11 @@ namespace SruiTasks;
 /// Enter submits the trimmed text (raised through <see cref="Submitted"/>
 /// at drain time) and clears the box; Up and Down walk previously
 /// submitted entries, with the in-progress draft restored below the
-/// newest. Recall replaces the content with SetTextSilently and speaks
-/// just the recalled entry — the terse echo a full re-announcement would
-/// bury. The base already claims plain Enter, Up, and Down (so
-/// ReservesKey needs no override here); the subclass repurposes them
-/// before the base call, trading away Enter's fall-through to the
+/// newest. Recall replaces the content, and the tick end reads the new
+/// line — the terse echo a full re-announcement would bury; an edge is
+/// reported as a boundary. The base already claims plain Enter, Up, and
+/// Down (so ReservesKey needs no override here); the subclass repurposes
+/// them before the base call, trading away Enter's fall-through to the
 /// layer's primary and the base's read-current-line Up and Down.
 ///
 /// Editing a recalled entry edits the box only; the stored history is
@@ -51,7 +51,10 @@ public class HistoryEditBox : EditBox
         if (text.Length != 0)
         {
             _history.Add(text);
-            SetTextSilently("");
+            // The subscriber's outcome is the utterance; the box going
+            // blank is not.
+            Text = "";
+            Suppress(Fields.Value);
             PostChanged();
         }
         _recall = null;
@@ -64,9 +67,11 @@ public class HistoryEditBox : EditBox
 
     private bool RecallOlder()
     {
-        if (_history.Count == 0)
+        if (_history.Count == 0 || _recall is 0)
         {
-            AnnounceItem(CurrentSpoken(), null, Boundary.Top);
+            // Nothing older: the edge, and the line again.
+            AnnounceBoundary(Boundary.Top);
+            Reread(Fields.Value);
             return true;
         }
         if (_recall is not int index)
@@ -74,14 +79,9 @@ public class HistoryEditBox : EditBox
             _draft = Text;
             Land(_history.Count - 1);
         }
-        else if (index > 0)
-        {
-            Land(index - 1);
-        }
         else
         {
-            // Already at the oldest: re-announce in place.
-            AnnounceItem(_history[0], null, Boundary.Top);
+            Land(index - 1);
         }
         return true;
     }
@@ -90,7 +90,8 @@ public class HistoryEditBox : EditBox
     {
         if (_recall is not int index)
         {
-            AnnounceItem(CurrentSpoken(), null, Boundary.Bottom);
+            AnnounceBoundary(Boundary.Bottom);
+            Reread(Fields.Value);
             return true;
         }
         if (index < _history.Count - 1)
@@ -101,20 +102,19 @@ public class HistoryEditBox : EditBox
         {
             // Below the newest entry lies the draft.
             _recall = null;
-            SetTextSilently(_draft);
+            Text = _draft;
             PostChanged();
-            AnnounceItem(CurrentSpoken(), null, null);
         }
         return true;
     }
 
+    /// <summary>Replace the content with an entry; the tick end reads
+    /// the line, and the cursor sits at its end, ready to edit.</summary>
     private void Land(int index)
     {
         _recall = index;
-        SetTextSilently(_history[index]);
+        Text = _history[index];
+        CursorPosition = Text.Length;
         PostChanged();
-        AnnounceItem(_history[index], null, null);
     }
-
-    private string CurrentSpoken() => Text.Length == 0 ? "blank" : Text;
 }

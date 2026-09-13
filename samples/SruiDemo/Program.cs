@@ -5,8 +5,8 @@
 // one panel at a time (Editor, Lists, Grid, Dialogs, Dynamic, Game),
 // exercising every widget type, a custom-authored table widget, all
 // canned and custom dialogs (including a bind dialog that rebinds the
-// die-roll combo), dynamic state, and game-style press/release input on
-// the Game panel.
+// die-roll combo), dynamic state, a bound field (the Volume slider is
+// the SFX bus), and game-style press/release input on the Game panel.
 // Greet is the primary widget: Enter anywhere presses it (Ctrl+G too, as
 // a host-side binding). Widget shortcuts: Alt+V jumps to the view
 // switcher, Ctrl+Q presses Quit, Ctrl+J starts the job (Dynamic panel
@@ -140,24 +140,22 @@ rotate.Activated += () =>
     Log($"fruits rotated: first is {fruitItems[0]}");
     app.Announce($"Rotated. First fruit: {fruitItems[0]}.");
 };
-commands.Changed += () => Log($"commands: {commands.SelectedItem?.Text ?? "no match"}");
-pantry.Changed += () => Log($"pantry: {pantry.SelectedNode?.Text}");
+commands.Changed += () => Log($"commands: {commands.SelectedItem?.Value ?? "no match"}");
+pantry.Changed += () => Log($"pantry: {pantry.SelectedNode?.Value}");
 pantry.NodeToggled += (node, expanded) =>
-    Log($"pantry: {node.Text} {(expanded ? "expanded" : "collapsed")}");
+    Log($"pantry: {node.Value} {(expanded ? "expanded" : "collapsed")}");
 toppings.ItemToggled += (item, isChecked) =>
-    Log($"toppings: {item.Text} {(isChecked ? "checked" : "unchecked")}, "
-        + $"now [{string.Join(", ", toppings.CheckedItems.Select(i => i.Text))}]");
+    Log($"toppings: {item.Value} {(isChecked ? "checked" : "unchecked")}, "
+        + $"now [{string.Join(", ", toppings.CheckedItems.Select(i => i.Value))}]");
 effect.Changed += () =>
 {
     ApplyEffect(effect.SelectedIndex);
     Log($"bus effect: {effect.SelectedItem}");
 };
-sfxBus.Volume = volume.Value / 100.0f;
-volume.Changed += () =>
-{
-    sfxBus.Volume = volume.Value / 100.0f;
-    Log($"volume: {volume.Value}%");
-};
+// The bus follows the slider through a binding: arrowing writes the
+// bus volume and nothing copies it across.
+volume.Bind(Fields.Number, () => sfxBus.Volume * 100.0, v => sfxBus.Volume = (float)(v / 100.0));
+volume.Changed += () => Log($"volume: {volume.Number}%");
 
 // ── Grid panel: a custom table widget authored outside the toolkit ──
 
@@ -274,7 +272,7 @@ startJob.Activated += () =>
 {
     if (job is not null)
         return;
-    progress.Value = 0;
+    progress.Number = 0;
     // Move to the progress slider before disabling the button under us:
     // focus would legitimately stay on the disabled button ("unavailable"),
     // but the user wants to hear the job tick.
@@ -285,8 +283,8 @@ startJob.Activated += () =>
     job = app.StartTicker(200);
     job.Tick += () =>
     {
-        progress.Value = Math.Min(progress.Value + 5, 100);
-        if (progress.Value >= 100)
+        progress.Number = Math.Min(progress.Number + 5, 100);
+        if (progress.Number >= 100)
         {
             job!.Stop();
             job = null;
@@ -488,7 +486,7 @@ return;
 void Greet()
 {
     var who = string.IsNullOrEmpty(name.Text) ? "stranger" : name.Text;
-    var fruit = fruits.SelectedItem?.Text ?? "nothing";
+    var fruit = fruits.SelectedItem?.Value ?? "nothing";
     app.Announce(
         $"Hello, {who}. The fruit is {fruit}, and word wrap is {(wrap.Checked ? "on" : "off")}.");
 }

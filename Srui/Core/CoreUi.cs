@@ -3,10 +3,12 @@ namespace Srui.Core;
 /// <summary>The core engine — ties the tree, focus, navigation, and the
 /// output event queue together. Widget behavior lives in the public
 /// Widget classes: dispatch hands the focused node's input to its owning
-/// widget, and widgets write their label state and emissions back through
-/// the methods here. The host drives it: push logical input in with
-/// HandleInput, mutate the tree, and drain coalesced output events when
-/// convenient (typically after each input event).</summary>
+/// widget, and widgets write their structural traits and action events
+/// back through the methods here. The host drives it: push logical
+/// input in with HandleInput, mutate widgets, drain the queue, and end
+/// the tick — which is where the engine describes the focused widget,
+/// diffs it against what the user last heard, and appends the state
+/// events readers render (architecture.md section 7).</summary>
 internal sealed class CoreUi
 {
     private readonly Tree _tree = new();
@@ -28,9 +30,8 @@ internal sealed class CoreUi
     }
 
     /// <summary>Where the live speech verbosity comes from. The engine
-    /// consults it for the layer-restore mode, which decides whether a
-    /// restore emits a Focused event at all; a bare engine with no
-    /// source behaves as full.</summary>
+    /// consults it for the layer-restore mode, which decides what a
+    /// restore describes; a bare engine with no source behaves as full.</summary>
     public Func<SpeechVerbosity>? VerbositySource;
 
     private static readonly SpeechVerbosity FullVerbosity = new();
@@ -55,7 +56,7 @@ internal sealed class CoreUi
         {
             if (nowMs >= ticker.NextFireMs)
             {
-                _events.Add(new CoreEvent.Tick(ticker.Id));
+                Emit(new CoreEvent.Tick(ticker.Id));
                 // Drift-tolerant: the next interval starts now, so a late
                 // check fires once rather than bursting to catch up.
                 ticker.NextFireMs = nowMs + ticker.IntervalMs;
@@ -81,21 +82,41 @@ internal sealed class CoreUi
 
     public void RemoveTicker(ulong id) => _tickers.RemoveAll(t => t.Id == id);
 
+    // ── Dirtiness ──
+
+    private bool _dirty;
+
+    /// <summary>Whether anything since the last tick end could have
+    /// changed what the user perceives: input, an emitted event, a
+    /// focus move, a structural mutation, or a field write on a widget.
+    /// A clean engine skips the tick-end description, so an idle loop
+    /// allocates nothing.</summary>
+    public bool Dirty => _dirty;
+
+    /// <summary>Note that something may have changed.</summary>
+    public void Touch() => _dirty = true;
+
     // ── Tree construction ──
 
     /// <summary>Insert a node at the end of the parent's children (or the
     /// active layer's roots). The owner is the widget object that handles
     /// the node's input and receives its events.</summary>
-    public NodeId Insert(NodeId parent, WidgetLabel label, Widget? owner = null) =>
-        _tree.Insert(parent, int.MaxValue, label, owner);
+    public NodeId Insert(NodeId parent, WidgetLabel label, Widget? owner = null)
+    {
+        _dirty = true;
+        return _tree.Insert(parent, int.MaxValue, label, owner);
+    }
 
     /// <summary>Insert a node at a specific child position.</summary>
-    public NodeId InsertAt(NodeId parent, int index, WidgetLabel label, Widget? owner = null) =>
-        _tree.Insert(parent, index, label, owner);
+    public NodeId InsertAt(NodeId parent, int index, WidgetLabel label, Widget? owner = null)
+    {
+        _dirty = true;
+        return _tree.Insert(parent, index, label, owner);
+    }
 
     /// <summary>Remove a node and its subtree. If focus was inside the
     /// removed subtree, it recovers to the nearest surviving focusable
-    /// node and the recovery is announced.</summary>
+    /// node; the tick end reads the landing as a recovery.</summary>
     public void Remove(NodeId id)
     {
         var parent = _tree.Parent(id);
@@ -104,15 +125,13 @@ internal sealed class CoreUi
 
         _tree.Remove(id);
         _focusMemory.Gc(_tree);
+        _dirty = true;
 
         if (focusInside)
         {
             var next = Nav.RecoverFocus(_tree, parent);
             if (!next.IsNone)
-            {
-                _tree.SetFocus(next);
-                EmitFocused(next, FocusCause.Recovery);
-            }
+                LandFocus(next, FocusCause.Recovery);
         }
     }
 
@@ -136,123 +155,67 @@ internal sealed class CoreUi
 
     // ── Emission (widgets write their output here) ──
 
-    public void Emit(CoreEvent ev) => _events.Add(ev);
+    public void Emit(CoreEvent ev)
+    {
+        _dirty = true;
+        _events.Add(ev);
+    }
 
-    public void EmitAccessibility(AccessibilityEvent ev) => _events.Add(new CoreEvent.Acc(ev));
+    public void EmitAccessibility(AccessibilityEvent ev) => Emit(new CoreEvent.Acc(ev));
 
-    /// <summary>Queue a free-form announcement ("Nothing to delete",
-    /// status messages) for the readers.</summary>
+    /// <summary>Queue a free-form app-level announcement ("Nothing to
+    /// delete", status messages) for the readers.</summary>
     public void Announce(string text) =>
         EmitAccessibility(new AccessibilityEvent.Announce(text));
 
-    // ── Label mutation ──
-
-    /// <summary>Mutate a node's label and/or the widget state its derived
-    /// label fields are computed from. If the node is focused, each
-    /// changed property is spoken as a delta — the new name, role text,
-    /// value, or description (LabelChange), or a state flag's transition
-    /// (StateChange) — never a full re-announcement, which is reserved
-    /// for focus arriving. The value delta is detected by pulling the
-    /// widget's ValueText before and after the mutation, so a programmatic
-    /// setter speaks only when audibly changed. If the mutation made the
-    /// focused node unreachable (hidden, or inside a newly hidden subtree;
-    /// disabled widgets stay reachable), focus recovers to the nearest
-    /// focusable node and announces there, after the deltas. Widgets
-    /// syncing state during their own input handling mutate directly
-    /// instead — their emission is the announcement.</summary>
-    public void UpdateLabel(NodeId id, Action<WidgetLabel> mutate)
-    {
-        var node = _tree.Get(id);
-        if (node is null)
-            return;
-        if (_tree.Focus != id)
-        {
-            mutate(node.Label);
-            RecoverUnreachableFocus();
-            return;
-        }
-        var owner = node.Owner as Widget;
-        var before = node.Label.Clone();
-        var valueBefore = owner?.ValueText;
-        mutate(node.Label);
-        EmitLabelDeltas(id, before, node.Label, valueBefore, owner?.ValueText);
-        RecoverUnreachableFocus();
-    }
-
-    /// <summary>Mutate the label with no focused-delta announcement —
-    /// the engine half of the widget-side silent mutators, for
-    /// subclass flows that speak the transition themselves.</summary>
-    public void UpdateLabelSilently(NodeId id, Action<WidgetLabel> mutate)
-    {
-        var node = _tree.Get(id);
-        if (node is null)
-            return;
-        mutate(node.Label);
-        RecoverUnreachableFocus();
-    }
-
-    /// <summary>Speak what changed on the focused widget, property by
-    /// property. StateText, shortcuts, and Hidden are structural and stay
-    /// silent: state text and shortcuts ride the next focus announcement,
-    /// and hiding the focused widget reads as the focus recovery it
-    /// causes.</summary>
-    private void EmitLabelDeltas(
-        NodeId id, WidgetLabel before, WidgetLabel after,
-        string? valueBefore, string? valueAfter)
-    {
-        if (_tree.Get(id)?.Owner is not Widget widget)
-            return;
-        if (before.Name != after.Name)
-            EmitAccessibility(new AccessibilityEvent.LabelChange(
-                widget, LabelPart.Name, after.Name ?? ""));
-        if (before.RoleText != after.RoleText)
-            EmitAccessibility(new AccessibilityEvent.LabelChange(
-                widget, LabelPart.Role, after.RoleText));
-        if (valueBefore != valueAfter)
-            EmitAccessibility(new AccessibilityEvent.LabelChange(
-                widget, LabelPart.Value, valueAfter ?? ""));
-        if (before.Description != after.Description)
-            EmitAccessibility(new AccessibilityEvent.LabelChange(
-                widget, LabelPart.Description, after.Description));
-        var flipped = before.States ^ after.States;
-        foreach (var state in SpokenStates)
-        {
-            if ((flipped & state) != 0)
-                EmitAccessibility(new AccessibilityEvent.StateChange(
-                    widget, state, (after.States & state) != 0));
-        }
-    }
-
-    private static readonly WidgetStates[] SpokenStates =
-        [WidgetStates.Disabled, WidgetStates.Required, WidgetStates.Warning, WidgetStates.WithHelp];
+    // ── Structural traits ──
 
     /// <summary>Show or hide a node (and, for navigation purposes, its
-    /// subtree).</summary>
-    public void SetHidden(NodeId id, bool hidden) =>
-        UpdateLabel(id, label => label.States = hidden
-            ? label.States | WidgetStates.Hidden
-            : label.States & ~WidgetStates.Hidden);
+    /// subtree). Hiding the focused widget, or an ancestor, moves focus
+    /// to the nearest reachable node; the tick end reads the landing as
+    /// a recovery.</summary>
+    public void SetHidden(NodeId id, bool hidden)
+    {
+        if (_tree.Get(id) is not { } node || node.Label.Hidden == hidden)
+            return;
+        node.Label.Hidden = hidden;
+        _dirty = true;
+        RecoverUnreachableFocus();
+    }
 
-    public void SetState(NodeId id, WidgetStates state, bool on) =>
-        UpdateLabel(id, label => label.States = on
-            ? label.States | state
-            : label.States & ~state);
+    public void SetDisabled(NodeId id, bool disabled)
+    {
+        if (_tree.Get(id) is not { } node || node.Label.Disabled == disabled)
+            return;
+        node.Label.Disabled = disabled;
+        _dirty = true;
+    }
 
     /// <summary>Attach a shortcut to a widget: pressing the combo jumps to
     /// it, activates it, or both. A widget may carry any number of
     /// shortcuts; the first added is the one focus announcements speak.
     /// When several widgets bind the same combo, the first reachable one
     /// in depth-first tree order wins.</summary>
-    public void AddShortcut(NodeId id, KeyCombo combo, ShortcutAction action) =>
-        UpdateLabel(id, label => label.Shortcuts.Add(new WidgetShortcut(combo, action)));
+    public void AddShortcut(NodeId id, KeyCombo combo, ShortcutAction action)
+    {
+        if (_tree.Get(id) is not { } node)
+            return;
+        node.Label.Shortcuts.Add(new WidgetShortcut(combo, action));
+        _dirty = true;
+    }
 
     /// <summary>Remove every shortcut from a widget.</summary>
-    public void ClearShortcuts(NodeId id) =>
-        UpdateLabel(id, label => label.Shortcuts.Clear());
+    public void ClearShortcuts(NodeId id)
+    {
+        if (_tree.Get(id) is not { } node)
+            return;
+        node.Label.Shortcuts.Clear();
+        _dirty = true;
+    }
 
     /// <summary>When the focused node is no longer reachable (not
     /// focusable, or under a hidden ancestor), move focus to the nearest
-    /// focusable node and announce it. True if focus moved.</summary>
+    /// focusable node. True if focus moved.</summary>
     private bool RecoverUnreachableFocus()
     {
         var focused = _tree.Focus;
@@ -262,8 +225,7 @@ internal sealed class CoreUi
         var next = Nav.RecoverFocus(_tree, parent);
         if (!next.IsNone && next != focused)
         {
-            _tree.SetFocus(next);
-            EmitFocused(next, FocusCause.Recovery);
+            LandFocus(next, FocusCause.Recovery);
             return true;
         }
         return false;
@@ -281,7 +243,7 @@ internal sealed class CoreUi
         for (var parent = _tree.Parent(id); !parent.IsNone; parent = _tree.Parent(parent))
         {
             var p = _tree.Get(parent);
-            if (p is not null && (p.Label.States & WidgetStates.Hidden) != 0)
+            if (p is not null && p.Label.Hidden)
                 return false;
         }
         return true;
@@ -303,12 +265,12 @@ internal sealed class CoreUi
 
     // ── Focus ──
 
-    /// <summary>Move focus programmatically. Announces the newly focused
-    /// node - unless the node lives under an open dialog, in which case
-    /// its layer's focus moves in silence: a result handler re-homing
-    /// the ground before its dialog closes (deliver first, close
-    /// second) is not yet the user's ground, and the pop announces the
-    /// landing as the recovery it is, since it differs from the
+    /// <summary>Move focus programmatically. The tick end reads the
+    /// landing - unless the node lives under an open dialog, in which
+    /// case its layer's focus moves in silence: a result handler
+    /// re-homing the ground before its dialog closes (deliver first,
+    /// close second) is not yet the user's ground, and the pop reads
+    /// the landing as the recovery it is, since it differs from the
     /// snapshot the layer was pushed over.</summary>
     public void SetFocus(NodeId id)
     {
@@ -326,10 +288,11 @@ internal sealed class CoreUi
         if (!old.IsNone && !parent.IsNone)
             _focusMemory.Remember(parent, old);
         _tree.SetFocus(id);
+        _dirty = true;
     }
 
-    /// <summary>If nothing is focused, focus the first focusable node and
-    /// announce it. Hosts call this once after building the initial UI.</summary>
+    /// <summary>If nothing is focused, focus the first focusable node.
+    /// Hosts call this once after building the initial UI.</summary>
     public bool EnsureFocus()
     {
         if (!_tree.Focus.IsNone)
@@ -337,8 +300,7 @@ internal sealed class CoreUi
         var first = Nav.TabNext(_tree, NodeId.None);
         if (first.IsNone)
             return false;
-        _tree.SetFocus(first);
-        EmitFocused(first, FocusCause.Programmatic);
+        LandFocus(first, FocusCause.Programmatic);
         return true;
     }
 
@@ -354,98 +316,66 @@ internal sealed class CoreUi
             if (!parent.IsNone)
                 _focusMemory.Remember(parent, old);
         }
-        _tree.SetFocus(next);
-        EmitFocused(next, cause, old);
+        LandFocus(next, cause);
     }
 
-    /// <summary>Announce a focus landing. <paramref name="from"/> is
-    /// where focus was: the groups entered on the way from there to
-    /// <paramref name="id"/> are spoken first as context, so tabbing
-    /// into a group hears its name once and moves within it do not
-    /// repeat it. None (first focus, recovery) speaks every enclosing
-    /// group.</summary>
-    private void EmitFocused(NodeId id, FocusCause cause, NodeId from = default)
+    /// <summary>Set focus and record why, for the tick end. The reshape
+    /// hook runs now, so a widget reshaping its state on entry (an edit
+    /// box selecting all) is described as reshaped.</summary>
+    private void LandFocus(NodeId id, FocusCause cause)
     {
-        var node = _tree.Get(id);
-        if (node?.Owner is Widget owner)
-        {
-            // Before the announcement is built, so a widget reshaping
-            // its state on entry (e.g. an edit box selecting all) is
-            // read as reshaped.
+        _tree.SetFocus(id);
+        _pendingCause = cause;
+        _dirty = true;
+        if (_tree.Get(id)?.Owner is Widget owner)
             owner.OnFocusGained();
-            _events.Add(new CoreEvent.Acc(new AccessibilityEvent.Focused(
-                owner, node.Label.ToInfo(owner.ValueText, owner.StateText),
-                GroupsEnteredFor(id, from), cause)));
-        }
     }
 
-    private static readonly List<string> EmptyContext = new();
-
-    /// <summary>Re-announce the focused node with its context labels (the
-    /// names of Label-role siblings preceding it in child order). Hosts
-    /// call this after a view transition, when the plain announcement
-    /// would lack orientation.</summary>
-    public void ReannounceWithContext()
+    /// <summary>Ask for the focused widget to be read in full at the
+    /// tick end, as a re-announcement — speak-focus, or with its context
+    /// labels after a view transition (a dialog opening), when the plain
+    /// reading would lack orientation.</summary>
+    public void RequestReread(bool withContextLabels)
     {
-        var id = _tree.Focus;
-        if (id.IsNone)
-            return;
-        var node = _tree.Get(id);
-        if (node?.Owner is not Widget owner)
-            return;
-        var context = GroupsEnteredFor(id, NodeId.None);
-        context.AddRange(ContextLabelsFor(id));
-        _events.Add(new CoreEvent.Acc(new AccessibilityEvent.Focused(
-            owner, node.Label.ToInfo(owner.ValueText, owner.StateText), context,
-            FocusCause.Reannounce)));
+        _rereadAll = true;
+        _contextLabels |= withContextLabels;
+        _dirty = true;
     }
 
-    /// <summary>The groups focus enters moving from <paramref name="from"/>
-    /// to <paramref name="id"/>, outermost first, each as "name role":
-    /// every group enclosing the target that does not also enclose (or
-    /// is not) the origin. A group with no name and the default role is
-    /// structure, not context, and is skipped.</summary>
-    private List<string> GroupsEnteredFor(NodeId id, NodeId from)
+    /// <summary>The context spoken ahead of a focus arrival: the groups
+    /// focus enters moving from <paramref name="from"/> to
+    /// <paramref name="id"/>, outermost first — every group enclosing the
+    /// target that does not also enclose (or is not) the origin; an
+    /// unnamed group with the default role is structure, not context —
+    /// then, when asked, the Label siblings preceding the widget.</summary>
+    private List<ContextEntry> ContextFor(NodeId id, NodeId from, bool withLabels)
     {
-        var result = new List<string>();
+        var result = new List<ContextEntry>();
         for (var ancestor = _tree.Parent(id); !ancestor.IsNone; ancestor = _tree.Parent(ancestor))
         {
             if (ancestor == from || IsAncestor(ancestor, from))
                 break;
             var node = _tree.Get(ancestor);
-            if (node is null || node.Label.Focusable || node.Label.IsContextLabel)
+            if (node is null || node.Label.Focusable || node.Label.IsContextLabel
+                || node.Owner is not Widget group)
                 continue;
-            var spoken = GroupContextText(node.Label);
-            if (spoken.Length == 0)
+            var name = group.Name ?? "";
+            if (name.Length == 0 && ReferenceEquals(group.Role, Role.Group))
                 continue;
-            result.Insert(0, spoken);
+            result.Insert(0, new ContextEntry(name.Length == 0 ? null : name, group.Role));
         }
-        return result;
-    }
-
-    private static string GroupContextText(WidgetLabel label)
-    {
-        var name = label.Name ?? "";
-        if (name.Length == 0 && label.RoleText == Widget.GroupRole)
-            return "";
-        return name.Length == 0 ? label.RoleText
-            : label.RoleText.Length == 0 ? name
-            : $"{name} {label.RoleText}";
-    }
-
-    private List<string> ContextLabelsFor(NodeId id)
-    {
+        if (!withLabels)
+            return result;
         var parent = _tree.Parent(id);
         IReadOnlyList<NodeId> siblings = parent.IsNone ? _tree.Roots : _tree.Children(parent);
-        var result = new List<string>();
         foreach (var sibling in siblings)
         {
             if (sibling == id)
                 break;
             var node = _tree.Get(sibling);
-            if (node is not null && node.Label.IsContextLabel
-                && !string.IsNullOrEmpty(node.Label.Name))
-                result.Add(node.Label.Name);
+            if (node is { Label.IsContextLabel: true, Owner: Widget label }
+                && !string.IsNullOrEmpty(label.Name))
+                result.Add(new ContextEntry(label.Name, Role.Label));
         }
         return result;
     }
@@ -460,25 +390,26 @@ internal sealed class CoreUi
     public void SetCancel(NodeId id) => _tree.SetCancel(id);
 
     /// <summary>Push a modal layer. New root nodes go into it; only it is
-    /// navigable. The focused widget's spoken fields are snapshotted for
-    /// the delta comparison when the layer pops.</summary>
+    /// navigable. The focused widget's fields are snapshotted for the
+    /// delta comparison when the layer pops.</summary>
     public void PushLayer()
     {
         _layerSnapshots.Add(SnapshotFor(_tree.Focus));
         _tree.PushLayer();
+        _dirty = true;
     }
 
     /// <summary>Pop the top layer. The previous layer's focus is
-    /// restored; what that announces is the verbosity's restore mode
-    /// (<see cref="SpeechVerbosity.Restore"/>): the full focus
-    /// announcement by default, only the delta since the layer was
-    /// pushed under Changes - value and state if they moved (a rename
-    /// landing, a listing refreshed), silence when nothing did - and
-    /// nothing at all under None. Only focus landing somewhere else -
-    /// the pushed-from node is gone - always reads in full, as the
-    /// recovery it is. <paramref name="announce"/> false pops without
-    /// any of that - the intermediate layers of a cascade, which were
-    /// never the user's ground.</summary>
+    /// restored; what the tick end describes is the verbosity's restore
+    /// mode (<see cref="SpeechVerbosity.Restore"/>): the full reading by
+    /// default, only the fields that changed since the layer was pushed
+    /// under Changes - value and state if they moved (a rename landing,
+    /// a listing refreshed), nothing when nothing did - and nothing at
+    /// all under None. Only focus landing somewhere else - the
+    /// pushed-from node is gone - always reads in full, as the recovery
+    /// it is. <paramref name="announce"/> false pops without any of
+    /// that - the intermediate layers of a cascade, which were never
+    /// the user's ground.</summary>
     public void PopLayer(bool announce = true)
     {
         var snapshot = _layerSnapshots.Count > 0 ? _layerSnapshots[^1] : null;
@@ -486,44 +417,35 @@ internal sealed class CoreUi
             _layerSnapshots.RemoveAt(_layerSnapshots.Count - 1);
         var restored = _tree.PopLayer();
         _focusMemory.Gc(_tree);
+        _dirty = true;
         if (!announce || restored.IsNone)
             return;
         if (snapshot is not { } known || known.Focus != restored)
         {
-            EmitFocused(restored, FocusCause.Recovery);
+            LandFocus(restored, FocusCause.Recovery);
             return;
         }
-        if (_tree.Get(restored) is not { Owner: Widget owner } node)
-            return;
-        // The reshape hook runs even when the restore stays silent.
-        owner.OnFocusGained();
-        var mode = Verbosity.Restore;
-        if (mode == RestoreAnnouncement.None)
-            return;
-        if (mode == RestoreAnnouncement.Changes && SpokenPartsOf(node, owner) == known.Spoken)
-            return;
-        _events.Add(new CoreEvent.Acc(new AccessibilityEvent.Focused(
-            owner, node.Label.ToInfo(owner.ValueText, owner.StateText),
-            EmptyContext, FocusCause.LayerRestore)));
+        // The reshape hook runs whatever the restore says.
+        if (_tree.Get(restored)?.Owner is Widget owner)
+            owner.OnFocusGained();
+        _pendingCause = FocusCause.LayerRestore;
+        _restoreBaseline = known;
     }
 
-    /// <summary>What the focused widget sounded like when a layer was
-    /// pushed over it, for the delta comparison at pop.</summary>
-    private readonly record struct LayerSnapshot(NodeId Focus, string Spoken);
+    /// <summary>What the focused widget was described as when a layer
+    /// was pushed over it, for the delta comparison at pop.</summary>
+    private readonly record struct LayerSnapshot(
+        NodeId Focus, FieldSet Control, Element? Item, FieldSet? ItemFields);
 
     private readonly List<LayerSnapshot?> _layerSnapshots = new();
 
-    private LayerSnapshot? SnapshotFor(NodeId id) =>
-        !id.IsNone && _tree.Get(id) is { Owner: Widget owner } node
-            ? new LayerSnapshot(id, SpokenPartsOf(node, owner))
-            : null;
-
-    private const WidgetStates AudibleStates = WidgetStates.Disabled
-        | WidgetStates.Required | WidgetStates.Warning | WidgetStates.WithHelp;
-
-    private static string SpokenPartsOf(Node node, Widget owner) =>
-        $"{node.Label.Name}\n{node.Label.RoleText}\n{owner.ValueText}\n" +
-        $"{owner.StateText}\n{(uint)(node.Label.States & AudibleStates)}";
+    private LayerSnapshot? SnapshotFor(NodeId id)
+    {
+        if (id.IsNone || _tree.Get(id) is not { Owner: Widget owner })
+            return null;
+        var item = owner.CurrentItem;
+        return new LayerSnapshot(id, owner.Describe(), item, item?.Describe());
+    }
 
     // ── Input dispatch ──
 
@@ -533,6 +455,7 @@ internal sealed class CoreUi
     /// input to its own bindings.</summary>
     public bool HandleInput(in InputEvent input)
     {
+        _dirty = true;
         // Establish focus if the tree has focusable content but no focus.
         if (_tree.Focus.IsNone)
         {
@@ -578,14 +501,14 @@ internal sealed class CoreUi
                 return true;
             case InputKind.SpeakFocus:
                 if (!_tree.Focus.IsNone)
-                    EmitFocused(_tree.Focus, FocusCause.Reannounce);
+                    RequestReread(withContextLabels: false);
                 return true;
             case InputKind.Activate:
                 // A hidden or disabled primary does not activate; the
                 // input falls through unconsumed.
                 if (!_tree.Primary.IsNone && Activatable(_tree.Primary))
                 {
-                    _events.Add(new CoreEvent.Activated(_tree.Primary));
+                    Emit(new CoreEvent.Activated(_tree.Primary));
                     return true;
                 }
                 break;
@@ -594,7 +517,7 @@ internal sealed class CoreUi
                 // host fall back (e.g. closing a dialog directly).
                 if (!_tree.Cancel.IsNone && Activatable(_tree.Cancel))
                 {
-                    _events.Add(new CoreEvent.Activated(_tree.Cancel));
+                    Emit(new CoreEvent.Activated(_tree.Cancel));
                     return true;
                 }
                 break;
@@ -610,7 +533,7 @@ internal sealed class CoreUi
             if (shortcut.Action is ShortcutAction.Jump or ShortcutAction.JumpAndActivate)
                 SetFocusInternal(shortcut.Node, FocusCause.Shortcut);
             if (shortcut.Action is ShortcutAction.Activate or ShortcutAction.JumpAndActivate)
-                _events.Add(new CoreEvent.Activated(shortcut.Node));
+                Emit(new CoreEvent.Activated(shortcut.Node));
             return true;
         }
         return false;
@@ -653,15 +576,178 @@ internal sealed class CoreUi
 
     private static readonly List<CoreEvent> EmptyBatch = new();
 
-    /// <summary>Drain the output queue, applying coalescing rules (see
-    /// <see cref="Coalesce"/>). Empty drains return a shared list so the
-    /// idle loop allocates nothing; treat the result as read-only.</summary>
+    /// <summary>Drain the output queue in emission order. Empty drains
+    /// return a shared list so the idle loop allocates nothing; treat
+    /// the result as read-only.</summary>
     public List<CoreEvent> DrainEvents()
     {
         if (_events.Count == 0)
             return EmptyBatch;
         var batch = _events;
         _events = new List<CoreEvent>();
-        return Coalesce.Apply(batch);
+        return batch;
+    }
+
+    // ── The tick end ──
+
+    // What the user last heard: the focused node at the end of the
+    // previous tick, its fields, and the item under its cursor with its
+    // fields. The tick end diffs the settled state against these.
+    private NodeId _heardFocus = NodeId.None;
+    private FieldSet? _heardControl;
+    private Element? _heardItem;
+    private FieldSet? _heardItemFields;
+
+    // Requests accumulated during the tick.
+    private FocusCause? _pendingCause;
+    private bool _rereadAll;
+    private bool _contextLabels;
+    private LayerSnapshot? _restoreBaseline;
+    private readonly List<Widget> _requesters = new();
+
+    /// <summary>A widget registered a suppress or reread request for
+    /// this tick; the engine clears it at the tick end.</summary>
+    public void NoteTickRequest(Widget widget)
+    {
+        _dirty = true;
+        if (!_requesters.Contains(widget))
+            _requesters.Add(widget);
+    }
+
+    /// <summary>End the tick: drop the events of widgets other than the
+    /// one focus settled on, describe that widget and the item under its
+    /// cursor, and append what the user should now hear — a
+    /// <see cref="AccessibilityEvent.FocusArrived"/> with every field
+    /// when focus moved (or a reread was asked for), every item field
+    /// when the cursor moved to another item, else the fields that
+    /// changed since the user last heard them. Suppressed fields are
+    /// left out of deltas; reread fields are put in whether or not they
+    /// changed. Clears the dirty flag and every per-tick request.</summary>
+    public void EndTick(List<AccessibilityEvent> tick)
+    {
+        _dirty = false;
+        var focus = _tree.Focus;
+        var owner = _tree.Get(focus)?.Owner;
+        if (tick.Count > 0)
+            tick.RemoveAll(e => e.Source is not null && !ReferenceEquals(e.Source, owner));
+
+        var cause = _pendingCause;
+        var rereadAll = _rereadAll;
+        var withLabels = _contextLabels;
+        var restore = _restoreBaseline;
+        _pendingCause = null;
+        _rereadAll = false;
+        _contextLabels = false;
+        _restoreBaseline = null;
+
+        if (owner is null)
+        {
+            _heardFocus = focus;
+            _heardControl = null;
+            _heardItem = null;
+            _heardItemFields = null;
+            ClearTickRequests();
+            return;
+        }
+
+        var control = owner.Describe();
+        var item = owner.CurrentItem;
+        var itemFields = item?.Describe();
+
+        var baseControl = _heardControl;
+        var baseItemFields = ReferenceEquals(item, _heardItem) ? _heardItemFields : null;
+        bool full;
+        var arrival = cause ?? FocusCause.Programmatic;
+        var from = _heardFocus;
+        var speak = true;
+        if (rereadAll)
+        {
+            full = true;
+            arrival = FocusCause.Reannounce;
+            from = NodeId.None;
+        }
+        else if (focus != _heardFocus)
+        {
+            full = true;
+            if (arrival == FocusCause.LayerRestore && restore is { } known)
+            {
+                switch (Verbosity.Restore)
+                {
+                    case RestoreAnnouncement.None:
+                        speak = false;
+                        break;
+                    case RestoreAnnouncement.Changes:
+                        full = false;
+                        baseControl = known.Control;
+                        baseItemFields = ReferenceEquals(item, known.Item) ? known.ItemFields : null;
+                        break;
+                }
+            }
+            if (arrival is FocusCause.Recovery or FocusCause.LayerRestore)
+                from = NodeId.None;
+        }
+        else
+        {
+            full = false;
+        }
+
+        if (speak && full)
+        {
+            tick.Add(new AccessibilityEvent.FocusArrived(owner, arrival,
+                arrival == FocusCause.LayerRestore ? [] : ContextFor(focus, from, withLabels)));
+            foreach (var (field, value) in control.Entries)
+                tick.Add(new AccessibilityEvent.FieldValue(owner, field, value, FieldScope.Control));
+            if (itemFields is not null)
+                foreach (var (field, value) in itemFields.Entries)
+                    tick.Add(new AccessibilityEvent.FieldValue(owner, field, value, FieldScope.Item));
+        }
+        else if (speak)
+        {
+            // The cursor landed on another item: the landed item reads
+            // in full, with its position, after the control's deltas.
+            var landed = itemFields is not null && baseItemFields is null && item is not null;
+            EmitDeltas(tick, owner, control, baseControl, FieldScope.Control, landed);
+            if (itemFields is not null)
+            {
+                if (landed)
+                    tick.Add(new AccessibilityEvent.ItemArrived(owner, item!));
+                EmitDeltas(tick, owner, itemFields, baseItemFields, FieldScope.Item, false);
+            }
+        }
+
+        _heardFocus = focus;
+        _heardControl = control;
+        _heardItem = item;
+        _heardItemFields = itemFields;
+        ClearTickRequests();
+    }
+
+    private static void EmitDeltas(
+        List<AccessibilityEvent> tick, Widget owner, FieldSet after, FieldSet? before,
+        FieldScope scope, bool landed)
+    {
+        foreach (var (field, value) in after.Entries)
+        {
+            if (field.FocusOnly || owner.IsSuppressed(field))
+                continue;
+            var changed = before is null
+                || !before.TryGetBoxed(field, out var old)
+                || !field.ValuesEqual(old, value);
+            // The cursor's position belongs with the item it landed on.
+            var wanted = changed
+                || owner.IsRereadRequested(field, scope)
+                || (landed && ReferenceEquals(field, Fields.Position));
+            if (wanted)
+                tick.Add(new AccessibilityEvent.FieldValue(owner, field, value, scope));
+        }
+    }
+
+    private void ClearTickRequests()
+    {
+        if (_requesters.Count == 0)
+            return;
+        foreach (var widget in _requesters)
+            widget.ClearTickRequests();
+        _requesters.Clear();
     }
 }

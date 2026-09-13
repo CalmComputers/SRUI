@@ -256,11 +256,11 @@ public class StepTests
         save.Focus();
         ui.Drain();
 
-        // No step separates these, so one batch holds both deltas —
+        // No step separates these, so one tick reads both changes —
         // Drain is the boundary a mutation has to draw for itself.
         save.Name = "Save All";
         save.Description = "saves the file";
-        ui.Expect("Save All", "saves the file");
+        ui.Expect("Save All saves the file");
     }
 }
 

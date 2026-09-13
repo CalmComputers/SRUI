@@ -11,117 +11,103 @@ namespace Srui;
 /// (<see cref="CursorPosition"/>, <see cref="Selection"/>) are UTF-16
 /// code-unit offsets into <see cref="Text"/>; setters clamp to the text
 /// and snap backward onto a grapheme cluster boundary, so a position can
-/// never land inside a surrogate pair, a combining sequence, or a CRLF.</summary>
-public class EditBox : Widget
+/// never land inside a surrogate pair, a combining sequence, or a CRLF.
+///
+/// The edit box is the one widget whose own action events are the
+/// better voice for its changes: typing speaks the character, a move
+/// speaks what it landed on. So its editing paths suppress the line
+/// and selection fields for the tick, and only a programmatic
+/// <see cref="Text"/> replacement or cursor placement reads through the
+/// fields.</summary>
+public partial class EditBox : Widget
 {
     private readonly EditorState _editor;
 
     public EditBox(IWidgetContainer parent, string? name, string text = "", bool multiline = false)
-        : base(parent, name, RoleTextFor(false, multiline))
+        : base(parent, name, Role.Edit)
     {
         _editor = new EditorState(text, multiline);
         SelectAllOnFocus = !multiline;
     }
 
-    /// <summary>The current line (multiline) or the text (single-line),
-    /// pulled fresh at announcement time.</summary>
-    protected internal override string ValueText => EditBoxCore.LabelValue(_editor);
+    // ── Fields ──
 
-    /// <summary>"protected" for a password field, spoken after the value
-    /// in the focus announcement.</summary>
-    protected internal override string StateText => _editor.Masked ? "protected" : "";
+    /// <summary>The current line (multiline) or the text (single-line).</summary>
+    [Field] public string? Value => _editor.CurrentLine();
+
+    /// <summary>The selected text in spoken form (masked in a password
+    /// field, a count past the speak limit), or null when nothing is
+    /// selected; readers speak it in place of the line.</summary>
+    [Field] public string? SelectedText => EditBoxCore.SelectedText(_editor);
+
+    /// <summary>A read-only editor swallows typing silently and lets
+    /// Enter fall through to the layer's primary.</summary>
+    [Field]
+    public bool ReadOnly
+    {
+        get => _editor.ReadOnly;
+        set
+        {
+            _editor.ReadOnly = value;
+            Engine.Touch();
+        }
+    }
+
+    [Field] public bool Multiline => _editor.Multiline;
 
     /// <summary>A password field. The text is kept and read back as
     /// usual; what reaches the user is masked - the value, typing echo,
     /// cursor and word movement, selection, undo, and deletion all
     /// speak one star per character, a completed word is never echoed,
     /// and copy and cut are refused (paste still lands). Focus hears
-    /// "protected" after the value. Switching it is silent, like any
-    /// state-text change: the next focus announcement carries it, and a
-    /// program that switches mid-session - a console whose server took
-    /// over echo for a password prompt - already has the prompt to say
-    /// so.</summary>
+    /// "protected" after the value.</summary>
+    [Field]
     public bool Password
     {
         get => _editor.Masked;
-        set => _editor.Masked = value;
-    }
-
-    private static string RoleTextFor(bool readOnly, bool multiline) => (readOnly, multiline) switch
-    {
-        (false, false) => "edit",
-        (true, false) => "edit read only",
-        (false, true) => "edit multi line",
-        (true, true) => "edit read only multi line",
-    };
-
-    public bool Multiline => _editor.Multiline;
-
-    private string? _role;
-
-    /// <summary>The spoken role. Null derives it from the read-only and
-    /// multiline flags ("edit", "edit read only multi line"); a value
-    /// replaces that outright, for an editor that is something more
-    /// specific than an edit box ("input", "output"). Setting speaks
-    /// the new role when focused.</summary>
-    public string? Role
-    {
-        get => _role;
         set
         {
-            _role = value;
-            SetRoleText(value ?? RoleTextFor(_editor.ReadOnly, _editor.Multiline));
+            _editor.Masked = value;
+            Engine.Touch();
         }
     }
 
     /// <summary>The full text. Setting replaces the content (cursor
     /// clamped onto a grapheme boundary, selection cleared, undo
-    /// history dropped — this is a new document, not an edit) and
-    /// speaks the new value when focused.</summary>
+    /// history dropped — this is a new document, not an edit); the
+    /// tick end reads the new line.</summary>
     public string Text
     {
         get => _editor.Text();
-        set => Engine.UpdateLabel(Node, _ => _editor.SetText(value));
-    }
-
-    /// <summary>A read-only editor swallows typing silently and lets
-    /// Enter fall through to the layer's primary. Toggling speaks the
-    /// new role text when focused.</summary>
-    public bool ReadOnly
-    {
-        get => _editor.ReadOnly;
-        set => Engine.UpdateLabel(Node, label =>
+        set
         {
-            _editor.ReadOnly = value;
-            label.RoleText = _role ?? RoleTextFor(value, _editor.Multiline);
-        });
+            _editor.SetText(value);
+            // A new document: the selection that went with the old one
+            // is not news, the new line is.
+            Suppress(Fields.SelectedText);
+        }
     }
 
     /// <summary>Text length in UTF-16 code units.</summary>
     public int Length => _editor.Length;
 
-    /// <summary>The cursor position. Setting clears the selection; a move
-    /// while focused speaks the character at the new position, exactly as
-    /// a user-driven cursor move would.</summary>
+    /// <summary>The cursor position. Setting clears the selection; the
+    /// tick end reads the line if it changed.</summary>
     public int CursorPosition
     {
         get => _editor.Cursor;
         set
         {
-            var target = Snap(value);
-            var moved = target != _editor.Cursor || _editor.HasSelection;
             _editor.Selection = null;
             _editor.PreferredColumn = null;
-            _editor.Cursor = target;
-            if (moved && IsFocused && !_editor.IsEmpty)
-                Promulgate(EditBoxCore.CharNavEvent(this, _editor));
+            _editor.Cursor = Snap(value);
+            Engine.Touch();
         }
     }
 
     /// <summary>The selection as (anchor, cursor), or null when nothing
-    /// is selected. Setting while focused speaks the selected text ("…
-    /// selected"), or "Selection removed" when clearing, like the
-    /// user-driven equivalents.</summary>
+    /// is selected. The tick end reads the selected text, or that the
+    /// selection went.</summary>
     public (int Anchor, int Cursor)? Selection
     {
         get => _editor.HasSelection ? _editor.Selection : null;
@@ -133,36 +119,14 @@ public class EditBox : Widget
                 var c = Snap(cursor);
                 _editor.Selection = (a, c);
                 _editor.Cursor = c;
-                _editor.PreferredColumn = null;
-                if (a != c && IsFocused)
-                {
-                    var start = Math.Min(a, c);
-                    var end = Math.Max(a, c);
-                    var delta = end - start > SpeechRenderer.SpeakLimit
-                        ? $"{end - start} characters"
-                        : _editor.Spoken(_editor.SliceToString(start, end));
-                    Promulgate(new AccessibilityEvent.Selection(this, delta, SelectionKind.Selected));
-                }
             }
             else
             {
-                var had = _editor.HasSelection;
                 _editor.Selection = null;
-                if (had && IsFocused)
-                    Promulgate(new AccessibilityEvent.Selection(this, "", SelectionKind.Cleared));
             }
+            _editor.PreferredColumn = null;
+            Engine.Touch();
         }
-    }
-
-    /// <summary>Set the selection without any announcement — for
-    /// callers whose enclosing flow speaks (a find command announcing
-    /// its own "3 of 7, line" already covers the jump). The cursor
-    /// lands at <paramref name="cursor"/>.</summary>
-    public void SetSelectionSilently(int anchor, int cursor)
-    {
-        _editor.Selection = (Snap(anchor), Snap(cursor));
-        _editor.Cursor = Snap(cursor);
-        _editor.PreferredColumn = null;
     }
 
     /// <summary>Select the whole text every time focus enters, so
@@ -172,8 +136,7 @@ public class EditBox : Widget
     /// single-line editors, off for multiline ones, where a focus
     /// visit must not clobber a working selection; assign to override
     /// either way. Off touches nothing: the box keeps whatever
-    /// selection it already had, possibly none. Silent: the focus
-    /// announcement reads the value as always.</summary>
+    /// selection it already had, possibly none.</summary>
     public bool SelectAllOnFocus { get; set; }
 
     protected internal override void OnFocusGained()
@@ -182,31 +145,18 @@ public class EditBox : Widget
             _editor.SelectAll();
     }
 
-    /// <summary>The selected text, or "" when nothing is selected.</summary>
-    public string SelectedText => _editor.SelectedText() ?? "";
-
     /// <summary>Select everything, announcing like Ctrl+A.</summary>
-    public void SelectAll()
-    {
-        _editor.SelectAll();
-        if (_editor.IsEmpty || !IsFocused)
-            return;
-        var length = _editor.Length;
-        var delta = length > SpeechRenderer.SpeakLimit
-            ? $"{length} characters"
-            : _editor.Spoken(_editor.Text());
-        Promulgate(new AccessibilityEvent.Selection(this, delta, SelectionKind.All));
-    }
+    public void SelectAll() => Nav(InputKind.SelectAll);
 
     // ── Programmatic editing ──
     // Like the Text setter, these ignore ReadOnly, which guards user
     // input, not the program.
 
     /// <summary>Insert text at the cursor, replacing an active selection
-    /// — the programmatic form of typing it, and announced the same way
-    /// when focused: the inserted text (after "Selection removed" when
-    /// one was replaced). The cursor lands after the insertion.
-    /// Single-line editors flatten newlines to spaces, like paste.</summary>
+    /// — the programmatic form of typing it, and announced the same way:
+    /// the inserted text (after "Selection removed" when one was
+    /// replaced). The cursor lands after the insertion. Single-line
+    /// editors flatten newlines to spaces, like paste.</summary>
     public void InsertText(string text)
     {
         if (!Multiline)
@@ -214,8 +164,7 @@ public class EditBox : Widget
         if (!_editor.HasSelection && text.Length == 0)
             return;
         var hadSelection = _editor.ProgrammaticInsert(text);
-        if (!IsFocused)
-            return;
+        Quiet();
         if (hadSelection)
             Promulgate(new AccessibilityEvent.Selection(this, "", SelectionKind.Cleared));
         if (text.Length != 0)
@@ -225,11 +174,11 @@ public class EditBox : Widget
     /// <summary>Replace the range between two positions (either order;
     /// clamped and snapped) with new text — the silent structural splice
     /// under find-and-replace and its kin. The caller owns any
-    /// announcement, like a list's SetItem. The cursor and the selection
-    /// endpoints follow the splice: positions before it keep their place,
-    /// positions after it shift with the length change, and positions
-    /// inside it land at the end of the new text. Single-line editors
-    /// flatten newlines to spaces.</summary>
+    /// announcement. The cursor and the selection endpoints follow the
+    /// splice: positions before it keep their place, positions after it
+    /// shift with the length change, and positions inside it land at
+    /// the end of the new text. Single-line editors flatten newlines to
+    /// spaces.</summary>
     public void ReplaceRange(int start, int end, string text)
     {
         var from = Snap(start);
@@ -239,25 +188,26 @@ public class EditBox : Widget
         if (!Multiline)
             text = text.Replace('\n', ' ').Replace("\r", "");
         _editor.ProgrammaticReplace(from, to, text);
+        Quiet();
     }
+
+    /// <summary>The editor's action events are the voice for this
+    /// tick: keep the line and selection fields out of the reading.</summary>
+    private void Quiet() => Suppress(Fields.Value, Fields.SelectedText);
 
     // ── Announced movement ──
     // Each method runs the same handling path as the key it names, so a
-    // programmatic move speaks exactly what the user-driven one would —
-    // when the widget is focused; unfocused, it moves silently.
+    // programmatic move speaks exactly what the user-driven one would.
 
     /// <summary>Run a user-equivalent input against the editor,
-    /// speaking its feedback when focused and raising Changed when it
-    /// edited.</summary>
+    /// speaking its feedback and raising Changed when it edited.</summary>
     private void Nav(InputKind kind)
     {
         var result = EditBoxCore.Handle(
             this, InputEvent.Simple(kind), _editor, Engine.Clipboard, NowMs);
-        if (IsFocused)
-        {
-            foreach (var ev in result.Events)
-                Promulgate(ev);
-        }
+        Quiet();
+        foreach (var ev in result.Events)
+            Promulgate(ev);
         if (result.Changed)
             PostChanged();
     }
@@ -326,31 +276,6 @@ public class EditBox : Widget
     {
         get => _editor.History.MaxChars;
         set => _editor.History.MaxChars = Math.Max(value, 0);
-    }
-
-    /// <summary>Replace the text without any announcement — the
-    /// counterpart of the <see cref="Text"/> setter for subclass input
-    /// handlers, which mutate state silently and then emit what the user
-    /// should hear. The cursor lands at the end of the new text and the
-    /// selection is cleared — positioned to continue typing.</summary>
-    protected void SetTextSilently(string text)
-    {
-        _editor.SetText(text);
-        _editor.Selection = null;
-        _editor.Cursor = _editor.Length;
-        _editor.PreferredColumn = null;
-    }
-
-    /// <summary>Move the cursor without any announcement — the
-    /// counterpart of the <see cref="CursorPosition"/> setter for
-    /// subclass flows that speak for themselves (a document loader whose
-    /// enclosing announcement covers the landing). Clears the
-    /// selection.</summary>
-    protected void SetCursorSilently(int position)
-    {
-        _editor.Selection = null;
-        _editor.Cursor = Snap(position);
-        _editor.PreferredColumn = null;
     }
 
     // ── Position queries ──
@@ -451,6 +376,7 @@ public class EditBox : Widget
         var result = EditBoxCore.Handle(this, input, _editor, Engine.Clipboard, NowMs);
         if (!result.Consumed)
             return false;
+        Quiet();
         foreach (var ev in result.Events)
             Promulgate(ev);
         if (result.Changed)

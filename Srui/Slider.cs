@@ -2,54 +2,50 @@ namespace Srui;
 
 /// <summary>Arrows adjust by the small step, Shift+arrows and
 /// PageUp/PageDown by the large step, Home/End jump to the range edges.
-/// Adjustments at a range edge re-announce the clamped value.</summary>
-public class Slider : Widget
+/// Adjustments at a range edge re-announce the clamped value. Bind
+/// <see cref="Number"/> to the model and the slider writes itself.</summary>
+public partial class Slider : Widget
 {
-    private int _value;
-    private readonly int _min;
-    private readonly int _max;
-    private readonly int _smallStep;
-    private readonly int _largeStep;
-    /// <summary>Spoken and displayed immediately after the value ("%" → "50%").</summary>
-    private readonly string _unit;
-
     public Slider(
-        IWidgetContainer parent, string name, int value, int min, int max,
-        int smallStep = 1, int largeStep = 10, string unit = "")
-        : base(parent, name, "slider")
+        IWidgetContainer parent, string name, double value, double min, double max,
+        double smallStep = 1, double largeStep = 10, string? unit = null)
+        : base(parent, name, Role.Slider)
     {
-        _min = min;
-        _max = max;
-        _value = Math.Clamp(value, min, max);
-        _smallStep = smallStep;
-        _largeStep = largeStep;
-        _unit = unit;
+        Min = min;
+        Max = max;
+        Number = Math.Clamp(value, min, max);
+        Step = smallStep;
+        LargeStep = largeStep;
+        Unit = unit;
     }
 
-    /// <summary>The value with its unit ("50%"), pulled at announcement
-    /// time.</summary>
-    protected internal override string ValueText => $"{_value}{_unit}";
+    /// <summary>The value. Writes clamp to the range.</summary>
+    [Field] public partial double Number { get; set; }
 
-    public int Minimum => _min;
+    [Field] public partial double Min { get; set; }
 
-    public int Maximum => _max;
+    [Field] public partial double Max { get; set; }
 
-    /// <summary>The value (clamped to the range). A programmatic change
-    /// while focused speaks the new value alone, exactly as a user-driven
-    /// adjustment would — so a ticking progress slider stays terse.</summary>
-    public int Value
+    /// <summary>Spoken directly after the number ("%" → "50%").</summary>
+    [Field] public partial string? Unit { get; set; }
+
+    /// <summary>A write to the number lands inside the range.</summary>
+    protected override void OnFieldWritten(Field field)
     {
-        get => _value;
-        set
+        base.OnFieldWritten(field);
+        if (ReferenceEquals(field, Fields.Number))
         {
-            var clamped = Math.Clamp(value, _min, _max);
-            if (clamped == _value)
-                return;
-            _value = clamped;
-            if (IsFocused)
-                Promulgate(new AccessibilityEvent.SliderChange(this, _value, _unit));
+            var clamped = Math.Clamp(Number, Min, Max);
+            if (clamped != Number)
+                Number = clamped;
         }
     }
+
+    /// <summary>The arrow-key step.</summary>
+    public double Step { get; set; }
+
+    /// <summary>The Shift+arrow and Page step.</summary>
+    public double LargeStep { get; set; }
 
     public override bool ReservesKey(KeyCombo combo)
     {
@@ -65,47 +61,49 @@ public class Slider : Widget
 
     protected override bool OnInput(in InputEvent input)
     {
-        var prev = _value;
-        int? delta;
+        var prev = Number;
+        double target;
         switch (input.Kind)
         {
             case InputKind.MoveRight or InputKind.MoveUp:
-                delta = _smallStep;
+                target = prev + Step;
                 break;
             case InputKind.MoveLeft or InputKind.MoveDown:
-                delta = -_smallStep;
+                target = prev - Step;
                 break;
             case InputKind.SelectRight or InputKind.SelectLineUp:
-                delta = _largeStep;
+                target = prev + LargeStep;
                 break;
             case InputKind.SelectLeft or InputKind.SelectLineDown:
-                delta = -_largeStep;
+                target = prev - LargeStep;
                 break;
             case InputKind.MoveToLineStart:
-                _value = _min;
-                delta = null;
+                target = Min;
                 break;
             case InputKind.MoveToLineEnd:
-                _value = _max;
-                delta = null;
+                target = Max;
                 break;
             case InputKind.RawKey when (input.Mods & (Mods.Ctrl | Mods.Alt)) == 0:
                 if (input.Key == Keys.PageUp)
-                    delta = _largeStep;
+                    target = prev + LargeStep;
                 else if (input.Key == Keys.PageDown)
-                    delta = -_largeStep;
+                    target = prev - LargeStep;
                 else
                     return false;
                 break;
             default:
                 return false;
         }
-        if (delta is int d)
-            _value = Math.Clamp(_value + d, _min, _max);
-        // Announce even when clamped at an edge; notify only real change.
-        Promulgate(new AccessibilityEvent.SliderChange(this, _value, _unit));
-        if (_value != prev)
-            PostChanged();
+        var next = Math.Clamp(target, Min, Max);
+        if (next == prev)
+        {
+            // Clamped at an edge: say the number again so the key does
+            // not feel dead.
+            Reread(Fields.Number);
+            return true;
+        }
+        Number = next;
+        PostChanged();
         return true;
     }
 }

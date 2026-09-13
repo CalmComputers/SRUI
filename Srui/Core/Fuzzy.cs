@@ -2,7 +2,7 @@ namespace Srui.Core;
 
 /// <summary>
 /// Matching and scoring for list filtering: the default behind
-/// <see cref="IListItem.FilterScore"/>, and the scorer an item type
+/// <see cref="FilterListBox{T}.Score"/>, and the scorer an item type
 /// composes its own ranking from.
 ///
 /// A score is a tier plus detail, and the tiers are far apart so that
@@ -214,28 +214,30 @@ public static class Fuzzy
         return result;
     }
 
-    /// <summary>Score the items against the query through each item's own
-    /// <see cref="IListItem.FilterScore"/> (null excludes) and return the
+    /// <summary>Score the items against the query through
+    /// <paramref name="score"/> (null excludes) and return the
     /// matching ones sorted by descending score — ties broken by
-    /// shorter Text first, then ordinal Text order. An empty query
-    /// returns all items in their original order without consulting
-    /// scores.</summary>
-    public static List<T> FilterItems<T>(string query, IReadOnlyList<T> items)
-        where T : IListItem
+    /// shorter text first, then ordinal text order, the text being
+    /// <paramref name="textOf"/>. An empty query returns all items in
+    /// their original order without consulting scores.</summary>
+    public static List<T> FilterItems<T>(
+        string query, IReadOnlyList<T> items, Func<T, string, int?> score, Func<T, string> textOf)
     {
         if (query.Length == 0)
             return new List<T>(items);
         var scored = new List<(int Score, T Item)>(items.Count);
         foreach (var item in items)
-            if (item.FilterScore(query) is int score)
-                scored.Add((score, item));
-        scored.Sort(static (a, b) =>
+            if (score(item, query) is int s)
+                scored.Add((s, item));
+        scored.Sort((a, b) =>
         {
             var byScore = b.Score.CompareTo(a.Score);
             if (byScore != 0)
                 return byScore;
-            var byLength = a.Item.Text.Length.CompareTo(b.Item.Text.Length);
-            return byLength != 0 ? byLength : string.CompareOrdinal(a.Item.Text, b.Item.Text);
+            var ta = textOf(a.Item);
+            var tb = textOf(b.Item);
+            var byLength = ta.Length.CompareTo(tb.Length);
+            return byLength != 0 ? byLength : string.CompareOrdinal(ta, tb);
         });
         var result = new List<T>(scored.Count);
         foreach (var (_, item) in scored)

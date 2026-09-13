@@ -5,95 +5,138 @@ namespace Srui;
 /// <summary>Type-to-filter list over typed items: printable characters
 /// build a query, Backspace erases it, arrows and Home/End navigate the
 /// filtered results. Enter is not claimed (the layer's primary reads the
-/// selection). Matching and ranking belong to the items: each
-/// <typeparamref name="T"/> scores itself against the query
-/// (<see cref="IListItem.FilterScore"/> — null excludes, higher first;
-/// the default is the built-in fuzzy match), so command-palette-style
-/// item types can rank recency or pin entries. Plain strings arrive
-/// through the non-generic <see cref="FilterListBox"/>.</summary>
-public class FilterListBox<T> : Widget where T : class, IListItem
+/// selection). Matching and ranking are the list's <see cref="Score"/>:
+/// an item against the query, null excludes, higher first; the default
+/// is the built-in fuzzy match over the item's <see cref="Fields.Value"/>,
+/// and a command-palette-style list installs its own to rank recency
+/// or pin entries. Plain strings arrive through the non-generic
+/// <see cref="FilterListBox"/>.</summary>
+public partial class FilterListBox<T> : Widget where T : Element
 {
     private List<T> _items;
-    private string _filter = "";
+    private Func<IReadOnlyList<T>>? _source;
+    private T? _selectedItem;
     private int _selected;
 
     public FilterListBox(IWidgetContainer parent, string name, IReadOnlyList<T> items)
-        : base(parent, name, "list")
+        : base(parent, name, Role.FilterList)
     {
         _items = new List<T>(items);
+        Filter = null;
     }
 
-    /// <summary>The current query ("" for no filter).</summary>
-    public string Filter => _filter;
+    /// <summary>The current query; null for no filter.</summary>
+    [Field] public partial string? Filter { get; set; }
 
-    /// <summary>The items currently matching the filter, best match first.</summary>
-    public List<T> Results => Fuzzy.FilterItems(_filter, _items);
+    /// <summary>How many items match the filter.</summary>
+    [Field] public int Count => Results.Count;
 
-    public T? SelectedItem
+    /// <summary>The selected result's position among the results.</summary>
+    [Field]
+    public Position? Position
     {
         get
         {
-            var filtered = Results;
-            return _selected < filtered.Count ? filtered[_selected] : null;
+            var (results, item, index) = Resolve();
+            return item is null ? null : new Position(index, results.Count);
         }
     }
 
-    /// <summary>The full item list. Setting replaces it (the filter is
-    /// kept, the selection reset) and speaks the newly selected result
-    /// when focused and audibly changed.</summary>
+    protected internal override Element? CurrentItem => SelectedItem;
+
+    /// <summary>The results with the cursor resolved against them: the
+    /// selected item's place if it still matches, else the remembered
+    /// index clamped, else nothing.</summary>
+    private (List<T> Results, T? Item, int Index) Resolve()
+    {
+        var results = Results;
+        if (results.Count == 0)
+        {
+            _selectedItem = null;
+            _selected = 0;
+            return (results, null, -1);
+        }
+        if (_selectedItem is { } selected)
+        {
+            var at = results.IndexOf(selected);
+            if (at >= 0)
+            {
+                _selected = at;
+                return (results, selected, at);
+            }
+        }
+        _selected = Math.Clamp(_selected, 0, results.Count - 1);
+        _selectedItem = results[_selected];
+        return (results, _selectedItem, _selected);
+    }
+
+    private void Select(int index, T item)
+    {
+        _selected = index;
+        _selectedItem = item;
+        Engine.Touch();
+    }
+
+    /// <summary>Back to the first result, whatever it is now.</summary>
+    private void ResetCursor()
+    {
+        _selected = 0;
+        _selectedItem = null;
+        Engine.Touch();
+    }
+
+    /// <summary>Score an item against a query: null excludes, higher
+    /// sorts first (ties fall back to shorter then ordinal Value). The
+    /// default is the built-in fuzzy match over Value — query
+    /// characters in order, with word-boundary and consecutivity
+    /// bonuses (<see cref="Fuzzy"/>). Widgets do not consult scores for
+    /// an empty query (all items show, list order).</summary>
+    public Func<T, string, int?> Score { get; set; } =
+        static (item, query) => Fuzzy.FuzzyScore(query, item.Get(Fields.Value) ?? "");
+
+    /// <summary>The items currently matching the filter, best match first.</summary>
+    public List<T> Results => Fuzzy.FilterItems(Filter ?? "", Items, Score, TextOf);
+
+    private static string TextOf(T item) => item.Get(Fields.Value) ?? "";
+
+    public T? SelectedItem => Resolve().Item;
+
+    /// <summary>The full item list. Stored on the list unless
+    /// <see cref="BindItems"/> gave them a source; setting replaces the
+    /// stored list (the filter is kept, the selection reset).</summary>
     public IReadOnlyList<T> Items
     {
-        get => _items;
+        get => _source is { } source ? source() : _items;
         set
         {
-            var copy = new List<T>(value);
-            Engine.UpdateLabel(Node, _ =>
-            {
-                _items = copy;
-                _selected = 0;
-            });
+            if (_source is not null)
+                throw new InvalidOperationException("the items are bound; change them at the source");
+            _items = new List<T>(value);
+            ResetCursor();
         }
     }
 
-    /// <summary>Clear the filter and selection; the reset selection
-    /// speaks when focused and audibly changed.</summary>
-    public void ClearFilter() =>
-        Engine.UpdateLabel(Node, _ =>
-        {
-            _filter = "";
-            _selected = 0;
-        });
-
-    /// <summary>Clear the filter and selection without any
-    /// announcement — for owner flows that reset the widget while the
-    /// user's attention is elsewhere (a launcher clearing its box once
-    /// another app takes focus), where speaking would land over
-    /// whatever took over.</summary>
-    protected void ClearFilterSilently()
+    /// <summary>Make the program's collection the list's items: every
+    /// read asks the source, so the pool follows the model with no call
+    /// to the list.</summary>
+    public void BindItems(Func<IReadOnlyList<T>> source)
     {
-        _filter = "";
-        _selected = 0;
+        _source = source;
+        Engine.Touch();
     }
 
-    /// <summary>Replace the item list without any announcement — for
-    /// subclass handlers that reshape base-owned state mid-dispatch,
-    /// where the enclosing input flow speaks (see
-    /// <see cref="ListBox{T}.SetItemsSilently"/>). The selection is
-    /// clamped, not reset.</summary>
-    protected void SetItemsSilently(IReadOnlyList<T> items)
+    /// <summary>Clear the filter and selection.</summary>
+    public void ClearFilter()
     {
-        _items = new List<T>(items);
-        var filtered = Results;
-        if (filtered.Count > 0 && _selected >= filtered.Count)
-            _selected = filtered.Count - 1;
+        Filter = null;
+        ResetCursor();
     }
 
-    /// <summary>The filter text changed, before the new results are
-    /// reported. Live-source subclasses override this to reshape
-    /// <see cref="Items"/> for the new filter (via
-    /// <see cref="SetItemsSilently"/>) so the report reads the fresh
-    /// results; the base does nothing.</summary>
-    protected virtual void OnFilterChanged(string filter)
+    /// <summary>The filter text changed, before the results are read.
+    /// Live-source subclasses override this to reshape the pool for the
+    /// new filter so the tick end reads fresh results; the base does
+    /// nothing.</summary>
+    protected virtual void OnFilterChanged(string? filter)
     {
     }
 
@@ -105,51 +148,40 @@ public class FilterListBox<T> : Widget where T : class, IListItem
     protected virtual bool ReportEmptyResults => true;
 
     /// <summary>The selected position within <see cref="Results"/> —
-    /// for subclasses restoring selection identity after a silent item
-    /// swap reordered the results. The setter clamps and says nothing;
-    /// user-driven selection speaks through navigation as always.</summary>
+    /// for subclasses restoring selection after a pool swap reordered
+    /// the results. The setter clamps.</summary>
     protected int SelectedResultIndex
     {
-        get => _selected;
-        set => _selected = Math.Clamp(value, 0, Math.Max(0, Results.Count - 1));
-    }
-
-    /// <summary>The selected result's line (or "empty"), pulled fresh at
-    /// announcement time — item lines computed from mutated application
-    /// state read correctly with no sync call.</summary>
-    protected internal override string ValueText
-    {
-        get
+        get => Resolve().Index;
+        set
         {
-            var filtered = Results;
-            return _selected < filtered.Count ? filtered[_selected].Text : "empty";
+            var results = Results;
+            if (results.Count == 0)
+                return;
+            var at = Math.Clamp(value, 0, results.Count - 1);
+            Select(at, results[at]);
         }
     }
 
-    /// <summary>The filter ("no filter" / "filter {query}").</summary>
-    protected internal override string StateText =>
-        _filter.Length == 0 ? "no filter" : $"filter {_filter}";
-
-    private void AnnounceResult(List<T> filtered, Boundary? boundary) =>
-        AnnounceItem(filtered[_selected].Text, (_selected, filtered.Count), boundary);
-
-    private void SelectAndAnnounce(List<T> filtered, int index)
+    private void SelectAndNotify(List<T> results, int index)
     {
-        _selected = index;
-        AnnounceResult(filtered, null);
+        Select(index, results[index]);
         PostChanged();
     }
 
-    /// <summary>Filter text changed: reset the selection and report the
-    /// new results.</summary>
+    /// <summary>Filter text changed: the cursor returns to the first
+    /// result, which the tick end reads — again, when it is the same
+    /// result as before, so every keystroke answers. The query itself
+    /// is not echoed.</summary>
     private void FilterChanged()
     {
-        OnFilterChanged(_filter);
-        _selected = 0;
-        var filtered = Results;
-        if (filtered.Count > 0 || ReportEmptyResults)
-            Promulgate(new AccessibilityEvent.Filter(
-                this, _filter, filtered.Count > 0 ? filtered[0].Text : null, filtered.Count));
+        OnFilterChanged(Filter);
+        ResetCursor();
+        Suppress(Fields.Filter);
+        if (!ReportEmptyResults && Results.Count == 0)
+            Suppress(Fields.Count, Fields.Position);
+        else
+            RereadItem();
         PostChanged();
     }
 
@@ -169,45 +201,47 @@ public class FilterListBox<T> : Widget where T : class, IListItem
 
     protected override bool OnInput(in InputEvent input)
     {
-        var filtered = Results;
+        var (filtered, _, selected) = Resolve();
         switch (input.Kind)
         {
             case InputKind.MoveDown or InputKind.MoveRight when filtered.Count > 0:
-                if (_selected + 1 < filtered.Count)
-                    SelectAndAnnounce(filtered, _selected + 1);
+                if (selected + 1 < filtered.Count)
+                    SelectAndNotify(filtered, selected + 1);
                 else
-                    AnnounceResult(filtered, Boundary.Bottom);
+                    AnnounceBoundary(Boundary.Bottom);
                 return true;
             case InputKind.MoveUp or InputKind.MoveLeft when filtered.Count > 0:
-                if (_selected > 0)
-                    SelectAndAnnounce(filtered, _selected - 1);
+                if (selected > 0)
+                    SelectAndNotify(filtered, selected - 1);
                 else
-                    AnnounceResult(filtered, Boundary.Top);
+                    AnnounceBoundary(Boundary.Top);
                 return true;
             case InputKind.MoveToDocStart or InputKind.MoveToLineStart when filtered.Count > 0:
-                if (_selected != 0)
-                    SelectAndAnnounce(filtered, 0);
+                if (selected != 0)
+                    SelectAndNotify(filtered, 0);
                 return true;
             case InputKind.MoveToDocEnd or InputKind.MoveToLineEnd when filtered.Count > 0:
-                if (_selected != filtered.Count - 1)
-                    SelectAndAnnounce(filtered, filtered.Count - 1);
+                if (selected != filtered.Count - 1)
+                    SelectAndNotify(filtered, filtered.Count - 1);
                 return true;
             case InputKind.MoveDown or InputKind.MoveUp
                 or InputKind.MoveRight or InputKind.MoveLeft
                 or InputKind.MoveToDocStart or InputKind.MoveToLineStart
                 or InputKind.MoveToDocEnd or InputKind.MoveToLineEnd:
-                // No results — answer with what the label already says.
-                AnnounceItem("empty", null, null);
+                // No results — answer with what the reader already
+                // calls an empty result set.
+                Reread(Fields.Count);
                 return true;
             case InputKind.TypeChar:
                 if (System.Text.Rune.IsValid((int)input.Ch))
-                    _filter += AsciiMatch.LowerString(char.ConvertFromUtf32((int)input.Ch));
+                    Filter = (Filter ?? "") + AsciiMatch.LowerString(char.ConvertFromUtf32((int)input.Ch));
                 FilterChanged();
                 return true;
-            case InputKind.DeleteBackward when _filter.Length > 0:
+            case InputKind.DeleteBackward when Filter is { Length: > 0 } filter:
                 // Remove one character — two units when it is astral.
-                var cut = _filter.Length >= 2 && char.IsLowSurrogate(_filter[^1]) ? 2 : 1;
-                _filter = _filter[..^cut];
+                var cut = filter.Length >= 2 && char.IsLowSurrogate(filter[^1]) ? 2 : 1;
+                var rest = filter[..^cut];
+                Filter = rest.Length == 0 ? null : rest;
                 FilterChanged();
                 return true;
             default:
@@ -217,11 +251,11 @@ public class FilterListBox<T> : Widget where T : class, IListItem
 }
 
 /// <summary>The untyped filter list — <see cref="FilterListBox{T}"/>
-/// over plain <see cref="IListItem"/> values, carrying the string
-/// convenience overloads.</summary>
-public class FilterListBox : FilterListBox<IListItem>
+/// over <see cref="ListItem"/> values, carrying the string convenience
+/// overloads.</summary>
+public class FilterListBox : FilterListBox<ListItem>
 {
-    public FilterListBox(IWidgetContainer parent, string name, IReadOnlyList<IListItem> items)
+    public FilterListBox(IWidgetContainer parent, string name, IReadOnlyList<ListItem> items)
         : base(parent, name, items)
     {
     }

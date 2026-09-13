@@ -478,8 +478,9 @@ internal static class EditBoxCore
                         redo ? EditNoopKind.NothingToRedo : EditNoopKind.NothingToUndo);
                 }
                 var result = new Result { Consumed = true, Changed = true };
+                var selected = SelectedText(editor);
                 result.Events.Add(new AccessibilityEvent.UndoRedo(
-                    widget, LabelValue(editor), redo));
+                    widget, selected ?? editor.CurrentLine(), selected is not null, redo));
                 return result;
             }
             default:
@@ -487,20 +488,19 @@ internal static class EditBoxCore
         }
     }
 
-    /// <summary>The label value for an edit box: selection info when
-    /// selected, otherwise the current line at the cursor.</summary>
-    public static string LabelValue(EditorState editor)
+    /// <summary>The selection in spoken form — the text, or "N
+    /// characters" past the speak limit — or null when nothing is
+    /// selected.</summary>
+    public static string? SelectedText(EditorState editor)
     {
-        if (editor.HasSelection)
-        {
-            var (anchor, cursor) = editor.Selection!.Value;
-            var start = Math.Min(anchor, cursor);
-            var end = Math.Max(anchor, cursor);
-            var length = end - start;
-            return length >= SpeechRenderer.SpeakLimit
-                ? $"selected {length} characters"
-                : $"selected {editor.Spoken(editor.Rope.Substring(start, end))}";
-        }
-        return editor.CurrentLine();
+        if (!editor.HasSelection)
+            return null;
+        var (anchor, cursor) = editor.Selection!.Value;
+        var start = Math.Min(anchor, cursor);
+        var end = Math.Max(anchor, cursor);
+        var length = end - start;
+        return length >= SpeechRenderer.SpeakLimit
+            ? $"{length} characters"
+            : editor.Spoken(editor.Rope.Substring(start, end));
     }
 }

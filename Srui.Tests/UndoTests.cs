@@ -21,11 +21,7 @@ public class UndoTests
     }
 
     private static List<string> Speech(EditBoxCore.Result result) =>
-        result.Events
-            .Select(SpeechRenderer.RenderEvent)
-            .Where(s => s is not null)
-            .Select(s => s!)
-            .ToList();
+        SpeechRenderer.Default.RenderTick(result.Events);
 
     private static EditBoxCore.Result Handle(
         in InputEvent input, EditorState editor, ulong now = 0, IClipboard? clipboard = null) =>

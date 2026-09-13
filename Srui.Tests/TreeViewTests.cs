@@ -65,7 +65,7 @@ public class TreeViewTests
         // the first child speaks — landing inside IS the report.
         ui.Input(InputKind.MoveRight);
         Assert.True(vanilla.Expanded);
-        Assert.Equal("Joker", tree.SelectedNode!.Text);
+        Assert.Equal("Joker", tree.SelectedNode!.Value);
         Assert.Equal(new[] { "Joker" }, ui.Spoken());
     }
 
@@ -79,7 +79,7 @@ public class TreeViewTests
         // The branch is a room: down from its last child wraps to its
         // first, never to Extra Credit outside.
         ui.Input(InputKind.MoveDown);
-        Assert.Equal("Joker", tree.SelectedNode!.Text);
+        Assert.Equal("Joker", tree.SelectedNode!.Value);
         Assert.Equal(new[] { "Joker" }, ui.Spoken());
     }
 
@@ -94,15 +94,16 @@ public class TreeViewTests
         Assert.Same(vanilla, tree.SelectedNode);
         Assert.Equal(new[] { "Vanilla expanded 2 items" }, ui.Spoken());
 
-        // On an open branch, left closes it first...
+        // On an open branch, left closes it first — the node stays,
+        // its state is what changed...
         ui.Input(InputKind.MoveLeft);
         Assert.False(vanilla.Expanded);
-        Assert.Equal(new[] { "Vanilla collapsed 2 items" }, ui.Spoken());
+        Assert.Equal(new[] { "collapsed" }, ui.Spoken());
 
         // ...and at root level with nothing to close, it stays put.
         ui.Input(InputKind.MoveLeft);
         Assert.Same(vanilla, tree.SelectedNode);
-        Assert.Equal(new[] { "Vanilla collapsed 2 items" }, ui.Spoken());
+        Assert.Equal(new[] { "left, Vanilla collapsed 2 items" }, ui.Spoken());
     }
 
     [Fact]
@@ -158,7 +159,7 @@ public class TreeViewTests
         ui.Type('m');
         Assert.Same(mystic, tree.SelectedNode);
         ui.Type('m');
-        Assert.Equal("mult", tree.SelectedNode!.Text);
+        Assert.Equal("mult", tree.SelectedNode!.Value);
     }
 
     [Fact]
@@ -168,7 +169,7 @@ public class TreeViewTests
         Assert.False(vanilla.Expanded);
 
         ui.Type('b');                                        // Blueprint, hidden in Vanilla
-        Assert.Equal("Blueprint", tree.SelectedNode!.Text);
+        Assert.Equal("Blueprint", tree.SelectedNode!.Value);
         Assert.True(vanilla.Expanded);                       // landing revealed it
         Assert.Equal(new[] { "Blueprint" }, ui.Spoken());
     }
@@ -194,7 +195,7 @@ public class TreeViewTests
         var (ui, tree, crate, basket) = BuildCrates();
 
         ui.Type('a');                                        // Apple, hidden in Crate
-        Assert.Equal("Apple", tree.SelectedNode!.Text);
+        Assert.Equal("Apple", tree.SelectedNode!.Value);
         Assert.True(crate.Expanded);
 
         // "apr" walks off Apple to Basket's Apricot: Apple was not
@@ -202,7 +203,7 @@ public class TreeViewTests
         // and Basket opens in its place.
         ui.Type('p');
         ui.Type('r');
-        Assert.Equal("Apricot", tree.SelectedNode!.Text);
+        Assert.Equal("Apricot", tree.SelectedNode!.Value);
         Assert.False(crate.Expanded);
         Assert.True(basket.Expanded);
     }
@@ -217,7 +218,7 @@ public class TreeViewTests
         tree.Focus();
 
         ui.Type('j');                                        // only hidden Joker B matches
-        Assert.Equal("Joker B", tree.SelectedNode!.Text);
+        Assert.Equal("Joker B", tree.SelectedNode!.Value);
         Assert.True(crate.Expanded);
 
         // Cycling on: Joker B was not the one, and its crate closes
@@ -237,7 +238,7 @@ public class TreeViewTests
         // A fresh search leaving later finds the reveal accepted.
         ui.App.SetNow(1000);
         ui.Type('z');
-        Assert.Equal("Zed", tree.SelectedNode!.Text);
+        Assert.Equal("Zed", tree.SelectedNode!.Value);
         Assert.True(crate.Expanded);
     }
 
@@ -273,7 +274,7 @@ public class TreeViewTests
         ui.Type('a');
         ui.Type('p');
         ui.Type('r');
-        Assert.Equal("Apricot", tree.SelectedNode!.Text);
+        Assert.Equal("Apricot", tree.SelectedNode!.Value);
         Assert.True(crate.Expanded);
 
         // But it never stopped being provisional: a fresh search
@@ -340,7 +341,7 @@ public class TreeViewTests
     {
         var (ui, tree, _, _, _) = Build();
         tree.SetRoots([new TreeNode("Alpha"), new TreeNode("Beta")]);
-        Assert.Equal("Alpha", tree.SelectedNode!.Text);
+        Assert.Equal("Alpha", tree.SelectedNode!.Value);
 
         ui.Input(InputKind.MoveDown);
         Assert.Equal(new[] { "Beta" }, ui.Spoken());

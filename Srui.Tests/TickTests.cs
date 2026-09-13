@@ -1,0 +1,278 @@
+using Srui;
+using Xunit;
+
+namespace Srui.Tests;
+
+/// <summary>The tick model (architecture.md section 7): a tick's
+/// announcements and action events reach readers in order, and its
+/// state is read once at the end, as the difference between what the
+/// user last heard and what is now under the cursor — however many
+/// times, and in whatever order, program code changed things in
+/// between. Suppress and Reread are the two knobs a widget has on that
+/// reading.</summary>
+public partial class TickModelTests
+{
+    [Fact]
+    public void OnlyTheSettledStateIsRead()
+    {
+        using var ui = new TestApp();
+        var list = new ListBox(ui.App, "Files", ["a", "b", "c"], numbered: true);
+        list.Focus();
+        ui.Drain();
+
+        // Three moves in one tick: one reading, of where the cursor ended.
+        list.SelectedIndex = 1;
+        list.SelectedIndex = 2;
+        list.SelectedIndex = 0;
+        Assert.Empty(ui.Spoken());
+
+        list.SelectedIndex = 2;
+        list.SelectedIndex = 1;
+        Assert.Equal(new[] { "b 2 of 3" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void FocusThenStateReadsTheSettledValueOnce()
+    {
+        using var ui = new TestApp();
+        _ = new Button(ui.App, "Other");
+        var list = new ListBox(ui.App, "Files", ["a", "b"], numbered: true);
+        ui.App.EnsureFocus();
+        ui.Drain();
+
+        // Either order: the focus reading carries the state as it
+        // settled, and the state change is not read again.
+        list.Focus();
+        list.SelectedIndex = 1;
+        Assert.Equal(new[] { "Files list b 2 of 2" }, ui.Spoken());
+
+        ui.App.FocusedWidget!.App.EnsureFocus();
+        new Button(ui.App, "Elsewhere").Focus();
+        ui.Drain();
+        list.SelectedIndex = 0;
+        list.Focus();
+        Assert.Equal(new[] { "Files list a 1 of 2" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void AnnouncementsSpeakBeforeTheStateWhateverTheOrder()
+    {
+        using var ui = new TestApp();
+        var list = new ListBox(ui.App, "Files", ["a", "b"], numbered: true);
+        list.Focus();
+        ui.Drain();
+
+        list.SelectedIndex = 1;
+        ui.App.Announce("Moved.");
+        Assert.Equal(new[] { "Moved.", "b 2 of 2" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void AWidgetsAnnouncementSpeaksOnlyWhereFocusSettles()
+    {
+        using var ui = new TestApp();
+        var box = new AddBox(ui.App);
+        var list = new ListBox(ui.App, "Items", ["one"]);
+        box.Focus();
+        ui.Drain();
+
+        // Confirmation that stays: heard.
+        box.Confirm(moveOn: false);
+        Assert.Equal(new[] { "Added." }, ui.Spoken());
+
+        // Confirmation that moves focus to the result: the landing is
+        // the confirmation, and the words are not.
+        box.Confirm(moveOn: true, list);
+        Assert.Equal(new[] { "Items list one" }, ui.Spoken());
+    }
+
+    private sealed class AddBox(IWidgetContainer parent) : EditBox(parent, "Add")
+    {
+        public void Confirm(bool moveOn, Widget? target = null)
+        {
+            Announce("Added.");
+            if (moveOn)
+                target!.Focus();
+        }
+    }
+
+    [Fact]
+    public void AppAnnouncementsAlwaysSpeak()
+    {
+        using var ui = new TestApp();
+        var box = new EditBox(ui.App, "Add");
+        var list = new ListBox(ui.App, "Items", ["one"]);
+        box.Focus();
+        ui.Drain();
+
+        ui.App.Announce("Added.");
+        list.Focus();
+        Assert.Equal(new[] { "Added.", "Items list one" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void ActionEventsOfAWidgetLeftBehindAreDropped()
+    {
+        using var ui = new TestApp();
+        var notes = new EditBox(ui.App, "Notes", "hello");
+        var other = new Button(ui.App, "Other");
+        notes.Focus();
+        ui.Drain();
+
+        // The move speaks its word only if the user is still there.
+        notes.MoveWordRight();
+        other.Focus();
+        Assert.Equal(new[] { "Other button" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void SuppressKeepsAFieldOutOfOneTicksReading()
+    {
+        using var ui = new TestApp();
+        var save = new Button(ui.App, "Save");
+        save.Focus();
+        ui.Drain();
+
+        save.Suppress(Fields.Name);
+        save.Name = "Store";
+        save.Description = "keeps the file";
+        Assert.Equal(new[] { "keeps the file" }, ui.Spoken());
+
+        // The next tick reads normally — and the suppressed change is
+        // not caught up on: the user heard the settled state after it.
+        save.Name = "Stash";
+        Assert.Equal(new[] { "Stash" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void SuppressNeverTrimsAFocusArrival()
+    {
+        using var ui = new TestApp();
+        _ = new Button(ui.App, "Other");
+        var save = new Button(ui.App, "Save");
+        ui.App.EnsureFocus();
+        ui.Drain();
+
+        save.Suppress();
+        save.Focus();
+        Assert.Equal(new[] { "Save button" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void RereadPutsAnUnchangedFieldIntoTheReading()
+    {
+        using var ui = new TestApp();
+        var volume = new Slider(ui.App, "Volume", 50, 0, 100, unit: "%");
+        volume.Focus();
+        ui.Drain();
+
+        volume.Reread(Fields.Number);
+        Assert.Equal(new[] { "50%" }, ui.Spoken());
+        Assert.Empty(ui.Spoken());
+    }
+
+    [Fact]
+    public void ALandedItemReadsInFullEvenWhereItsFieldsMatch()
+    {
+        using var ui = new TestApp();
+        var list = new ListBox(ui.App, "Fruits", ["apple", "apple"], multiSelect: true);
+        list.SetChecked(0, true);
+        list.SetChecked(1, true);
+        list.Focus();
+        ui.Drain();
+
+        // Same line, same check: a different item, so it is read.
+        ui.Input(InputKind.MoveDown);
+        Assert.Equal(new[] { "apple checked" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void AChangeThatRevertsWithinTheTickIsSilent()
+    {
+        using var ui = new TestApp();
+        var wrap = new CheckBox(ui.App, "Wrap");
+        wrap.Focus();
+        ui.Drain();
+
+        wrap.Checked = true;
+        wrap.Checked = false;
+        Assert.Empty(ui.Spoken());
+    }
+
+    [Fact]
+    public void AnIdleLoopIterationReadsNothing()
+    {
+        using var ui = new TestApp();
+        var list = new ListBox(ui.App, "Files", ["a"]);
+        list.Focus();
+        ui.Drain();
+
+        // A field write on an item is not seen by the engine, and a
+        // loop iteration where nothing happened does not describe the
+        // focused widget; the explicit dispatch does.
+        list.Items[0].Value = "b";
+        ui.App.TickAt(ui.App.Now + 1);
+        Assert.Empty(ui.Reader.Ticks);
+        ui.App.DispatchEvents();
+        Assert.Equal(new[] { "b" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void BoundFieldsWriteThemselves()
+    {
+        using var ui = new TestApp();
+        var model = new { Volume = 40.0 };
+        var volume = 40.0;
+        var slider = new Slider(ui.App, "Volume", 0, 0, 100, unit: "%");
+        slider.Bind(Fields.Number, () => volume, v => volume = v);
+        slider.Focus();
+        Assert.Equal(new[] { "Volume slider 40%" }, ui.Spoken());
+
+        // Input writes the model through the setter...
+        ui.Input(InputKind.MoveRight);
+        Assert.Equal(41.0, volume);
+        Assert.Equal(new[] { "41%" }, ui.Spoken());
+
+        // ...and the model changing underneath is read at the tick end.
+        volume = 90;
+        Assert.Equal(new[] { "90%" }, ui.Spoken());
+        _ = model;
+    }
+
+    [Fact]
+    public void AReadOnlyBindingRefusesWrites()
+    {
+        using var ui = new TestApp();
+        var slider = new Slider(ui.App, "Volume", 0, 0, 100);
+        slider.Bind(Fields.Number, () => 5);
+        Assert.Equal(5, slider.Number);
+        Assert.Throws<InvalidOperationException>(() => slider.Number = 6);
+    }
+
+    [Fact]
+    public void ACustomFieldSpeaksAsItsProgramRegisteredIt()
+    {
+        using var ui = new TestApp();
+        var meter = new Meter(ui.App);
+        meter.Focus();
+        // Unregistered: a string field speaks as it is, a number is
+        // silent until a rendering says how it sounds.
+        Assert.Equal(new[] { "Meter meter steady" }, ui.Spoken());
+        Assert.NotNull(Meter.GaugeField);
+        Assert.Equal("Gauge", Meter.GaugeField.Name);
+
+        // Registered on the shared renderer, the number speaks — for
+        // this test and any other in the process, so the wording is
+        // one no other test could meet by accident.
+        SpeechRenderer.Default.Register(Meter.GaugeField, static (_, v) => $"gauge at {v}", after: Fields.Value);
+        meter.Gauge = 7;
+        Assert.Equal(new[] { "gauge at 7" }, ui.Spoken());
+    }
+
+    private sealed partial class Meter(IWidgetContainer parent) : Widget(parent, "Meter", new Role("meter"))
+    {
+        [Field] public partial int Gauge { get; set; }
+
+        [Field] public string Trend => "steady";
+    }
+}
