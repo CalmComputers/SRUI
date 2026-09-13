@@ -628,8 +628,12 @@ internal sealed class CoreUi
         _dirty = false;
         var focus = _tree.Focus;
         var owner = _tree.Get(focus)?.Owner;
+        // A widget's events speak only where focus settled — on it, or
+        // inside it: a container speaks for the children it holds — and
+        // a widget that speaks through another is heard where that one
+        // would be.
         if (tick.Count > 0)
-            tick.RemoveAll(e => e.Source is not null && !ReferenceEquals(e.Source, owner));
+            tick.RemoveAll(e => e.Source is not null && !Encloses(Credited(e.Source), owner));
 
         var cause = _pendingCause;
         var rereadAll = _rereadAll;
@@ -659,6 +663,7 @@ internal sealed class CoreUi
         bool full;
         var arrival = cause ?? FocusCause.Programmatic;
         var from = _heardFocus;
+        var moved = focus != _heardFocus;
         var speak = true;
         if (rereadAll)
         {
@@ -666,7 +671,7 @@ internal sealed class CoreUi
             arrival = FocusCause.Reannounce;
             from = NodeId.None;
         }
-        else if (focus != _heardFocus)
+        else if (moved)
         {
             full = true;
             if (arrival == FocusCause.LayerRestore && restore is { } known)
@@ -693,6 +698,12 @@ internal sealed class CoreUi
 
         if (speak && full)
         {
+            // The landing is the whole utterance: what the arriving
+            // widget did on the way — the moves, the typing — is
+            // superseded by its reading. What it deliberately said is
+            // not: an announcement of its own is heard before it.
+            if (moved && tick.Count > 0)
+                tick.RemoveAll(e => e is not AccessibilityEvent.Announce && ReferenceEquals(e.Source, owner));
             tick.Add(new AccessibilityEvent.FocusArrived(owner, arrival,
                 arrival == FocusCause.LayerRestore ? [] : ContextFor(focus, from, withLabels)));
             foreach (var (field, value) in control.Entries)
@@ -722,22 +733,49 @@ internal sealed class CoreUi
         ClearTickRequests();
     }
 
+    /// <summary>The widget an event of <paramref name="source"/> is
+    /// credited to: the end of its <see cref="Widget.SpeaksThrough"/>
+    /// chain, or itself.</summary>
+    private static Widget Credited(Widget source)
+    {
+        var credited = source;
+        for (var hops = 0; credited.SpeaksThrough is { } through && hops < 16; hops++)
+            credited = through;
+        return credited;
+    }
+
+    /// <summary>Whether <paramref name="source"/> is <paramref name="focus"/>
+    /// or one of its containers.</summary>
+    private static bool Encloses(Widget source, Widget? focus)
+    {
+        for (var widget = focus; widget is not null; widget = widget.Parent)
+            if (ReferenceEquals(widget, source))
+                return true;
+        return false;
+    }
+
     private static void EmitDeltas(
         List<AccessibilityEvent> tick, Widget owner, FieldSet after, FieldSet? before,
         FieldScope scope, bool landed)
     {
         foreach (var (field, value) in after.Entries)
         {
-            if (field.FocusOnly || owner.IsSuppressed(field))
+            if (field.FocusOnly)
+                continue;
+            // A reread is the later, more deliberate request: it wins
+            // over a suppression in the same tick.
+            if (owner.IsRereadRequested(field, scope))
+            {
+                tick.Add(new AccessibilityEvent.FieldValue(owner, field, value, scope));
+                continue;
+            }
+            if (owner.IsSuppressed(field))
                 continue;
             var changed = before is null
                 || !before.TryGetBoxed(field, out var old)
                 || !field.ValuesEqual(old, value);
             // The cursor's position belongs with the item it landed on.
-            var wanted = changed
-                || owner.IsRereadRequested(field, scope)
-                || (landed && ReferenceEquals(field, Fields.Position));
-            if (wanted)
+            if (changed || (landed && ReferenceEquals(field, Fields.Position)))
                 tick.Add(new AccessibilityEvent.FieldValue(owner, field, value, scope));
         }
     }

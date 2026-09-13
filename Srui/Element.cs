@@ -66,6 +66,20 @@ public sealed class FieldSet
 
     public bool Contains(Field field) => _index.ContainsKey(field);
 
+    /// <summary>Drop a field from the description — for a subclass whose
+    /// override of <see cref="Element.DescribeFields"/> withholds one
+    /// of its base's fields in some state. True when it was present.</summary>
+    public bool Remove(Field field)
+    {
+        if (!_index.TryGetValue(field, out var at))
+            return false;
+        _entries.RemoveAt(at);
+        _index.Remove(field);
+        for (var i = at; i < _entries.Count; i++)
+            _index[_entries[i].Key] = i;
+        return true;
+    }
+
     public bool TryGet<T>(Field<T> field, out T value)
     {
         if (_index.TryGetValue(field, out var at))

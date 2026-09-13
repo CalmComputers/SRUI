@@ -97,6 +97,49 @@ public partial class TickModelTests
     }
 
     [Fact]
+    public void AContainersAnnouncementSpeaksForTheChildFocusIsIn()
+    {
+        using var ui = new TestApp();
+        var panel = new Panel(ui.App);
+        var elsewhere = new Button(ui.App, "Elsewhere");
+        panel.Entry.Focus();
+        ui.Drain();
+
+        // The composite speaks for what it holds.
+        panel.Say("Added.");
+        Assert.Equal(new[] { "Added." }, ui.Spoken());
+
+        // Not for a widget outside it.
+        elsewhere.Focus();
+        ui.Drain();
+        panel.Say("Added.");
+        Assert.Empty(ui.Spoken());
+    }
+
+    private sealed class Panel : Group
+    {
+        public EditBox Entry { get; }
+
+        public Panel(IWidgetContainer parent) : base(parent, "Tasks") => Entry = new EditBox(this, "New task");
+
+        public void Say(string text) => Announce(text);
+    }
+
+    [Fact]
+    public void RereadWinsOverSuppressInTheSameTick()
+    {
+        using var ui = new TestApp();
+        var save = new Button(ui.App, "Save");
+        save.Focus();
+        ui.Drain();
+
+        save.Suppress(Fields.Name);
+        save.Name = "Store";
+        save.Reread(Fields.Name);
+        Assert.Equal(new[] { "Store" }, ui.Spoken());
+    }
+
+    [Fact]
     public void AppAnnouncementsAlwaysSpeak()
     {
         using var ui = new TestApp();
@@ -108,6 +151,60 @@ public partial class TickModelTests
         ui.App.Announce("Added.");
         list.Focus();
         Assert.Equal(new[] { "Added.", "Items list one" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void ActionEventsOfTheArrivingWidgetYieldToItsReading()
+    {
+        using var ui = new TestApp();
+        var notes = new EditBox(ui.App, "Notes", "hello");
+        var other = new Button(ui.App, "Other");
+        other.Focus();
+        ui.Drain();
+
+        // Prepared and then focused in one tick: the reading is the
+        // whole utterance, and the move's word is not heard before it.
+        notes.MoveWordRight();
+        notes.Focus();
+        Assert.Equal(new[] { "Notes edit selected hello" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void TheArrivingWidgetsOwnAnnouncementIsHeardBeforeItsReading()
+    {
+        using var ui = new TestApp();
+        var box = new AddBox(ui.App);
+        var other = new Button(ui.App, "Other");
+        other.Focus();
+        ui.Drain();
+
+        // A result announced by the widget focus then lands on (a
+        // pane renaming from its dialog, restored when it closes) is
+        // deliberate, unlike a move made on the way: it speaks, then
+        // the landing does.
+        box.Confirm(moveOn: true, box);
+        Assert.Equal(new[] { "Added.", "Add edit blank" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void AWidgetSpeakingThroughAContainerIsHeardBesideItsSibling()
+    {
+        using var ui = new TestApp();
+        var pane = new Group(ui.App, "Console");
+        var input = new EditBox(pane, "Input");
+        var output = new EditBox(pane, "Output", multiline: true);
+        output.Focus();
+        ui.Drain();
+
+        // Driven while the user is on its sibling: silent by default.
+        input.InsertText("d");
+        Assert.Empty(ui.Spoken());
+
+        // Speaking through the pane both live in, its echo is heard
+        // from anywhere inside the pane.
+        input.SpeaksThrough = pane;
+        input.InsertText("i");
+        Assert.Equal(new[] { "i" }, ui.Spoken());
     }
 
     [Fact]

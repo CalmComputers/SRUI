@@ -108,6 +108,16 @@ public abstract partial class Widget : Element, IWidgetContainer
     /// stays readable but mutations no longer land anywhere.</summary>
     public void Remove() => Engine.Remove(Node);
 
+    /// <summary>The widget this one's events are heard as if they came
+    /// from. A widget's action events and announcements reach the user
+    /// only where focus settled — on it or inside it; a widget that
+    /// acts on another's behalf names that other here, and is then
+    /// heard wherever it would be. A console's input box, run by keys
+    /// typed while the user reads the output beside it, speaks through
+    /// the pane holding both, so its echo is heard from the output.
+    /// Null (the default) is the widget's own place.</summary>
+    public Widget? SpeaksThrough { get; set; }
+
     // ── Fields every widget has ──
 
     /// <summary>The spoken name. Null announces as role and value only.</summary>

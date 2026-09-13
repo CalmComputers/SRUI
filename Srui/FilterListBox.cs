@@ -31,7 +31,9 @@ public partial class FilterListBox<T> : Widget where T : Element
     /// <summary>How many items match the filter.</summary>
     [Field] public int Count => Results.Count;
 
-    /// <summary>The selected result's position among the results.</summary>
+    /// <summary>The selected result's position among the results: the
+    /// whole pool unfiltered, and under a filter how much of it the
+    /// query left.</summary>
     [Field]
     public Position? Position
     {

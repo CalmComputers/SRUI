@@ -308,6 +308,17 @@ public partial class ListBox<T> : Widget where T : Element
 
     // ── Typeahead ──
 
+    /// <summary>Forget any pending typeahead prefix — for subclasses
+    /// whose input handling replaced what the list is showing (a file
+    /// pane entering another folder), so the next keystroke starts a
+    /// fresh search instead of extending a prefix typed against the
+    /// old items within the timeout.</summary>
+    protected void ResetTypeahead()
+    {
+        _typeAheadBuffer = "";
+        _lastKeystrokeMs = null;
+    }
+
     private static string TextOf(T item) => item.Get(Fields.Value) ?? "";
 
     private void HandleTypeAhead(string runeText)
@@ -329,13 +340,17 @@ public partial class ListBox<T> : Widget where T : Element
         var count = items.Count;
         if (cycling || _typeAheadBuffer == runeLower)
         {
-            // Single char: cycle from the current position forward.
+            // Single char: cycle from the current position forward. The
+            // only bearer is where the cursor already stands: say so.
             for (var offset = 1; offset <= count; offset++)
             {
                 var idx = (selected + offset) % count;
                 if (AsciiMatch.StartsWithLower(TextOf(items[idx]), runeLower))
                 {
-                    SelectAndNotify(items, idx);
+                    if (idx != selected)
+                        SelectAndNotify(items, idx);
+                    else
+                        RereadItem();
                     break;
                 }
             }

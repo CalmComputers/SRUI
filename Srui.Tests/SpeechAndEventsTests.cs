@@ -172,6 +172,22 @@ public class SpeechRendererTests
     }
 
     [Fact]
+    public void AControlDeltaBesideAnItemArrivalRendersAsADelta()
+    {
+        var files = new ListBox(App, "Files", ["a", "b"]);
+        var item = files.CurrentItem!;
+        // The landed item reads in full (a false state says nothing);
+        // the control field that changed under it is news either way.
+        Assert.Equal(["b available"], Render(
+        [
+            new AccessibilityEvent.FieldValue(files, Fields.Disabled, false, FieldScope.Control),
+            new AccessibilityEvent.ItemArrived(files, item),
+            new AccessibilityEvent.FieldValue(files, Fields.Value, "b", FieldScope.Item),
+            new AccessibilityEvent.FieldValue(files, Fields.Checked, null, FieldScope.Item),
+        ]));
+    }
+
+    [Fact]
     public void ABoundaryPrefixesTheReading()
     {
         var files = new ListBox(App, "Files", ["a"]);

@@ -1903,9 +1903,14 @@ public class EditBoxTests
         box.SelectAll();
         Assert.Equal(new[] { "******* selected" }, ui.Spoken());
         // Unmasking changes what the selection sounds like, and the
-        // tick end says so; the mask flag itself is not spoken.
+        // tick end says so; the mask flag itself is learned on arrival
+        // only, never as a delta.
         box.Password = false;
         Assert.Equal(new[] { "selected hunter2" }, ui.Spoken());
+        box.Password = true;
+        Assert.Equal(new[] { "selected *******" }, ui.Spoken());
+        box.Password = false;
+        ui.Drain();
         ui.Input(InputKind.MoveToDocStart);
         Assert.Equal(new[] { "hunter2" }, ui.Spoken());
     }

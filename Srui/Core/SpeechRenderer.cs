@@ -100,9 +100,13 @@ public sealed class ReadoutContext
 
     public SpeechVerbosity Verbosity { get; }
 
-    /// <summary>Whether the readout reads the widget (or its landed
-    /// item) in full, as against a delta.</summary>
-    public bool IsArrival { get; }
+    /// <summary>Whether the field being rendered is part of a full
+    /// reading — every field of a widget focus arrived on, or of an
+    /// item the cursor landed on, with the position — as against a
+    /// delta: a field that changed under the user, which is news even
+    /// when false. A control field carried beside an item arrival is a
+    /// delta.</summary>
+    public bool IsArrival { get; internal set; }
 
     /// <summary>A field's value: from this readout when the tick
     /// carried it, else read live from the widget or the item under its
@@ -189,7 +193,9 @@ public sealed class SpeechRenderer
         Register(Fields.Min, static (_, _) => null);
         Register(Fields.Max, static (_, _) => null);
         Register(Fields.Position, static (_, v) => v is { } p ? $"{p.Index + 1} of {p.Total}" : null);
-        Register(Fields.Password, static (_, v) => v ? "protected" : null);
+        // The mask is learned on arrival; switching it mid-session is
+        // the program's prompt to explain, not the field's.
+        Register(Fields.Password, static (ctx, v) => v && ctx.IsArrival ? "protected" : null);
         Register(Fields.Filter, static (_, v) => v is null ? "no filter" : $"filter {v}");
         Register(Fields.Count, static (ctx, v) =>
             v == 0 ? (ReferenceEquals(ctx.Widget.Role, Role.FilterList) ? "no results" : "empty") : null);
@@ -345,7 +351,7 @@ public sealed class SpeechRenderer
             _ => null,
         });
 
-        var ctx = new ReadoutContext(widget, verbosity, focus is not null || item is not null, fields);
+        var ctx = new ReadoutContext(widget, verbosity, focus is not null, fields);
         var order = _order;
         var renderers = _renderers;
         foreach (var field in order)
@@ -354,6 +360,8 @@ public sealed class SpeechRenderer
             {
                 if (!ReferenceEquals(f.Field, field))
                     continue;
+                ctx.IsArrival = focus is not null
+                    || (item is not null && (f.Scope == FieldScope.Item || ReferenceEquals(f.Field, Fields.Position)));
                 Append(renderers[field](ctx, f.Value));
             }
         }
