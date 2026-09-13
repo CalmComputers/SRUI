@@ -225,23 +225,50 @@ public static class Fuzzy
     {
         if (query.Length == 0)
             return new List<T>(items);
-        var scored = new List<(int Score, T Item)>(items.Count);
-        foreach (var item in items)
+        var results = new List<T>(items.Count);
+        FilterInto(query, items, score, textOf, new List<Scored<T>>(items.Count), results);
+        return results;
+    }
+
+    /// <summary>A scored item with its text taken once, so the sort's
+    /// tiebreak never calls <c>textOf</c> again — for an item whose
+    /// text is composed on every read, that is the difference between
+    /// one string per item and one per comparison.</summary>
+    public readonly record struct Scored<T>(int Score, string Text, T Item);
+
+    /// <summary>The allocation-free form of <see cref="FilterItems{T}"/>:
+    /// the caller owns <paramref name="scratch"/> and <paramref name="results"/>,
+    /// both cleared and refilled here, so a list that filters on every
+    /// tick reuses the same two buffers. The query must be non-empty
+    /// (an empty query is the whole pool, which needs no filtering).</summary>
+    public static void FilterInto<T>(
+        string query, IReadOnlyList<T> items, Func<T, string, int?> score, Func<T, string> textOf,
+        List<Scored<T>> scratch, List<T> results)
+    {
+        scratch.Clear();
+        results.Clear();
+        for (var i = 0; i < items.Count; i++)
+        {
+            var item = items[i];
             if (score(item, query) is int s)
-                scored.Add((s, item));
-        scored.Sort((a, b) =>
+                scratch.Add(new Scored<T>(s, textOf(item), item));
+        }
+        scratch.Sort(Ranking<T>.ByScore);
+        foreach (var entry in scratch)
+            results.Add(entry.Item);
+    }
+
+    /// <summary>Descending score, then shorter text, then ordinal text —
+    /// one delegate per item type, allocated once.</summary>
+    private static class Ranking<T>
+    {
+        public static readonly Comparison<Scored<T>> ByScore = static (a, b) =>
         {
             var byScore = b.Score.CompareTo(a.Score);
             if (byScore != 0)
                 return byScore;
-            var ta = textOf(a.Item);
-            var tb = textOf(b.Item);
-            var byLength = ta.Length.CompareTo(tb.Length);
-            return byLength != 0 ? byLength : string.CompareOrdinal(ta, tb);
-        });
-        var result = new List<T>(scored.Count);
-        foreach (var (_, item) in scored)
-            result.Add(item);
-        return result;
+            var byLength = a.Text.Length.CompareTo(b.Text.Length);
+            return byLength != 0 ? byLength : string.CompareOrdinal(a.Text, b.Text);
+        };
     }
 }

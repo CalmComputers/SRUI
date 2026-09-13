@@ -635,6 +635,32 @@ internal sealed class CoreUi
     /// changed. Clears the dirty flag and every per-tick request.</summary>
     public void EndTick(List<AccessibilityEvent> tick)
     {
+        Describing = ++_describeSequence;
+        try
+        {
+            Describe(tick);
+        }
+        finally
+        {
+            Describing = 0;
+        }
+    }
+
+    private ulong _describeSequence;
+
+    /// <summary>Nonzero while the tick end is describing: a number
+    /// unique to this description, zero between descriptions. Only
+    /// engine code runs inside one — the widget's fields and its item's
+    /// are read, program code is not — so a widget whose fields derive
+    /// from one expensive computation (a filter list's results, read
+    /// for its count, its position, and its item) may compute once per
+    /// description and answer every read in it from that; between
+    /// descriptions, program code may have changed anything, and a
+    /// read computes afresh.</summary>
+    public ulong Describing { get; private set; }
+
+    private void Describe(List<AccessibilityEvent> tick)
+    {
         _dirty = false;
         var focus = _tree.Focus;
         var owner = _tree.Get(focus)?.Owner;

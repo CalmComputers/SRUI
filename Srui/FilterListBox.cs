@@ -18,6 +18,16 @@ public partial class FilterListBox<T> : Widget where T : Element
     private T? _selectedItem;
     private int _selected;
 
+    // The results are computed into these two buffers, reused across
+    // computations, and remembered for the description they were
+    // computed in: the tick end reads the count, the position, and
+    // the item from one computation instead of three.
+    private readonly List<Fuzzy.Scored<T>> _scratch = new();
+    private readonly List<T> _matches = new();
+    private IReadOnlyList<T> _results = Array.Empty<T>();
+    private ulong _resultsDescribe;
+    private string? _resultsFilter;
+
     public FilterListBox(IWidgetContainer parent, string name, IReadOnlyList<T> items)
         : base(parent, name, Role.FilterList)
     {
@@ -49,7 +59,7 @@ public partial class FilterListBox<T> : Widget where T : Element
     /// <summary>The results with the cursor resolved against them: the
     /// selected item's place if it still matches, else the remembered
     /// index clamped, else nothing.</summary>
-    private (List<T> Results, T? Item, int Index) Resolve()
+    private (IReadOnlyList<T> Results, T? Item, int Index) Resolve()
     {
         var results = Results;
         if (results.Count == 0)
@@ -60,7 +70,7 @@ public partial class FilterListBox<T> : Widget where T : Element
         }
         if (_selectedItem is { } selected)
         {
-            var at = results.IndexOf(selected);
+            var at = IndexOf(results, selected, _selected);
             if (at >= 0)
             {
                 _selected = at;
@@ -70,6 +80,20 @@ public partial class FilterListBox<T> : Widget where T : Element
         _selected = Math.Clamp(_selected, 0, results.Count - 1);
         _selectedItem = results[_selected];
         return (results, _selectedItem, _selected);
+    }
+
+    /// <summary>The item's place among the results, by identity. The
+    /// remembered place is tried first: nothing moved is the common
+    /// case, and it makes the cursor's resolution constant rather
+    /// than a scan.</summary>
+    private static int IndexOf(IReadOnlyList<T> results, T item, int hint)
+    {
+        if ((uint)hint < (uint)results.Count && ReferenceEquals(results[hint], item))
+            return hint;
+        for (var i = 0; i < results.Count; i++)
+            if (ReferenceEquals(results[i], item))
+                return i;
+        return -1;
     }
 
     private void Select(int index, T item)
@@ -96,8 +120,63 @@ public partial class FilterListBox<T> : Widget where T : Element
     public Func<T, string, int?> Score { get; set; } =
         static (item, query) => Fuzzy.FuzzyScore(query, item.Get(Fields.Value) ?? "");
 
-    /// <summary>The items currently matching the filter, best match first.</summary>
-    public List<T> Results => Fuzzy.FilterItems(Filter ?? "", Items, Score, TextOf);
+    /// <summary>Whether the pool arrives already ranked: the results
+    /// then keep the pool's order and <see cref="Score"/> decides
+    /// membership alone (null excludes). Off, the results sort by
+    /// score. A list over a search engine's output sets it, so the
+    /// engine's ranking is the user's and nothing re-sorts it — and a
+    /// pool the score keeps whole passes through as the results
+    /// without a copy.</summary>
+    public bool Ranked { get; set; }
+
+    /// <summary>The items currently matching the filter, best match
+    /// first (pool order under <see cref="Ranked"/>). A view over the
+    /// list's own buffers, valid until the filter or the pool next
+    /// changes: read it, do not keep it. Computed on each read, except
+    /// that the reads of one tick-end description share one
+    /// computation.</summary>
+    public IReadOnlyList<T> Results
+    {
+        get
+        {
+            var describing = Engine.Describing;
+            var filter = Filter ?? "";
+            if (describing != 0 && describing == _resultsDescribe
+                && string.Equals(filter, _resultsFilter, StringComparison.Ordinal))
+                return _results;
+            _results = Compute(filter, Items);
+            _resultsDescribe = describing;
+            _resultsFilter = filter;
+            return _results;
+        }
+    }
+
+    private IReadOnlyList<T> Compute(string filter, IReadOnlyList<T> items)
+    {
+        if (filter.Length == 0)
+            return items;
+        if (!Ranked)
+        {
+            Fuzzy.FilterInto(filter, items, Score, TextOf, _scratch, _matches);
+            return _matches;
+        }
+        // Ranked: membership only, pool order kept. The buffer is
+        // filled only once something is excluded; a pool kept whole
+        // is the results as it stands.
+        for (var i = 0; i < items.Count; i++)
+        {
+            if (Score(items[i], filter) is not null)
+                continue;
+            _matches.Clear();
+            for (var j = 0; j < i; j++)
+                _matches.Add(items[j]);
+            for (var j = i + 1; j < items.Count; j++)
+                if (Score(items[j], filter) is not null)
+                    _matches.Add(items[j]);
+            return _matches;
+        }
+        return items;
+    }
 
     private static string TextOf(T item) => item.Get(Fields.Value) ?? "";
 
@@ -165,7 +244,7 @@ public partial class FilterListBox<T> : Widget where T : Element
         }
     }
 
-    private void SelectAndNotify(List<T> results, int index)
+    private void SelectAndNotify(IReadOnlyList<T> results, int index)
     {
         Select(index, results[index]);
         PostChanged();

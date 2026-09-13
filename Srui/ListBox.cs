@@ -192,7 +192,7 @@ public partial class ListBox<T> : Widget where T : Element
         }
         if (_selectedItem is { } selected)
         {
-            var at = IndexOf(items, selected);
+            var at = IndexOf(items, selected, _selectedIndex);
             if (at >= 0)
             {
                 _selectedIndex = at;
@@ -204,8 +204,13 @@ public partial class ListBox<T> : Widget where T : Element
         return (items, _selectedItem, _selectedIndex);
     }
 
-    private static int IndexOf(IReadOnlyList<T> items, T item)
+    /// <summary>The item's place, by identity. The remembered place is
+    /// tried first: nothing moved is the common case, and it makes the
+    /// cursor's resolution constant rather than a scan.</summary>
+    private static int IndexOf(IReadOnlyList<T> items, T item, int hint = -1)
     {
+        if ((uint)hint < (uint)items.Count && ReferenceEquals(items[hint], item))
+            return hint;
         for (var i = 0; i < items.Count; i++)
             if (ReferenceEquals(items[i], item))
                 return i;
