@@ -304,6 +304,15 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
         }
     }
 
+    // ── Deferral ──
+
+    /// <summary>Run a callback at this tick's drain, after the handler
+    /// that posted it has returned - the app-level form of a widget's
+    /// Post. For a result that must never arrive inside the call that
+    /// asked for it, so no caller comes to depend on the fast
+    /// path.</summary>
+    public void Post(Action callback) => Engine.Emit(new CoreEvent.Callback(callback));
+
     // ── Tickers ──
 
     /// <summary>Start a periodic ticker; subscribe to its Tick event.
