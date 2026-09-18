@@ -6,7 +6,7 @@ namespace Srui;
 /// automatically (raising <see cref="Dismissed"/>) unless a cancel
 /// widget was set, in which case that widget's activation is in charge.
 /// Announce the opening with <see cref="AnnounceOpened"/> after focusing.
-/// The result pattern: deliver the result first, then <see cref="Close"/>
+/// The result pattern: deliver the result first, then <see cref="Close()"/>
 /// - the closing restore then speaks whatever the delivery changed, and
 /// a dialog the delivery opened defers the close until it dies (the
 /// cascade below).

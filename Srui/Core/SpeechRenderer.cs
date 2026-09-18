@@ -135,7 +135,9 @@ public sealed class ReadoutContext
 /// the fields in this renderer's order, each field through its own
 /// small rendering function. The self-voicing <see cref="SpeechReader"/>
 /// uses the shared <see cref="Default"/>; a program registers its own
-/// fields' renderings on it (<see cref="Register{T}"/>), and its own
+/// fields' renderings on it
+/// (<see cref="Register{T}(Field{T}, Func{ReadoutContext, T, string}, Field)"/>),
+/// and its own
 /// roles' words (<see cref="SetRoleName"/>). Braille and platform
 /// readers ignore all of this and read the structured payloads
 /// directly; tests assert against the rendering.</summary>
