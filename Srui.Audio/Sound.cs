@@ -32,6 +32,9 @@ public sealed unsafe class Sound : IDisposable
     private bool _loadAsync;
     private string? _loadPath;
     private float _stretchFactor;
+    // The header probe's answer for a streamed file whose stream
+    // reports no length; null until asked for.
+    private ulong? _probedLengthMs;
 
     // Media-playback state: a managed decoder feeding the sound, and
     // the per-sound effect chain.
@@ -98,6 +101,7 @@ public sealed unsafe class Sound : IDisposable
             throw new AudioException($"failed to load '{filename}'");
         _loadKind = LoadKind.Streamed;
         _loadPath = filename;
+        _probedLengthMs = null;
         FinishLoad();
     }
 
@@ -348,14 +352,21 @@ public sealed unsafe class Sound : IDisposable
         }
     }
 
-    /// <summary>Total length in milliseconds.</summary>
+    /// <summary>Total length in milliseconds. A streamed Vorbis file
+    /// reports no length of its own: the resource manager opens its
+    /// decoder over callbacks, which puts stb_vorbis in push mode, and
+    /// push mode cannot know where the stream ends. The header probe
+    /// opens the file by path, which can, so it answers instead.</summary>
     public ulong Length
     {
         get
         {
             if (!_loaded) return 0;
-            if (NativeMethods.ma_sound_get_length_in_pcm_frames(_sound, out var frames) != 0)
-                return 0;
+            ulong frames = 0;
+            if (NativeMethods.ma_sound_get_length_in_pcm_frames(_sound, out frames) != 0)
+                frames = 0;
+            if (frames == 0 && _loadKind == LoadKind.Streamed)
+                return _probedLengthMs ??= ProbeDurationMs(_loadPath!);
             var sr = FrameRate;
             return sr == 0 ? 0 : frames * 1000 / sr;
         }
