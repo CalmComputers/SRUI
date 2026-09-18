@@ -566,7 +566,7 @@ public sealed class SpeechRenderer
         '>' => "greater",
         '/' => "slash",
         '\\' => "backslash",
-        '|' => "pipe",
+        '|' => "bar",
         '@' => "at",
         '#' => "number",
         '$' => "dollar",
