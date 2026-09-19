@@ -49,6 +49,14 @@ Failure is a third case, and it is not optional. When an add fails, focus does n
 
 When a confirmation is spoken, confirm the *operation*, not the operand. The user typed the text or picked the item and knows what it was: "Added." beats "Added Water the plants." Echo the operand only when the system transformed it (trimming, normalizing, resolving a name) and focus will not show the transformed form.
 
+## 2.4 Telling before showing
+
+Some actions are told over time: a game narrates what a card did across a few seconds, line by line, from a timer. The widgets, meanwhile, must show the result now — the model has moved on, and a list left standing would offer an item that no longer exists. Left alone, the refresh's landing (the cursor on the item that took the used one's place) reads after the first line and before the rest, in the middle of the story.
+
+Do not stall the widgets to fix this. Hold the reading instead: `HoldReading` before the refresh, `ReleaseReading` when the story is told. The widgets change at once, the announcements flow as they come, and the landing is read once, when the hold ends, as the difference between what the user last heard and where they are then. The framework ends the hold on its own when the user moves — an arrow key, Tab, a shortcut, an edge hit, speak-focus — and reads where they went, so a user who does not wait is never left on an unread position; a key that reads nothing (a global command that only announces) does not end it, because that would read the landing early for no move of theirs. A dialog opening always ends it.
+
+The transcript to aim for, using a consumable on two cards with focus in the consumables list: the two card lines, then the item now under the cursor. With the user pressing Down after the first line: the first line, the item they moved to, the second line, and nothing more.
+
 # 3. Name, Role, Value, State — Use the Fields
 
 A widget's reading is assembled from typed fields: name, role, value, checked, position, the states, description, and whatever a widget declares of its own (`[Field]` properties — docs/architecture.md, section 4.2). Readers order, filter, translate, and re-verbosify fields; they cannot do anything with a fact that has been flattened into the name string.

@@ -406,6 +406,7 @@ internal sealed class CoreUi
     {
         _layerSnapshots.Add(SnapshotFor(_tree.Focus));
         _tree.PushLayer();
+        ReleaseReading();                        // a new ground is never withheld
         _dirty = true;
     }
 
@@ -427,6 +428,7 @@ internal sealed class CoreUi
             _layerSnapshots.RemoveAt(_layerSnapshots.Count - 1);
         var restored = _tree.PopLayer();
         _focusMemory.Gc(_tree);
+        ReleaseReading();                        // the restored ground reads as the restore says
         _dirty = true;
         if (!announce || restored.IsNone)
             return;
@@ -466,6 +468,7 @@ internal sealed class CoreUi
     public bool HandleInput(in InputEvent input)
     {
         _dirty = true;
+        _userTick = true;
         // Establish focus if the tree has focusable content but no focus.
         if (_tree.Focus.IsNone)
         {
@@ -624,6 +627,124 @@ internal sealed class CoreUi
             _requesters.Add(widget);
     }
 
+    // ── The held reading ──
+
+    // While the program holds the reading, the tick end delivers the
+    // tick's announcements and action events but describes nothing:
+    // the heard baseline stands, the pending cause and the per-tick
+    // requests wait, and the state the tick settled on is recorded
+    // here instead, so the next tick can tell what it changed. The
+    // hold ends when the program releases it, when a layer is pushed
+    // or popped (a new ground is never withheld), or when a tick the
+    // user caused would read something on its own — then the tick
+    // describes against the baseline as usual, and the withheld change
+    // is heard as part of that reading, once.
+    private bool _held;
+    private bool _holdFresh;                     // held during this tick: withhold it whatever it did
+    private bool _userTick;                      // an input was dispatched this tick
+    private bool _settledValid;
+    private NodeId _settledFocus = NodeId.None;
+    private FieldSet? _settledControl;
+    private Element? _settledItem;
+    private FieldSet? _settledItemFields;
+
+    /// <summary>Whether the program is holding the state reading.</summary>
+    public bool ReadingHeld => _held;
+
+    /// <summary>Hold the state reading from this tick on: the focus
+    /// arrival or cursor landing the program's changes produce is not
+    /// described until the hold ends, and is then heard as the
+    /// difference between what the user last heard and what is under
+    /// the cursor by then — once, however many changes the hold
+    /// spanned. Announcements and action events keep flowing. The tick
+    /// this is called in is withheld whatever else it did; from the
+    /// next tick on, a tick the user caused that would read something
+    /// of its own — focus or the cursor moved, a field changed, an
+    /// edge was hit, a reread was asked for — ends the hold and reads,
+    /// and a layer push or pop ends it too.</summary>
+    public void HoldReading()
+    {
+        _held = true;
+        _holdFresh = true;
+        _settledValid = false;
+        _dirty = true;
+    }
+
+    /// <summary>End a held reading: the next tick end describes against
+    /// what the user last heard. Nothing to release is not a
+    /// fault.</summary>
+    public void ReleaseReading()
+    {
+        if (!_held)
+            return;
+        _held = false;
+        _holdFresh = false;
+        _dirty = true;
+    }
+
+    /// <summary>Note that the user's own input reached this tick — a
+    /// logical input dispatched, or a physical key a widget's binding
+    /// claimed — for the held reading's release test.</summary>
+    public void NoteUserInput() => _userTick = true;
+
+    /// <summary>The held reading's tick end. True when the tick is
+    /// withheld: the caller records nothing and returns, leaving the
+    /// baseline and the pending requests as they were. False when the
+    /// hold has just ended — a tick of the user's own that would have
+    /// read something — and the caller describes as usual.</summary>
+    private bool Withhold(List<AccessibilityEvent> tick, bool userTick, NodeId focus,
+        FieldSet? control, Element? item, FieldSet? itemFields)
+    {
+        var fresh = _holdFresh;
+        _holdFresh = false;
+        if (userTick && !fresh && UserWouldHear(tick, focus, control, item, itemFields))
+        {
+            _held = false;
+            return false;
+        }
+        _settledValid = true;
+        _settledFocus = focus;
+        _settledControl = control;
+        _settledItem = item;
+        _settledItemFields = itemFields;
+        return true;
+    }
+
+    /// <summary>Whether a tick of the user's own has something to read:
+    /// focus or the cursor's item differ from the last tick's settled
+    /// state, a field of either differs, an event of the focused widget
+    /// survived the filter (an edge, a widget's own announcement), or
+    /// a reread was asked for.</summary>
+    private bool UserWouldHear(List<AccessibilityEvent> tick, NodeId focus,
+        FieldSet? control, Element? item, FieldSet? itemFields)
+    {
+        if (!_settledValid || focus != _settledFocus || !ReferenceEquals(item, _settledItem))
+            return true;
+        if (!SameFields(control, _settledControl) || !SameFields(itemFields, _settledItemFields))
+            return true;
+        if (_rereadAll)
+            return true;
+        foreach (var e in tick)
+            if (e.Source is not null)
+                return true;
+        foreach (var widget in _requesters)
+            if (widget.HasRereadRequest)
+                return true;
+        return false;
+    }
+
+    private static bool SameFields(FieldSet? a, FieldSet? b)
+    {
+        if (a is null || b is null)
+            return a is null && b is null;
+        if (a.Count != b.Count)
+            return false;
+        foreach (var (field, value) in a.Entries)
+            if (!b.TryGetBoxed(field, out var other) || !field.ValuesEqual(other, value))
+                return false;
+        return true;
+    }
+
     /// <summary>End the tick: drop the events of widgets other than the
     /// one focus settled on, describe that widget and the item under its
     /// cursor, and append what the user should now hear — a
@@ -662,6 +783,8 @@ internal sealed class CoreUi
     private void Describe(List<AccessibilityEvent> tick)
     {
         _dirty = false;
+        var userTick = _userTick;
+        _userTick = false;
         var focus = _tree.Focus;
         var owner = _tree.Get(focus)?.Owner;
         // A widget's events speak only where focus settled — on it, or
@@ -670,6 +793,13 @@ internal sealed class CoreUi
         // would be.
         if (tick.Count > 0)
             tick.RemoveAll(e => e.Source is not null && !Encloses(Credited(e.Source), owner));
+
+        var control = owner?.Describe();
+        var item = owner?.CurrentItem;
+        var itemFields = item?.Describe();
+
+        if (_held && Withhold(tick, userTick, focus, control, item, itemFields))
+            return;
 
         var cause = _pendingCause;
         var rereadAll = _rereadAll;
@@ -690,10 +820,7 @@ internal sealed class CoreUi
             return;
         }
 
-        var control = owner.Describe();
-        var item = owner.CurrentItem;
-        var itemFields = item?.Describe();
-
+        control ??= owner.Describe();
         var baseControl = _heardControl;
         var baseItemFields = ReferenceEquals(item, _heardItem) ? _heardItemFields : null;
         bool full;

@@ -353,6 +353,31 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     /// announcement.</summary>
     public void ReannounceWithContext() => Engine.RequestReread(withContextLabels: true);
 
+    /// <summary>Hold the state reading: from this tick until the hold
+    /// ends, the focus arrivals and cursor landings the program's
+    /// changes produce are not described, and are then heard as one
+    /// reading — the difference between what the user last heard and
+    /// what is under the cursor when the hold ends. Announcements keep
+    /// flowing, so a story told over time (a game narrating an action
+    /// across several ticker ticks) is heard whole before the landing
+    /// its first tick produced. The hold ends on
+    /// <see cref="ReleaseReading"/>, when a dialog opens or closes, or
+    /// on a tick the user caused that would read something of its own
+    /// — a cursor or focus move, a changed field, an edge, a speak-focus
+    /// — which then reads where the user is; a keypress that reads
+    /// nothing (an unbound key, a global command that only announces)
+    /// leaves the hold standing. The tick this is called in is withheld
+    /// whatever else it did.</summary>
+    public void HoldReading() => Engine.HoldReading();
+
+    /// <summary>End a held reading (<see cref="HoldReading"/>): the next
+    /// tick end reads the withheld change. Idempotent.</summary>
+    public void ReleaseReading() => Engine.ReleaseReading();
+
+    /// <summary>Whether a held reading (<see cref="HoldReading"/>) is
+    /// standing.</summary>
+    public bool ReadingHeld => Engine.ReadingHeld;
+
     /// <summary>Focus the first focusable widget if nothing is focused.</summary>
     public bool EnsureFocus() => Engine.EnsureFocus();
 
@@ -427,7 +452,10 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
             _heldKeys.Add(key.Key);
         }
         if (Engine.ActiveFocusOwner()?.TryHandleKey(key) == true)
+        {
+            Engine.NoteUserInput();              // a binding of the user's own, for the held reading
             return true;
+        }
         return UnhandledKey?.Invoke(key) == true;
     }
 
