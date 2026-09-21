@@ -265,7 +265,7 @@ public partial class TickModelTests
     }
 
     [Fact]
-    public void SuppressNeverTrimsAFocusArrival()
+    public void ASuppressionMadeBeforeTheLandingYieldsToIt()
     {
         using var ui = new TestApp();
         _ = new Button(ui.App, "Other");
@@ -276,6 +276,43 @@ public partial class TickModelTests
         save.Suppress();
         save.Focus();
         Assert.Equal(new[] { "Save button" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void ASuppressionMadeAfterTheLandingTrimsTheArrival()
+    {
+        using var ui = new TestApp();
+        _ = new Button(ui.App, "Other");
+        var save = new Button(ui.App, "Save");
+        ui.App.EnsureFocus();
+        ui.Drain();
+
+        // Whatever brought the user here already said the name.
+        save.Focus();
+        save.Suppress(Fields.Name);
+        Assert.Equal(new[] { "button" }, ui.Spoken());
+
+        // For that tick alone.
+        ui.App.ReannounceWithContext();
+        Assert.Equal(new[] { "Save button" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void AReannouncementIsAnArrivalToo()
+    {
+        using var ui = new TestApp();
+        var save = new Button(ui.App, "Save");
+        ui.App.EnsureFocus();
+        ui.Drain();
+
+        // Before the request yields to it; after it trims it.
+        save.Suppress();
+        ui.App.ReannounceWithContext();
+        Assert.Equal(new[] { "Save button" }, ui.Spoken());
+
+        ui.App.ReannounceWithContext();
+        save.Suppress(Fields.Name);
+        Assert.Equal(new[] { "button" }, ui.Spoken());
     }
 
     [Fact]

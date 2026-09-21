@@ -242,8 +242,12 @@ public abstract partial class Widget : Element, IWidgetContainer
     /// tick's reading (no fields means all of them). For the rare
     /// widget whose own action events are the better voice for a
     /// change — an edit box speaking the character typed rather than
-    /// the line it changed. Never affects a focus arrival, which always
-    /// reads in full. Cleared at the tick end.</summary>
+    /// the line it changed. An arrival - focus landing here, or a
+    /// re-announcement - discards what was asked before it, as it
+    /// discards the widget's action events, and reads in full; asked
+    /// after it, this trims the arrival itself, for a fact whatever
+    /// brought the user here already said (a window title that named
+    /// the folder a list is named for). Cleared at the tick end.</summary>
     public void Suppress(params Field[] fields)
     {
         if (fields.Length == 0)

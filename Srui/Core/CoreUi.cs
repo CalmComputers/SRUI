@@ -338,7 +338,15 @@ internal sealed class CoreUi
         _pendingCause = cause;
         _dirty = true;
         if (_tree.Get(id)?.Owner is Widget owner)
+        {
             owner.OnFocusGained();
+            // What the widget asked of this tick's reading before the
+            // user was in it - a cursor move's suppression, the entry
+            // reshape's - was asked of a reading that never happens:
+            // its action events yield to the landing, and so do these.
+            // A suppression made from here on is about the landing.
+            owner.ClearTickRequests();
+        }
     }
 
     /// <summary>Ask for the focused widget to be read in full at the
@@ -350,6 +358,10 @@ internal sealed class CoreUi
         _rereadAll = true;
         _contextLabels |= withContextLabels;
         _dirty = true;
+        // An arrival without a move: as at a landing, what the widget
+        // asked of the reading before this was asked of another one.
+        if (_tree.Get(_tree.Focus)?.Owner is Widget owner)
+            owner.ClearTickRequests();
     }
 
     /// <summary>The context spoken ahead of a focus arrival: the groups
@@ -438,8 +450,12 @@ internal sealed class CoreUi
             return;
         }
         // The reshape hook runs whatever the restore says.
+        // and the tick requests made under the layer go, as at any landing.
         if (_tree.Get(restored)?.Owner is Widget owner)
+        {
             owner.OnFocusGained();
+            owner.ClearTickRequests();
+        }
         _pendingCause = FocusCause.LayerRestore;
         _restoreBaseline = known;
     }
@@ -869,8 +885,12 @@ internal sealed class CoreUi
                 tick.RemoveAll(e => e is not AccessibilityEvent.Announce && ReferenceEquals(e.Source, owner));
             tick.Add(new AccessibilityEvent.FocusArrived(owner, arrival,
                 arrival == FocusCause.LayerRestore ? [] : ContextFor(focus, from, withLabels)));
+            // A field suppressed since the landing was voiced by
+            // whatever brought the user here - a switch announcement
+            // that named the folder the list is named for.
             foreach (var (field, value) in control.Entries)
-                tick.Add(new AccessibilityEvent.FieldValue(owner, field, value, FieldScope.Control));
+                if (!owner.IsSuppressed(field))
+                    tick.Add(new AccessibilityEvent.FieldValue(owner, field, value, FieldScope.Control));
             if (itemFields is not null)
                 foreach (var (field, value) in itemFields.Entries)
                     tick.Add(new AccessibilityEvent.FieldValue(owner, field, value, FieldScope.Item));

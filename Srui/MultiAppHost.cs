@@ -213,6 +213,7 @@ public sealed class MultiAppHost : IDisposable
             hosted.App.Announce(hosted.Name);
         if (announcement != SwitchAnnouncement.Silent)
             hosted.App.ReannounceWithContext();
+        hosted.LastSwitch = announcement;
         hosted.RaiseActivated();
     }
 
@@ -686,8 +687,15 @@ public sealed class HostedApp
     /// app is silent, and asynchronous urgency belongs to earcons.</summary>
     public bool AnnouncesInBackground { get; set; }
 
-    /// <summary>The app became the active one (already announced).</summary>
+    /// <summary>The app became the active one. The announcement is
+    /// queued and not yet read, so a handler may still trim it: with
+    /// <see cref="LastSwitch"/> saying the name was spoken, a widget
+    /// named for what the name already said suppresses its own.</summary>
     public event Action? Activated;
+
+    /// <summary>How much the most recent activation said - set before
+    /// <see cref="Activated"/> is raised.</summary>
+    public SwitchAnnouncement LastSwitch { get; internal set; }
 
     /// <summary>The app was backgrounded; its FocusLost has run.</summary>
     public event Action? Deactivated;
