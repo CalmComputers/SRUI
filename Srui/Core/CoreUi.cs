@@ -900,7 +900,10 @@ internal sealed class CoreUi
             // The cursor landed on another item: the landed item reads
             // in full, with its position, after the control's deltas.
             var landed = itemFields is not null && baseItemFields is null && item is not null;
-            EmitDeltas(tick, owner, control, baseControl, FieldScope.Control, landed);
+            // The item under a still cursor went, and nothing came: the
+            // place is what is left to read (a grid's cell emptied).
+            var vacated = item is null && _heardItem is not null;
+            EmitDeltas(tick, owner, control, baseControl, FieldScope.Control, landed, vacated);
             if (itemFields is not null)
             {
                 if (landed)
@@ -939,7 +942,7 @@ internal sealed class CoreUi
 
     private static void EmitDeltas(
         List<AccessibilityEvent> tick, Widget owner, FieldSet after, FieldSet? before,
-        FieldScope scope, bool landed)
+        FieldScope scope, bool landed, bool vacated = false)
     {
         foreach (var (field, value) in after.Entries)
         {
@@ -950,7 +953,9 @@ internal sealed class CoreUi
             // heard of it before), and the position it landed at, which
             // belongs with it. A reread is the later, more deliberate
             // request: it wins over a suppression in the same tick.
-            var arrival = before is null || (landed && ReferenceEquals(field, Fields.Position));
+            var arrival = before is null
+                || (landed && ReferenceEquals(field, Fields.Position))
+                || (vacated && Fields.IsPlace(field));
             if (arrival || owner.IsRereadRequested(field, scope))
             {
                 tick.Add(new AccessibilityEvent.FieldValue(owner, field, value, scope));

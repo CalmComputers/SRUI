@@ -117,6 +117,7 @@ public sealed class Role
     public static readonly Role CheckBox = new("check box");
     public static readonly Role Edit = new("edit");
     public static readonly Role List = new("list");
+    public static readonly Role Grid = new("grid");
     /// <summary>A type-to-filter list; spoken like a list, with its
     /// own empty wording ("no results").</summary>
     public static readonly Role FilterList = new("filter list");
@@ -167,6 +168,10 @@ public static class Fields
     /// <summary>The cursor's position among its siblings, when the
     /// widget counts.</summary>
     public static readonly Field<Position?> Position = new("Position");
+    /// <summary>The cell under a grid's cursor: row, column, and the
+    /// name the grid's scheme gives it, which is what speech says.
+    /// Read after the item, as a position is.</summary>
+    public static readonly Field<Cell?> Coordinate = new("Coordinate", after: Position);
     /// <summary>The type-to-filter query; empty when nothing is typed,
     /// which readers word as "no filter".</summary>
     public static readonly Field<string> Filter = new("Filter");
@@ -207,6 +212,15 @@ public static class Fields
     public static readonly Field<double> Max = new("Max");
     /// <summary>Spoken directly after the number ("%" → "50%").</summary>
     public static readonly Field<string?> Unit = new("Unit");
+
+    /// <summary>Whether a field says where the cursor is (a position, a
+    /// coordinate): reread with the item at an edge, and an arrival's
+    /// when the item is. A position is also read in full when the
+    /// cursor lands on another item; a coordinate is not, because a
+    /// grid's cursor is a cell, and an item that changes under it is
+    /// news while the place is not.</summary>
+    internal static bool IsPlace(Field field) =>
+        ReferenceEquals(field, Position) || ReferenceEquals(field, Coordinate);
 
     private sealed class SequenceComparer<T> : IEqualityComparer<IReadOnlyList<T>>
     {

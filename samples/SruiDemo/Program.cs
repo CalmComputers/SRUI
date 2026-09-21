@@ -178,6 +178,36 @@ roster.RowActivated += row =>
     app.Announce($"Row {row + 1} chosen.");
 };
 
+// The built-in grid: cells that hold an item or nothing, read as the
+// item then the coordinate ("rook a1"), or the coordinate alone on an
+// empty square. Enter on a piece picks it up; Enter on an empty
+// square puts it down there, and the reading of the cell under the
+// cursor is the confirmation.
+var board = new Grid(gridPanel, "Board", 4, 4, activateItems: true);
+board.SetCell(0, 0, "rook");
+board.SetCell(0, 1, "knight");
+board.SetCell(1, 0, "pawn");
+board.SetCell(1, 1, "pawn");
+ListItem? carried = null;
+board.Activated += () =>
+{
+    var (row, column) = (board.SelectedCell.Row, board.SelectedCell.Column);
+    if (carried is null)
+    {
+        carried = board[row, column];
+        if (carried is null)
+            return;
+        board[row, column] = null;
+        Log($"board: picked up {carried.Value} at {board.SelectedCell.Name}");
+    }
+    else if (board[row, column] is null)
+    {
+        board[row, column] = carried;
+        Log($"board: put {carried.Value} at {board.SelectedCell.Name}");
+        carried = null;
+    }
+};
+
 // ── Dialogs panel: every canned dialog plus custom layered ones ──
 
 // The die-roll host binding, rebindable through the Bind dialog.

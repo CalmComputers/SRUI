@@ -206,6 +206,8 @@ public sealed class SpeechRenderer
         Register(Fields.Min, static (_, _) => null);
         Register(Fields.Max, static (_, _) => null);
         Register(Fields.Position, static (_, v) => v is { } p ? $"{p.Index + 1} of {p.Total}" : null);
+        // The grid's own scheme named the cell; the name is the words.
+        Register(Fields.Coordinate, static (_, v) => v?.Name);
         // The mask is learned on arrival; switching it mid-session is
         // the program's prompt to explain, not the field's.
         Register(Fields.Password, static (ctx, v) => v && ctx.IsArrival ? "protected" : null);
@@ -415,7 +417,7 @@ public sealed class SpeechRenderer
                 if (implied.Count != 0 && f.Scope == FieldScope.Control && implied.Contains(field))
                     continue;
                 ctx.IsArrival = focus is not null
-                    || (item is not null && (f.Scope == FieldScope.Item || ReferenceEquals(f.Field, Fields.Position)));
+                    || (item is not null && (f.Scope == FieldScope.Item || Fields.IsPlace(f.Field)));
                 ctx.Scope = f.Scope;
                 if (roleRenderers.Count != 0 && roleRenderers.TryGetValue((widget.Role, field), out var own))
                     Append(own(ctx, f.Value));

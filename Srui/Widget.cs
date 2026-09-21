@@ -282,7 +282,7 @@ public abstract partial class Widget : Element, IWidgetContainer
         _suppressAll || _suppressed?.Contains(field) == true;
 
     internal bool IsRereadRequested(Field field, FieldScope scope) =>
-        (_rereadItem && (scope == FieldScope.Item || ReferenceEquals(field, Fields.Position)))
+        (_rereadItem && (scope == FieldScope.Item || Fields.IsPlace(field)))
         || _reread?.Contains(field) == true;
 
     internal bool HasRereadRequest => _rereadItem || _reread is { Count: > 0 };
