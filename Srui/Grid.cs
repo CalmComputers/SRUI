@@ -179,6 +179,16 @@ public partial class Grid<T> : Widget where T : Element
 
     // ── Typeahead ──
 
+    /// <summary>Forget any pending typeahead prefix - for a subclass
+    /// whose own key changed the board (a slide), so the next
+    /// keystroke starts a fresh search instead of extending a prefix
+    /// typed against the old cells within the timeout.</summary>
+    protected void ResetTypeahead()
+    {
+        _typeAheadBuffer = "";
+        _lastKeystrokeMs = null;
+    }
+
     private string TextOf(int row, int column) => CellAt(row, column)?.Get(Fields.Value) ?? "";
 
     private void HandleTypeAhead(string runeText)
