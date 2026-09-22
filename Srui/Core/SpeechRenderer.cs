@@ -206,8 +206,12 @@ public sealed class SpeechRenderer
         Register(Fields.Min, static (_, _) => null);
         Register(Fields.Max, static (_, _) => null);
         Register(Fields.Position, static (_, v) => v is { } p ? $"{p.Index + 1} of {p.Total}" : null);
-        // The grid's own scheme named the cell; the name is the words.
-        Register(Fields.Coordinate, static (_, v) => v?.Name);
+        // The grid's own scheme named the cell; the name is the words,
+        // unless the scheme's axes speak for themselves.
+        Register(Fields.Coordinate, static (ctx, v) =>
+            ctx.Get(Fields.Row) is null && ctx.Get(Fields.Column) is null ? v?.Name : null);
+        Register(Fields.Row, static (_, v) => v);
+        Register(Fields.Column, static (_, v) => v);
         // The mask is learned on arrival; switching it mid-session is
         // the program's prompt to explain, not the field's.
         Register(Fields.Password, static (ctx, v) => v && ctx.IsArrival ? "protected" : null);

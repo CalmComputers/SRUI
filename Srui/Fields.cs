@@ -172,6 +172,12 @@ public static class Fields
     /// name the grid's scheme gives it, which is what speech says.
     /// Read after the item, as a position is.</summary>
     public static readonly Field<Cell?> Coordinate = new("Coordinate", after: Position);
+    /// <summary>The row's name and the column's, under a grid scheme
+    /// whose axes speak apart, so a move reads only the axis it
+    /// changed; absent under a joint scheme, where the coordinate
+    /// speaks.</summary>
+    public static readonly Field<string?> Row = new("Row", after: Coordinate);
+    public static readonly Field<string?> Column = new("Column", after: Row);
     /// <summary>The type-to-filter query; empty when nothing is typed,
     /// which readers word as "no filter".</summary>
     public static readonly Field<string> Filter = new("Filter");
@@ -220,7 +226,8 @@ public static class Fields
     /// grid's cursor is a cell, and an item that changes under it is
     /// news while the place is not.</summary>
     internal static bool IsPlace(Field field) =>
-        ReferenceEquals(field, Position) || ReferenceEquals(field, Coordinate);
+        ReferenceEquals(field, Position) || ReferenceEquals(field, Coordinate)
+        || ReferenceEquals(field, Row) || ReferenceEquals(field, Column);
 
     private sealed class SequenceComparer<T> : IEqualityComparer<IReadOnlyList<T>>
     {

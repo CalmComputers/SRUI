@@ -6,6 +6,67 @@ namespace Srui;
 /// have the numbers.</summary>
 public readonly record struct Cell(int Row, int Column, string Name);
 
+/// <summary>How a grid names its cells. A joint scheme names a cell in
+/// one breath (<see cref="Alphanumeric"/> "b3", <see cref="Numeric"/>
+/// "3 2"); a scheme whose axes speak apart (<see cref="Tabular"/> "row 3
+/// column 2") gives the grid a row field and a column field as well, so
+/// a move reads only the axis it changed, and an arrival reads both.
+/// Rows and columns are zero-based from the top left.</summary>
+public sealed class CoordinateScheme
+{
+    private readonly Func<int, int, string> _name;
+    private readonly Func<int, string>? _row;
+    private readonly Func<int, string>? _column;
+
+    private CoordinateScheme(Func<int, int, string> name, Func<int, string>? row, Func<int, string>? column)
+    {
+        _name = name;
+        _row = row;
+        _column = column;
+    }
+
+    /// <summary>A scheme that names a cell in one breath.</summary>
+    public static CoordinateScheme Joint(Func<int, int, string> name) => new(name, null, null);
+
+    /// <summary>A scheme whose axes speak apart: the cell's name is the
+    /// row's then the column's, and a move reads only the one it
+    /// changed.</summary>
+    public static CoordinateScheme Apart(Func<int, string> row, Func<int, string> column) =>
+        new((r, c) => $"{row(r)} {column(c)}", row, column);
+
+    /// <summary>Column letter then row number: "a1", "b3"; columns past
+    /// z go on "aa", "ab".</summary>
+    public static readonly CoordinateScheme Alphanumeric =
+        Joint(static (row, column) => $"{ColumnLetters(column)}{row + 1}");
+
+    /// <summary>Row then column, as numbers: "3 2".</summary>
+    public static readonly CoordinateScheme Numeric =
+        Joint(static (row, column) => $"{row + 1} {column + 1}");
+
+    /// <summary>"row 3 column 2", the axes apart: a spreadsheet's way,
+    /// where a vertical move says the row and a horizontal one the
+    /// column.</summary>
+    public static readonly CoordinateScheme Tabular =
+        Apart(static row => $"row {row + 1}", static column => $"column {column + 1}");
+
+    /// <summary>The cell's name.</summary>
+    public string Name(int row, int column) => _name(row, column);
+
+    internal bool SpeaksApart => _row is not null;
+
+    internal string RowName(int row) => _row!(row);
+
+    internal string ColumnName(int column) => _column!(column);
+
+    private static string ColumnLetters(int column)
+    {
+        var letters = "";
+        for (var n = column; n >= 0; n = n / 26 - 1)
+            letters = (char)('a' + n % 26) + letters;
+        return letters;
+    }
+}
+
 /// <summary>A two-dimensional list: rows and columns of cells, each
 /// holding an item or nothing, under one cursor. Arrows move it with
 /// boundary announcements at the four edges, Home/End go to the row's
@@ -15,9 +76,10 @@ public readonly record struct Cell(int Row, int Column, string Name);
 /// it and the tick end reads the new occupant; landing on an empty cell
 /// reads the coordinate alone, and on an item the item's fields then
 /// the coordinate ("7 b3"). The coordinate's words are the grid's
-/// <see cref="Coordinates"/> scheme: <see cref="Alphanumeric"/> (the
-/// default: column letter, row number, "b3") or <see cref="Numeric"/>
-/// ("row 3 column 2"), or the program's own function.
+/// <see cref="Coordinates"/> scheme (<see cref="CoordinateScheme"/>):
+/// alphanumeric "b3" by default, numeric "3 2", tabular "row 3
+/// column 2" whose axes speak apart so a move reads only the one it
+/// changed, or the program's own.
 /// By default Enter is not claimed and reaches the layer's primary;
 /// <c>activateItems: true</c> claims it and raises
 /// <see cref="Widget.Activated"/> for the cell under the cursor.
@@ -31,7 +93,7 @@ public partial class Grid<T> : Widget where T : Element
 
     private readonly T?[] _cells;
     private Func<int, int, T?>? _source;
-    private Func<int, int, string> _coordinates = Alphanumeric;
+    private CoordinateScheme _coordinates = CoordinateScheme.Alphanumeric;
     private readonly bool _activateItems;
     private int _row;
     private int _column;
@@ -62,9 +124,9 @@ public partial class Grid<T> : Widget where T : Element
 
     // ── Coordinates ──
 
-    /// <summary>How a cell is named: given the row and column, the
-    /// spoken coordinate. <see cref="Alphanumeric"/> unless set.</summary>
-    public Func<int, int, string> Coordinates
+    /// <summary>How a cell is named. <see cref="CoordinateScheme.Alphanumeric"/>
+    /// unless set.</summary>
+    public CoordinateScheme Coordinates
     {
         get => _coordinates;
         set
@@ -74,27 +136,18 @@ public partial class Grid<T> : Widget where T : Element
         }
     }
 
-    /// <summary>Column letter then row number, both from the top left:
-    /// "a1", "b3"; columns past z go on "aa", "ab".</summary>
-    public static string Alphanumeric(int row, int column) =>
-        $"{ColumnLetters(column)}{row + 1}";
-
-    /// <summary>"row 3 column 2", from the top left.</summary>
-    public static string Numeric(int row, int column) =>
-        $"row {row + 1} column {column + 1}";
-
-    private static string ColumnLetters(int column)
-    {
-        var letters = "";
-        for (var n = column; n >= 0; n = n / 26 - 1)
-            letters = (char)('a' + n % 26) + letters;
-        return letters;
-    }
-
     // ── Fields ──
 
-    /// <summary>The cell under the cursor.</summary>
-    [Field] public Cell? Coordinate => new Cell(_row, _column, _coordinates(_row, _column));
+    /// <summary>The cell under the cursor, named by the scheme.</summary>
+    [Field] public Cell? Coordinate => new Cell(_row, _column, _coordinates.Name(_row, _column));
+
+    /// <summary>The row's own name, under a scheme whose axes speak
+    /// apart (<see cref="CoordinateScheme.Tabular"/>): then a move
+    /// reads only the axis it changed. Absent under a joint scheme.</summary>
+    [Field] public string? Row => _coordinates.SpeaksApart ? _coordinates.RowName(_row) : null;
+
+    /// <summary>The column's own name; see <see cref="Row"/>.</summary>
+    [Field] public string? Column => _coordinates.SpeaksApart ? _coordinates.ColumnName(_column) : null;
 
     protected internal override Element? CurrentItem => CellAt(_row, _column);
 

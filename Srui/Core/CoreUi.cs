@@ -901,8 +901,10 @@ internal sealed class CoreUi
             // in full, with its position, after the control's deltas.
             var landed = itemFields is not null && baseItemFields is null && item is not null;
             // The item under a still cursor went, and nothing came: the
-            // place is what is left to read (a grid's cell emptied).
-            var vacated = item is null && _heardItem is not null;
+            // place is what is left to read (a grid's cell emptied). A
+            // cursor that moved to an empty cell reads its place as a
+            // delta, changed axes only.
+            var vacated = item is null && _heardItem is not null && !PlaceChanged(control, baseControl);
             EmitDeltas(tick, owner, control, baseControl, FieldScope.Control, landed, vacated);
             if (itemFields is not null)
             {
@@ -936,6 +938,19 @@ internal sealed class CoreUi
     {
         for (var widget = focus; widget is not null; widget = widget.Parent)
             if (ReferenceEquals(widget, source))
+                return true;
+        return false;
+    }
+
+    /// <summary>Whether any field saying where the cursor is differs
+    /// from what was heard.</summary>
+    private static bool PlaceChanged(FieldSet after, FieldSet? before)
+    {
+        if (before is null)
+            return true;
+        foreach (var (field, value) in after.Entries)
+            if (Fields.IsPlace(field)
+                && (!before.TryGetBoxed(field, out var old) || !field.ValuesEqual(old, value)))
                 return true;
         return false;
     }

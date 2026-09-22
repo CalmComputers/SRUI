@@ -146,15 +146,42 @@ public class GridTests
     [Fact]
     public void CoordinateSchemes()
     {
-        Assert.Equal("a1", Grid.Alphanumeric(0, 0));
-        Assert.Equal("z1", Grid.Alphanumeric(0, 25));
-        Assert.Equal("aa1", Grid.Alphanumeric(0, 26));
-        Assert.Equal("ab10", Grid.Alphanumeric(9, 27));
-        Assert.Equal("row 3 column 2", Grid.Numeric(2, 1));
+        Assert.Equal("a1", CoordinateScheme.Alphanumeric.Name(0, 0));
+        Assert.Equal("z1", CoordinateScheme.Alphanumeric.Name(0, 25));
+        Assert.Equal("aa1", CoordinateScheme.Alphanumeric.Name(0, 26));
+        Assert.Equal("ab10", CoordinateScheme.Alphanumeric.Name(9, 27));
+        Assert.Equal("3 2", CoordinateScheme.Numeric.Name(2, 1));
+        Assert.Equal("row 3 column 2", CoordinateScheme.Tabular.Name(2, 1));
 
         var ui = new TestApp();
-        var grid = new Grid(ui.App, null, 2, 2) { Coordinates = Grid.Numeric };
+        var grid = new Grid(ui.App, null, 2, 2) { Coordinates = CoordinateScheme.Numeric };
         grid.Focus();
-        Assert.Equal(new[] { "grid row 1 column 1" }, ui.Spoken());
+        Assert.Equal(new[] { "grid 1 1" }, ui.Spoken());
+        ui.Input(InputKind.MoveRight);
+        Assert.Equal(new[] { "1 2" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void ATabularGridReadsOnlyTheAxisAMoveChanged()
+    {
+        var (ui, grid) = FocusedGrid();
+        grid.Coordinates = CoordinateScheme.Tabular;
+        Assert.Equal(new[] { "row 1 column 1" }, ui.Spoken());
+        ui.Input(InputKind.MoveDown);
+        Assert.Equal(new[] { "d row 2" }, ui.Spoken());
+        ui.Input(InputKind.MoveRight);
+        Assert.Equal(new[] { "column 2" }, ui.Spoken());        // the empty cell
+        ui.Input(InputKind.MoveRight);
+        Assert.Equal(new[] { "f column 3" }, ui.Spoken());
+        ui.Input(InputKind.MoveRight);
+        Assert.Equal(new[] { "right, f row 2 column 3" }, ui.Spoken());
+        Assert.Equal("row 2 column 3", grid.SelectedCell.Name);
+
+        // An arrival reads both.
+        var other = new Button(ui.App, "Other");
+        other.Focus();
+        ui.Drain();
+        grid.Focus();
+        Assert.Equal(new[] { "Board grid f row 2 column 3" }, ui.Spoken());
     }
 }
