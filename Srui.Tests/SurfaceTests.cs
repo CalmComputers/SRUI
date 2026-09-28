@@ -1198,6 +1198,30 @@ public class DialogTests
         Assert.Equal(1, begun);
     }
 
+    /// <summary>A result that hides the ground's focus without
+    /// re-homing it - deleting the last save from a confirm asked on
+    /// the saves list - lands the restore on the nearest reachable
+    /// widget and reads it, rather than on the hidden one.</summary>
+    [Fact]
+    public void AResultThatHidesTheGroundFocusRecoversOnClose()
+    {
+        var ui = new TestApp();
+        var saves = new ListBox(ui.App, "Saves", new[] { "Run 1" });
+        var deck = new ListBox(ui.App, "Deck", new[] { "Red" });
+        saves.Focus();
+        ui.Drain();
+
+        ui.App.Confirm("Delete this save?", () => saves.Hidden = true);
+        ui.Drain();
+
+        ui.Input(InputKind.Activate);            // Yes
+        Assert.False(ui.App.HasOpenDialog);
+        Assert.True(deck.IsFocused);
+        var spoken = ui.Spoken();
+        Assert.Single(spoken);
+        Assert.StartsWith("Deck list", spoken[0]);
+    }
+
     /// <summary>A ground root removed from under a dialog leaves the
     /// ground's root list: navigation after the close walks the
     /// survivors, never a dangling root.</summary>

@@ -444,6 +444,17 @@ internal sealed class CoreUi
         _dirty = true;
         if (!announce || restored.IsNone)
             return;
+        // The ground's focus may have been hidden while the layer stood
+        // over it (a confirm's result emptying the list it was asked
+        // from); hiding only recovers the active layer's focus, so the
+        // restore recovers here, as SetHidden would have.
+        if (!Reachable(restored))
+        {
+            var next = Nav.RecoverFocus(_tree, _tree.Parent(restored));
+            if (next.IsNone)
+                return;
+            restored = next;
+        }
         if (snapshot is not { } known || known.Focus != restored)
         {
             LandFocus(restored, FocusCause.Recovery);
