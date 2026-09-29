@@ -193,8 +193,15 @@ public sealed class SpeechRenderer
         // Null only ever arrives as a delta: the selection went.
         Register(Fields.SelectedText, static (_, v) => v is null ? "Selection removed" : $"selected {v}");
         Register(Fields.Expanded, static (ctx, v) =>
-            ctx.Get(Fields.ChildCount) > 0 ? (v ? "expanded" : "collapsed") : null);
-        Register(Fields.ChildCount, static (_, v) => v > 0 ? $"{v} items" : null);
+            ctx.Get(Fields.ChildCount) > 0 && ctx.Get(Fields.ExpansionHidden) != true
+                ? (v ? "expanded" : "collapsed")
+                : null);
+        Register(Fields.ChildCount, static (_, v) => v switch
+        {
+            <= 0 => null,
+            1 => "1 item",
+            _ => $"{v} items",
+        });
         Register(Fields.Checked, static (ctx, v) => v switch
         {
             true => "checked",

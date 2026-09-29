@@ -97,6 +97,13 @@ public sealed class TreeNode : TreeNode<TreeNode>
 /// expansion as deliberate. Single letters cycle like a list's;
 /// multi-letter prefixes search from the cursor out.
 ///
+/// A tree made with <c>showsExpansion: false</c> carries
+/// <see cref="Fields.ExpansionHidden"/>, and readers say a branch's
+/// count without "expanded" or "collapsed": for a tree walked by
+/// stepping in and out, where whether a branch is open is never news.
+/// Left there goes to the parent at once, as closing a branch would be
+/// heard as nothing.
+///
 /// Enter is not claimed by default (the dialog convention — it falls
 /// through to the layer's primary); <c>activateItems: true</c> claims
 /// it and raises <see cref="Widget.Activated"/> for the selected
@@ -119,6 +126,7 @@ public partial class TreeView<T> : Widget where T : TreeNode<T>
     private Func<IReadOnlyList<T>>? _source;
     private T? _cursor;
     private readonly bool _numbered;
+    private readonly bool _showsExpansion;
     private readonly bool _activateItems;
     private readonly bool _multiSelect;
     private string _typeAheadBuffer = "";
@@ -135,9 +143,11 @@ public partial class TreeView<T> : Widget where T : TreeNode<T>
 
     public TreeView(
         IWidgetContainer parent, string name, IReadOnlyList<T> roots,
-        bool numbered = false, bool activateItems = false, bool multiSelect = false)
+        bool numbered = false, bool activateItems = false, bool multiSelect = false,
+        bool showsExpansion = true)
         : base(parent, name, Role.Tree)
     {
+        _showsExpansion = showsExpansion;
         _roots = new List<T>(roots);
         StampParents(_roots, null);
         _cursor = _roots.Count > 0 ? _roots[0] : null;
@@ -150,6 +160,10 @@ public partial class TreeView<T> : Widget where T : TreeNode<T>
 
     /// <summary>Whether leaves are checked independently of the cursor.</summary>
     [Field] public bool MultiSelect => _multiSelect;
+
+    /// <summary>True where the tree was made not to show its branches'
+    /// expansion; absent otherwise.</summary>
+    [Field] public bool? ExpansionHidden => _showsExpansion ? null : true;
 
     /// <summary>How many roots the tree has.</summary>
     [Field] public int Count => Roots.Count;
@@ -613,7 +627,9 @@ public partial class TreeView<T> : Widget where T : TreeNode<T>
                 }
                 return true;
             case InputKind.MoveLeft:
-                if (cursor is { IsBranch: true, Expanded: true })
+                // Where expansion is hidden, closing a branch would be
+                // heard as nothing: Left goes out at once.
+                if (_showsExpansion && cursor is { IsBranch: true, Expanded: true })
                 {
                     cursor.Expanded = false;
                     Engine.Touch();
@@ -658,8 +674,9 @@ public class TreeView : TreeView<TreeNode>
 {
     public TreeView(
         IWidgetContainer parent, string name, IReadOnlyList<TreeNode> roots,
-        bool numbered = false, bool activateItems = false, bool multiSelect = false)
-        : base(parent, name, roots, numbered, activateItems, multiSelect)
+        bool numbered = false, bool activateItems = false, bool multiSelect = false,
+        bool showsExpansion = true)
+        : base(parent, name, roots, numbered, activateItems, multiSelect, showsExpansion)
     {
     }
 }

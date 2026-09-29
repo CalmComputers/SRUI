@@ -200,6 +200,12 @@ public static class Fields
     /// <see cref="ChildCount"/> is zero.</summary>
     public static readonly Field<bool> Expanded = new("Expanded");
     public static readonly Field<int> ChildCount = new("ChildCount");
+    /// <summary>A tree whose branches' expansion is not the user's
+    /// concern, carried by the tree: true where it is hidden, absent
+    /// otherwise. Readers then say a branch's count and not whether it
+    /// is open — in a tree walked by stepping in and out, where Right
+    /// always opens and enters, open or shut is never news.</summary>
+    public static readonly Field<bool?> ExpansionHidden = new("ExpansionHidden");
     /// <summary>Depth in a tree, roots at zero.</summary>
     public static readonly Field<int> Level = new("Level");
 

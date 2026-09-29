@@ -107,6 +107,45 @@ public class TreeViewTests
     }
 
     [Fact]
+    public void ABranchOfOneSaysOneItem()
+    {
+        var ui = new TestApp();
+        var tree = new TreeView(ui.App, "Content", [new TreeNode("Mystic", new TreeNode("mult"))]);
+        tree.Focus();
+        Assert.Equal(new[] { "Content tree view Mystic collapsed 1 item" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void ATreeThatHidesExpansionSaysOnlyTheCount()
+    {
+        var ui = new TestApp();
+        var vanilla = new TreeNode("Vanilla", new TreeNode("Joker"), new TreeNode("Blueprint"));
+        var tree = new TreeView(ui.App, "Content", [vanilla, new TreeNode("Hand size")], showsExpansion: false);
+        tree.Focus();
+        Assert.Equal(new[] { "Content tree view Vanilla 2 items" }, ui.Spoken());
+        Assert.Equal(true, tree.ExpansionHidden);
+
+        // Right still opens and enters; Left comes straight back out,
+        // without first closing a branch in silence.
+        ui.Input(InputKind.MoveRight);
+        Assert.Equal(new[] { "Joker" }, ui.Spoken());
+        ui.Input(InputKind.MoveLeft);
+        Assert.Same(vanilla, tree.SelectedNode);
+        Assert.Equal(new[] { "Vanilla 2 items" }, ui.Spoken());
+        ui.Input(InputKind.MoveLeft);
+        Assert.Equal(new[] { "left, Vanilla 2 items" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void ATreeShowsItsExpansionUnlessToldNot()
+    {
+        var (ui, tree, _, _, _) = Build();
+        Assert.Null(tree.ExpansionHidden);
+        ui.Input(InputKind.MoveDown);
+        Assert.Equal(new[] { "Extra Credit collapsed 2 items" }, ui.Spoken());
+    }
+
+    [Fact]
     public void HomeAndEndJumpWithinTheSiblings()
     {
         var (ui, tree, vanilla, _, leaf) = Build();
