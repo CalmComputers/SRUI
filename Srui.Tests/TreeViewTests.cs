@@ -35,7 +35,7 @@ public class TreeViewTests
 
         ui.Input(InputKind.MoveDown);
         Assert.Same(extra, tree.SelectedNode);
-        Assert.Equal(new[] { "Extra Credit collapsed 2 items" }, ui.Spoken());
+        Assert.Equal(new[] { "Extra Credit collapsed (2)" }, ui.Spoken());
 
         ui.Input(InputKind.MoveDown);
         Assert.Same(leaf, tree.SelectedNode);
@@ -44,7 +44,7 @@ public class TreeViewTests
         // Past the last root: wrap to the first, no boundary words —
         // the landed line is the whole report, like any other move.
         ui.Input(InputKind.MoveDown);
-        Assert.Equal(new[] { "Vanilla collapsed 2 items" }, ui.Spoken());
+        Assert.Equal(new[] { "Vanilla collapsed (2)" }, ui.Spoken());
     }
 
     [Fact]
@@ -92,7 +92,7 @@ public class TreeViewTests
         // On a leaf, left is the recovery move: up to the parent.
         ui.Input(InputKind.MoveLeft);
         Assert.Same(vanilla, tree.SelectedNode);
-        Assert.Equal(new[] { "Vanilla expanded 2 items" }, ui.Spoken());
+        Assert.Equal(new[] { "Vanilla expanded (2)" }, ui.Spoken());
 
         // On an open branch, left closes it first — the node stays,
         // its state is what changed...
@@ -103,7 +103,7 @@ public class TreeViewTests
         // ...and at root level with nothing to close, it stays put.
         ui.Input(InputKind.MoveLeft);
         Assert.Same(vanilla, tree.SelectedNode);
-        Assert.Equal(new[] { "left, Vanilla collapsed 2 items" }, ui.Spoken());
+        Assert.Equal(new[] { "left, Vanilla collapsed (2)" }, ui.Spoken());
     }
 
     [Fact]
@@ -112,7 +112,7 @@ public class TreeViewTests
         var ui = new TestApp();
         var tree = new TreeView(ui.App, "Content", [new TreeNode("Mystic", new TreeNode("mult"))]);
         tree.Focus();
-        Assert.Equal(new[] { "Content tree view Mystic collapsed 1 item" }, ui.Spoken());
+        Assert.Equal(new[] { "Content tree view Mystic collapsed (1)" }, ui.Spoken());
     }
 
     [Fact]
@@ -122,7 +122,7 @@ public class TreeViewTests
         var vanilla = new TreeNode("Vanilla", new TreeNode("Joker"), new TreeNode("Blueprint"));
         var tree = new TreeView(ui.App, "Content", [vanilla, new TreeNode("Hand size")], showsExpansion: false);
         tree.Focus();
-        Assert.Equal(new[] { "Content tree view Vanilla 2 items" }, ui.Spoken());
+        Assert.Equal(new[] { "Content tree view Vanilla (2)" }, ui.Spoken());
         Assert.Equal(true, tree.ExpansionHidden);
 
         // Right still opens and enters; Left comes straight back out,
@@ -131,9 +131,9 @@ public class TreeViewTests
         Assert.Equal(new[] { "Joker" }, ui.Spoken());
         ui.Input(InputKind.MoveLeft);
         Assert.Same(vanilla, tree.SelectedNode);
-        Assert.Equal(new[] { "Vanilla 2 items" }, ui.Spoken());
+        Assert.Equal(new[] { "Vanilla (2)" }, ui.Spoken());
         ui.Input(InputKind.MoveLeft);
-        Assert.Equal(new[] { "left, Vanilla 2 items" }, ui.Spoken());
+        Assert.Equal(new[] { "left, Vanilla (2)" }, ui.Spoken());
     }
 
     [Fact]
@@ -142,7 +142,7 @@ public class TreeViewTests
         var (ui, tree, _, _, _) = Build();
         Assert.Null(tree.ExpansionHidden);
         ui.Input(InputKind.MoveDown);
-        Assert.Equal(new[] { "Extra Credit collapsed 2 items" }, ui.Spoken());
+        Assert.Equal(new[] { "Extra Credit collapsed (2)" }, ui.Spoken());
     }
 
     [Fact]
@@ -161,6 +161,14 @@ public class TreeViewTests
         var (ui, _, _, _, _) = Build(numbered: true);
         ui.Input(InputKind.MoveRight);                       // open Vanilla, land on Joker
         Assert.Equal(new[] { "Joker 1 of 2" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void ABranchCountClosesItsLineAfterThePosition()
+    {
+        var (ui, _, _, _, _) = Build(numbered: true);
+        ui.Input(InputKind.MoveDown);
+        Assert.Equal(new[] { "Extra Credit collapsed 2 of 3 (2)" }, ui.Spoken());
     }
 
     [Fact]

@@ -196,12 +196,6 @@ public sealed class SpeechRenderer
             ctx.Get(Fields.ChildCount) > 0 && ctx.Get(Fields.ExpansionHidden) != true
                 ? (v ? "expanded" : "collapsed")
                 : null);
-        Register(Fields.ChildCount, static (_, v) => v switch
-        {
-            <= 0 => null,
-            1 => "1 item",
-            _ => $"{v} items",
-        });
         Register(Fields.Checked, static (ctx, v) => v switch
         {
             true => "checked",
@@ -213,6 +207,9 @@ public sealed class SpeechRenderer
         Register(Fields.Min, static (_, _) => null);
         Register(Fields.Max, static (_, _) => null);
         Register(Fields.Position, static (_, v) => v is { } p ? $"{p.Index + 1} of {p.Total}" : null);
+        // A branch's count closes its line, in brackets: "Vanilla
+        // expanded 2 of 5 (2)". A leaf says nothing.
+        Register(Fields.ChildCount, static (_, v) => v > 0 ? $"({v})" : null);
         // The grid's own scheme named the cell; the name is the words,
         // unless the scheme's axes speak for themselves.
         Register(Fields.Coordinate, static (ctx, v) =>
