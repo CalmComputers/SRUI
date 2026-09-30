@@ -56,6 +56,13 @@ public partial class TreeNode<T> : Element where T : TreeNode<T>
     /// display-only or activation-only.</summary>
     public bool? Checkable { get; set; }
 
+    /// <summary>Whether typeahead passes over the node: arrows still
+    /// reach it and its line is read as any other, but no typed
+    /// letters land on it. For a node that stands for another — a
+    /// link carrying the line of a node elsewhere in the tree — where
+    /// a landing would be on the wrong bearer of the name.</summary>
+    public bool SkipsTypeahead { get; set; }
+
     /// <summary>The owning node, stamped by the widget — null at root
     /// level.</summary>
     public T? Parent { get; internal set; }
@@ -95,7 +102,8 @@ public sealed class TreeNode : TreeNode<TreeNode>
 /// not need — a match typed past was not the goal, so neither was
 /// opening its parents — while arrows, Enter, or a check accept the
 /// expansion as deliberate. Single letters cycle like a list's;
-/// multi-letter prefixes search from the cursor out.
+/// multi-letter prefixes search from the cursor out. A node marked
+/// <see cref="TreeNode{T}.SkipsTypeahead"/> is never a match.
 ///
 /// A tree made with <c>showsExpansion: false</c> carries
 /// <see cref="Fields.ExpansionHidden"/>, and readers say a branch's
@@ -547,7 +555,7 @@ public partial class TreeView<T> : Widget where T : TreeNode<T>
         var candidates = cycling ? RotationCandidates() : TypeaheadCandidates(includeCursor: !singleChar);
         foreach (var node in candidates)
         {
-            if (!AsciiMatch.StartsWithLower(TextOf(node), needle))
+            if (node.SkipsTypeahead || !AsciiMatch.StartsWithLower(TextOf(node), needle))
                 continue;
             if (ReferenceEquals(node, _cursor))
             {

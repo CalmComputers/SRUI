@@ -186,6 +186,32 @@ public class TreeViewTests
     }
 
     [Fact]
+    public void TypeaheadPassesOverANodeThatSkipsIt()
+    {
+        var (ui, tree, vanilla, extra, _) = Build();
+        vanilla.Expanded = true;
+        extra.Expanded = true;
+        // Extra Credit's Joker stands for Vanilla's: from Turtle, beside
+        // it, 'j' goes to the real one, and repeats never rotate onto
+        // the stand-in.
+        extra.Children[1].SkipsTypeahead = true;
+        tree.SelectNode(extra.Children[0]);                  // Turtle
+
+        ui.Type('j');
+        Assert.Same(vanilla.Children[0], tree.SelectedNode);
+        Assert.Equal(new[] { "Joker" }, ui.Spoken());
+        ui.Type('j');
+        Assert.Same(vanilla.Children[0], tree.SelectedNode);
+
+        // Arrows still reach it.
+        tree.SelectNode(extra.Children[0]);
+        ui.Drain();
+        ui.Input(InputKind.MoveDown);
+        Assert.Same(extra.Children[1], tree.SelectedNode);
+        Assert.Equal(new[] { "Joker" }, ui.Spoken());
+    }
+
+    [Fact]
     public void TypeaheadPrefersSiblingsOverANeighborsDeepContent()
     {
         var ui = new TestApp();
