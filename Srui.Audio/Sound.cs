@@ -131,6 +131,26 @@ public sealed unsafe class Sound : IDisposable
     public static ulong ProbeDurationMs(string path) =>
         NativeMethods.cosmos_probe_duration_ms(path);
 
+    /// <summary>Decodes a file whole into memory at its own rate, for a
+    /// program that works on the samples rather than playing them (a
+    /// sampler loading a recording). No device and no engine: WAV, FLAC,
+    /// MP3, Vorbis, and Opus, as the decoded loader reads them. Throws
+    /// AudioException when the file cannot be decoded.</summary>
+    public static DecodedAudio Decode(string path)
+    {
+        var native = NativeMethods.cosmos_decode_file(
+            path, 0, out var channels, out var rate, out var frames);
+        if (native == null || channels == 0 || frames == 0 || rate == 0)
+        {
+            if (native != null) NativeMethods.cosmos_free(native);
+            throw new AudioException($"failed to decode '{path}'");
+        }
+        var samples = new float[checked((int)(frames * channels))];
+        new ReadOnlySpan<float>(native, samples.Length).CopyTo(samples);
+        NativeMethods.cosmos_free(native);
+        return new DecodedAudio(samples, (int)channels, (int)rate);
+    }
+
     /// <summary>Load and time-stretch by `factor` with pitch preserved
     /// (0.5..3.0 reasonable; &gt;1 = longer/slower). The stretched PCM is
     /// held in native memory for the life of the sound.</summary>
