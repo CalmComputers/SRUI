@@ -374,6 +374,13 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     /// tick end reads the withheld change. Idempotent.</summary>
     public void ReleaseReading() => Engine.ReleaseReading();
 
+    /// <summary>Leave this tick's reading unsaid: what focus settles on
+    /// counts as heard, and only the tick's announcements are delivered —
+    /// for a change an announcement already told whole. Unlike
+    /// <see cref="Widget.Suppress"/>, it keeps out an arrival and an item
+    /// the cursor landed on too. For this tick alone.</summary>
+    public void Quiet() => Engine.Quiet();
+
     /// <summary>Whether a held reading (<see cref="HoldReading"/>) is
     /// standing.</summary>
     public bool ReadingHeld => Engine.ReadingHeld;

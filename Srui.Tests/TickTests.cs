@@ -265,6 +265,26 @@ public partial class TickModelTests
     }
 
     [Fact]
+    public void AQuietTickSaysItsAnnouncementsAloneAndCountsTheLandingAsHeard()
+    {
+        using var ui = new TestApp();
+        var other = new Button(ui.App, "Other");
+        var save = new Button(ui.App, "Save");
+        other.Focus();
+        ui.Drain();
+
+        // A landing, which no Suppress keeps out, and the announcement that told it.
+        save.Focus();
+        ui.App.Quiet();
+        ui.App.Announce("Saving now.");
+        Assert.Equal(new[] { "Saving now." }, ui.Spoken());
+
+        // The next tick reads from the landing, as though it had been heard.
+        save.Name = "Stash";
+        Assert.Equal(new[] { "Stash" }, ui.Spoken());
+    }
+
+    [Fact]
     public void ASuppressionMadeBeforeTheLandingYieldsToIt()
     {
         using var ui = new TestApp();

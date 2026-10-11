@@ -697,6 +697,20 @@ internal sealed class CoreUi
         _dirty = true;
     }
 
+    private bool _quiet;
+
+    /// <summary>Leave this tick's reading unsaid: the tick end takes what
+    /// focus settled on as heard, as if it had been read, and delivers
+    /// the tick's announcements alone. For a change an announcement
+    /// already told whole, where the reading would only repeat it in
+    /// other words (a document replaced by the next in a folder, named as
+    /// the key was pressed). Cleared at the tick end.</summary>
+    public void Quiet()
+    {
+        _quiet = true;
+        _dirty = true;
+    }
+
     /// <summary>End a held reading: the next tick end describes against
     /// what the user last heard. Nothing to release is not a
     /// fault.</summary>
@@ -825,6 +839,8 @@ internal sealed class CoreUi
         var item = owner?.CurrentItem;
         var itemFields = item?.Describe();
 
+        var quiet = _quiet;
+        _quiet = false;
         if (_held && Withhold(tick, userTick, focus, control, item, itemFields))
             return;
 
@@ -884,6 +900,12 @@ internal sealed class CoreUi
         else
         {
             full = false;
+        }
+
+        if (quiet)
+        {
+            speak = false;
+            tick.RemoveAll(e => e is not AccessibilityEvent.Announce);
         }
 
         if (speak && full)
