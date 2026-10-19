@@ -268,6 +268,7 @@ public partial class TreeView<T> : Widget where T : TreeNode<T>
         if (!InTree(Roots, node))
             throw new ArgumentException("the node is not in this tree", nameof(node));
         _typeaheadOpened.Clear();
+        ForgetTyped();
         Reveal(node);
         _cursor = node;
         Engine.Touch();
@@ -532,6 +533,16 @@ public partial class TreeView<T> : Widget where T : TreeNode<T>
             }
     }
 
+    /// <summary>Forget the letters typed so far: a move by any other
+    /// means starts the next letter afresh from where it landed, so
+    /// entering a branch lets typeahead search it at once, not carry
+    /// on a prefix or a cycle begun elsewhere (Rory, 19 October 2026).</summary>
+    private void ForgetTyped()
+    {
+        _typeAheadBuffer = "";
+        _lastKeystrokeMs = null;
+    }
+
     private void HandleTypeAhead(string runeText)
     {
         var runeLower = AsciiMatch.LowerString(runeText);
@@ -592,7 +603,10 @@ public partial class TreeView<T> : Widget where T : TreeNode<T>
         // user meant to be. (The multi-select Space confirm rides the
         // TypeChar kind; ToggleSelected clears for it.)
         if (input.Kind is not InputKind.TypeChar)
+        {
             _typeaheadOpened.Clear();
+            ForgetTyped();
+        }
         if (Cursor is not { } cursor)
         {
             switch (input.Kind)

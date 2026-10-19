@@ -206,6 +206,35 @@ public class TreeViewTests
     }
 
     [Fact]
+    public void AnArrowForgetsWhatWasTyped()
+    {
+        var (ui, tree, vanilla, extra, _) = Build();
+        // 'e' lands on Extra Credit; Right enters it at Turtle, and 'j'
+        // at once is a first press there, finding its own Joker, not
+        // searching for "ej".
+        ui.Type('e');
+        Assert.Same(extra, tree.SelectedNode);
+        ui.Input(InputKind.MoveRight);
+        ui.Drain();
+        ui.Type('j');
+        Assert.Same(extra.Children[1], tree.SelectedNode);
+        Assert.Equal(new[] { "Joker" }, ui.Spoken());
+
+        // The same letter after a move is a first press, not a repeat:
+        // from Vanilla's Joker, 'j' then Down then 'j' finds the
+        // nearest Joker again rather than rotating past it.
+        tree.SelectNode(vanilla);
+        vanilla.Expanded = true;
+        ui.Drain();
+        ui.Type('j');
+        Assert.Same(vanilla.Children[0], tree.SelectedNode);
+        ui.Input(InputKind.MoveDown);
+        ui.Drain();
+        ui.Type('j');
+        Assert.Same(vanilla.Children[0], tree.SelectedNode);
+    }
+
+    [Fact]
     public void TypeaheadPassesOverANodeThatSkipsIt()
     {
         var (ui, tree, vanilla, extra, _) = Build();
