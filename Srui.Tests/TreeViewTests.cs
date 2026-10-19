@@ -186,6 +186,26 @@ public class TreeViewTests
     }
 
     [Fact]
+    public void TypeaheadSearchesTheRoomForwardNotAroundTheBack()
+    {
+        var ui = new TestApp();
+        // From the top of a module's parts, 't' finds "table" below,
+        // not "tempo sync" at the bottom, though wrapping makes the
+        // bottom one step behind the top.
+        var module = new TreeNode("WT1",
+            new TreeNode("audio out"), new TreeNode("pitch"), new TreeNode("table"),
+            new TreeNode("quality"), new TreeNode("tempo sync")) { Expanded = true };
+        var tree = new TreeView(ui.App, "Patch", [module]);
+        tree.Focus();
+        tree.SelectNode(module.Children[0]);
+        ui.Drain();
+
+        ui.Type('t');
+        Assert.Same(module.Children[2], tree.SelectedNode);
+        Assert.Equal(new[] { "table" }, ui.Spoken());
+    }
+
+    [Fact]
     public void TypeaheadPassesOverANodeThatSkipsIt()
     {
         var (ui, tree, vanilla, extra, _) = Build();

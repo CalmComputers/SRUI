@@ -413,7 +413,7 @@ public partial class TreeView<T> : Widget where T : TreeNode<T>
     private static string TextOf(T node) => node.Value ?? "";
 
     /// <summary>Candidates in match priority order: the cursor's
-    /// sibling ring first (outward both ways, wrapping — the room
+    /// sibling ring first (forward, wrapping, as a list's — the room
     /// you're standing in), then the rest of the visible tree by tree
     /// distance (edges up and down between the nodes, so a cousin at
     /// your level outranks a leaf buried in the neighbor's subtree —
@@ -432,16 +432,16 @@ public partial class TreeView<T> : Widget where T : TreeNode<T>
         if (includeCursor)
             result.Add(cursor);
 
-        // The room: siblings outward from the cursor, wrapping, the
-        // same ring navigation walks.
+        // The room: siblings forward from the cursor, wrapping, as a
+        // list's typeahead goes. Outward both ways made the last sibling
+        // the first's neighbour, so from the top of a room a letter
+        // found the bottom before anything below (Rory, 19 October 2026).
         var siblings = SiblingsOf(cursor);
         int at = siblings.IndexOf(cursor);
         for (int d = 1; d < siblings.Count; d++)
         {
             var after = siblings[(at + d) % siblings.Count];
             if (seen.Add(after)) result.Add(after);
-            var before = siblings[(at - d + siblings.Count) % siblings.Count];
-            if (seen.Add(before)) result.Add(before);
         }
 
         var visible = VisibleNodes();
