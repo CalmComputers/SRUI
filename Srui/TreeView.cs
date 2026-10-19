@@ -579,6 +579,11 @@ public partial class TreeView<T> : Widget where T : TreeNode<T>
             }
             return;
         }
+        // A first letter searches past the cursor; when the cursor is
+        // the only bearer, say it again, as a list does, so the key is
+        // not heard as dead.
+        if (_cursor is { SkipsTypeahead: false } here && AsciiMatch.StartsWithLower(TextOf(here), needle))
+            RereadItem();
     }
 
     // ── Input ──

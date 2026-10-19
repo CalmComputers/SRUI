@@ -235,6 +235,23 @@ public class TreeViewTests
     }
 
     [Fact]
+    public void TheOnlyBearerIsSaidAgain()
+    {
+        var (ui, tree, _, _, leaf) = Build();
+        tree.SelectNode(leaf);                               // Hand size
+        ui.Drain();
+
+        ui.Type('h');
+        Assert.Same(leaf, tree.SelectedNode);
+        Assert.Equal(new[] { "Hand size" }, ui.Spoken());
+
+        // A letter nothing bears is still silence.
+        ui.Wait(1000);
+        ui.Type('q');
+        Assert.Empty(ui.Spoken());
+    }
+
+    [Fact]
     public void TypeaheadPassesOverANodeThatSkipsIt()
     {
         var (ui, tree, vanilla, extra, _) = Build();
