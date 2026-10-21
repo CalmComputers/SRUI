@@ -110,6 +110,13 @@ public partial class ListBox<T> : Widget where T : Element
             if (_source is not null)
                 throw new InvalidOperationException("the items are bound; change them at the source");
             _items = new List<T>(value);
+            // The cursor follows its item by identity at the next read;
+            // one not in the new items is let go now, not then, since
+            // a list nobody reads again would hold it for good - and
+            // with it whatever it references (a dropped program's
+            // definition, in Lightspeed).
+            if (_selectedItem is { } selected && IndexOf(_items, selected, _selectedIndex) < 0)
+                _selectedItem = null;
             Engine.Touch();
         }
     }

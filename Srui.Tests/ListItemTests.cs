@@ -37,6 +37,39 @@ public partial class ListItemTests
         return (ui, list);
     }
 
+    /// <summary>Replacing the items lets go of a selected item that is
+    /// not among them at once, in a list nobody reads again - it would
+    /// otherwise be held for the list's life, and whatever it
+    /// references with it. One that is among them keeps the cursor.</summary>
+    [Fact]
+    public void ReplacingTheItemsLetsGoOfASelectedItemThatIsGone()
+    {
+        var ui = new TestApp();
+        var list = new ListBox<Chore>(ui.App, "Tasks", Array.Empty<Chore>());
+        var probe = Fill(list);
+        list.Items = new[] { new Chore("other") };
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        Assert.False(probe.TryGetTarget(out _));
+
+        var kept = new Chore("kept");
+        list.Items = new[] { new Chore("first"), kept };
+        list.SelectedIndex = 1;
+        list.Items = new[] { new Chore("new"), new Chore("first"), kept };
+        Assert.Same(kept, list.SelectedItem);
+    }
+
+    // In a frame of its own, so no local of the test keeps the item.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static WeakReference<Chore> Fill(ListBox<Chore> list)
+    {
+        var gone = new Chore("gone");
+        list.Items = new[] { gone };
+        Assert.Same(gone, list.SelectedItem);
+        return new WeakReference<Chore>(gone);
+    }
+
     [Fact]
     public void RemoveAtSelectedReadsTheSurvivor()
     {
