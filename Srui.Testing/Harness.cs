@@ -47,6 +47,11 @@ public abstract class Harness : IDisposable
     /// actually hear. All-on by default, the full rendering.</summary>
     protected abstract SpeechVerbosity Verbosity { get; }
 
+    /// <summary>The keyboard convention key presses are mapped under,
+    /// as the windowed host maps them on its platform: the app's or
+    /// host's own, Windows unless the test sets it.</summary>
+    protected virtual KeyboardConvention Convention => KeyboardConvention.Windows;
+
     /// <summary>Deliver queued output to the readers.</summary>
     protected abstract void DispatchEvents();
 
@@ -213,7 +218,7 @@ public abstract class Harness : IDisposable
 
     private bool HandleLogical(KeyCombo combo)
     {
-        if (InputMapper.MapCombo(combo) is InputEvent mapped)
+        if (InputMapper.MapCombo(combo, Convention) is InputEvent mapped)
             return HandleInput(mapped);
         if (TypedChar(combo) is char c)
         {

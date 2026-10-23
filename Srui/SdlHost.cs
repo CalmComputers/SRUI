@@ -8,9 +8,10 @@ namespace Srui;
 /// wherever keyboard focus is - the launcher shape (Spotlight, PowerToys
 /// Run). A registered combo is exclusive across the session: no other
 /// program sees it while it is held, so a caller should choose from the
-/// ranges the OS leaves free (Win+Alt on Windows, which is Command+Option
-/// on macOS, where the Win modifier is the Command key) and never promote
-/// an ordinary in-window binding wholesale. The window's host implements it; a
+/// ranges the OS leaves free (Win+Alt on Windows; Command+Option on macOS,
+/// which is Ctrl+Alt under the Mac keyboard convention, since Control+Option
+/// is VoiceOver's own modifier there) and never promote an ordinary
+/// in-window binding wholesale. The window's host implements it; a
 /// headless host has none. A press arrives as
 /// <see cref="HostEvent.Hotkey"/> on the app thread.</summary>
 public interface ISystemHotkeys
@@ -35,6 +36,14 @@ public sealed class SdlHost : IDisposable, ISystemHotkeys
     private IntPtr _window;
     private readonly IntPtr _hwnd;
     private readonly InputMapper _mapper = new();
+
+    /// <summary>The keyboard convention of the platform this host runs on:
+    /// <see cref="KeyboardConvention.Mac"/> on macOS (the Command key is a
+    /// combo's Ctrl), <see cref="KeyboardConvention.Windows"/> elsewhere.
+    /// Physical keys are read under it, and the apps on this host speak
+    /// and reserve combos under it.</summary>
+    public KeyboardConvention Convention { get; } =
+        OperatingSystem.IsMacOS() ? KeyboardConvention.Mac : KeyboardConvention.Windows;
     private readonly HashSet<int> _hotkeys = new();
 
     /// <summary>macOS hotkey registrations by caller id.</summary>
@@ -83,6 +92,7 @@ public sealed class SdlHost : IDisposable, ISystemHotkeys
         }
         // Required for TypeChar (text input) events.
         Sdl3.SDL_StartTextInput(_window);
+        _mapper.Convention = Convention;
         if (OperatingSystem.IsWindows())
         {
             _hwnd = Sdl3.SDL_GetPointerProperty(
@@ -197,13 +207,13 @@ public sealed class SdlHost : IDisposable, ISystemHotkeys
         switch (ev.Type)
         {
             case Sdl3.EventKeyDown:
-                if (InputMapper.PhysicalCombo(ev.Key, ev.Mod) is (var downKey, var downMods))
+                if (InputMapper.PhysicalCombo(ev.Key, ev.Mod, Convention) is (var downKey, var downMods))
                     output.Add(new HostEvent.Key(new KeyInput(
                         downKey, downMods,
                         ev.Repeat != 0 ? KeyPhase.Repeat : KeyPhase.Press)));
                 break;
             case Sdl3.EventKeyUp:
-                if (InputMapper.PhysicalCombo(ev.Key, ev.Mod) is (var upKey, var upMods))
+                if (InputMapper.PhysicalCombo(ev.Key, ev.Mod, Convention) is (var upKey, var upMods))
                     output.Add(new HostEvent.Key(new KeyInput(upKey, upMods, KeyPhase.Release)));
                 break;
             case Sdl3.EventWindowFocusLost:
@@ -268,11 +278,12 @@ public sealed class SdlHost : IDisposable, ISystemHotkeys
         if (!InstallCarbonHandler())
             return "system-wide hotkeys are not available here";
         Unregister(id);
-        // The Win modifier is the Command key on macOS (SDL's GUI key).
-        var modifiers = (combo.Ctrl ? Carbon.ControlKey : 0)
+        // Under the Mac convention a combo's Ctrl is the Command key and
+        // its Win the Control key.
+        var modifiers = (combo.Ctrl ? Carbon.CmdKey : 0)
             | (combo.Alt ? Carbon.OptionKey : 0)
             | (combo.Shift ? Carbon.ShiftKey : 0)
-            | (combo.Win ? Carbon.CmdKey : 0);
+            | (combo.Win ? Carbon.ControlKey : 0);
         var hotKeyId = new Carbon.EventHotKeyID { Signature = CarbonSignature, Id = unchecked((uint)id) };
         var status = Carbon.RegisterEventHotKey(
             code, modifiers, hotKeyId, Carbon.GetEventDispatcherTarget(), 0, out var hotKeyRef);

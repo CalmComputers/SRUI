@@ -77,7 +77,10 @@ app.Run();
 
 Tab and Shift+Tab move between the widgets, and each announces itself on
 arrival: "Your name edit blank", "Greet button". Typing in the edit box
-echoes characters; Enter greets from anywhere in the window.
+echoes characters; Enter greets from anywhere in the window. On macOS the
+keys follow the Mac's own conventions: Command takes Control's place (a
+binding written as "ctrl+s" answers Command+S), and Option+arrows moves by
+word.
 
 # 4. Testing What It Says
 

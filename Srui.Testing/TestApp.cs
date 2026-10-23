@@ -29,6 +29,9 @@ public sealed class TestApp : Harness
     protected override SpeechVerbosity Verbosity => App.SpeechVerbosity;
 
     /// <inheritdoc/>
+    protected override KeyboardConvention Convention => App.KeyboardConvention;
+
+    /// <inheritdoc/>
     protected override void DispatchEvents() => App.DispatchEvents();
 
     /// <inheritdoc/>
