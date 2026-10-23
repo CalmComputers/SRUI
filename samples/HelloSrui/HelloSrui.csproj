@@ -9,9 +9,9 @@
   </PropertyGroup>
 
   <!-- srui as a consumer sees it: two package references and nothing
-       else. The native DLLs travel inside the packages under
-       runtimes/win-x64/native/ and are resolved by the host, so there is
-       nothing to copy beside the executable.
+       else. The native libraries travel inside the packages under
+       runtimes/win-x64/native/ and runtimes/osx/native/ and are resolved
+       by the host, so there is nothing to copy beside the executable.
 
        Srui.Audio arrives transitively with Srui; it is named explicitly
        because this program uses its types directly.

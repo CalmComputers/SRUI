@@ -1,23 +1,24 @@
 <Project>
 
-  <!-- SRUI's native binaries are currently published for win-x64 only.
-       The limitation is one of build coverage, not of design — SDL3 is
-       cross-platform and Prism carries Orca and speech-dispatcher
-       backends — so it is reported here rather than baked into the
-       target framework, which would make it permanent and force every
-       consumer onto a -windows TFM.
+  <!-- SRUI's native binaries are currently published for win-x64 and
+       macOS (universal arm64 + x86_64 dylibs under the osx RID, which
+       osx-arm64 and osx-x64 fall back to). The limitation is one of build
+       coverage, not of design — SDL3 is cross-platform and Prism carries
+       Orca and speech-dispatcher backends — so it is reported here rather
+       than baked into the target framework, which would make it permanent
+       and force every consumer onto a platform TFM.
 
        This file ships in the Srui.Audio package, which the Srui package
        always depends on, so one copy reaches every consumer of either. -->
   <Target Name="SruiCheckNativePlatform" BeforeTargets="Build">
     <Warning
-      Condition="'$(RuntimeIdentifier)' != '' and '$(RuntimeIdentifier)' != 'win-x64'"
+      Condition="'$(RuntimeIdentifier)' != '' and '$(RuntimeIdentifier)' != 'win-x64' and '$(RuntimeIdentifier)' != 'osx' and '$(RuntimeIdentifier)' != 'osx-arm64' and '$(RuntimeIdentifier)' != 'osx-x64'"
       Code="SRUI0001"
-      Text="SRUI publishes native binaries for win-x64 only; this project targets '$(RuntimeIdentifier)'. The build will succeed, but loading a widget host or a sound will throw DllNotFoundException at run time." />
+      Text="SRUI publishes native binaries for win-x64 and macOS (osx-arm64, osx-x64) only; this project targets '$(RuntimeIdentifier)'. The build will succeed, but loading a widget host or a sound will throw DllNotFoundException at run time." />
     <Warning
-      Condition="'$(RuntimeIdentifier)' == '' and !$([MSBuild]::IsOSPlatform('Windows'))"
+      Condition="'$(RuntimeIdentifier)' == '' and !$([MSBuild]::IsOSPlatform('Windows')) and !$([MSBuild]::IsOSPlatform('OSX'))"
       Code="SRUI0001"
-      Text="SRUI publishes native binaries for win-x64 only, and this build is not running on Windows. The build will succeed, but loading a widget host or a sound will throw DllNotFoundException at run time." />
+      Text="SRUI publishes native binaries for win-x64 and macOS only, and this build is running on neither. The build will succeed, but loading a widget host or a sound will throw DllNotFoundException at run time." />
   </Target>
 
 </Project>

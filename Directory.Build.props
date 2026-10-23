@@ -34,4 +34,16 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
+  <!-- The platforms whose native binaries the Srui and Srui.Audio packages
+       carry, as a semicolon list of package RID folders: win-x64 (the DLLs
+       from native/build-native.ps1) and osx (the universal arm64 + x86_64
+       dylibs from native/build-native.sh, which the osx-arm64 and osx-x64
+       RIDs both fall back to). Defaults to the platform doing the packing,
+       whose native build stages its own binaries; a package for both needs
+       both sets in native/out and -p:SruiPackRuntimes="win-x64;osx". -->
+  <PropertyGroup Condition="'$(SruiPackRuntimes)' == ''">
+    <SruiPackRuntimes Condition="$([MSBuild]::IsOSPlatform('OSX'))">osx</SruiPackRuntimes>
+    <SruiPackRuntimes Condition="!$([MSBuild]::IsOSPlatform('OSX'))">win-x64</SruiPackRuntimes>
+  </PropertyGroup>
+
 </Project>
