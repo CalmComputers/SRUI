@@ -8,8 +8,9 @@ namespace Srui;
 /// wherever keyboard focus is - the launcher shape (Spotlight, PowerToys
 /// Run). A registered combo is exclusive across the session: no other
 /// program sees it while it is held, so a caller should choose from the
-/// ranges the OS leaves free (Win+Alt) and never promote an ordinary
-/// in-window binding wholesale. The window's host implements it; a
+/// ranges the OS leaves free (Win+Alt on Windows, which is Command+Option
+/// on macOS, where the Win modifier is the Command key) and never promote
+/// an ordinary in-window binding wholesale. The window's host implements it; a
 /// headless host has none. A press arrives as
 /// <see cref="HostEvent.Hotkey"/> on the app thread.</summary>
 public interface ISystemHotkeys
@@ -26,14 +27,27 @@ public interface ISystemHotkeys
 
 /// <summary>The SDL window and event pump (keyboard focus surface): a
 /// hidden-rendering window that exists to receive keyboard focus, plus
-/// the physical → logical input translation and, on Windows, the
-/// system-wide hotkeys registered against the window.</summary>
+/// the physical → logical input translation and the system-wide hotkeys:
+/// registered against the window on Windows, and through Carbon on
+/// macOS.</summary>
 public sealed class SdlHost : IDisposable, ISystemHotkeys
 {
     private IntPtr _window;
     private readonly IntPtr _hwnd;
     private readonly InputMapper _mapper = new();
     private readonly HashSet<int> _hotkeys = new();
+
+    /// <summary>macOS hotkey registrations by caller id.</summary>
+    private readonly Dictionary<int, IntPtr> _carbonHotkeys = new();
+
+    /// <summary>The Carbon handler that turns hotkey presses into
+    /// <see cref="FiredHotkeys"/> entries; installed on the first macOS
+    /// registration.</summary>
+    private IntPtr _carbonHandler;
+
+    /// <summary>The signature this host's Carbon hotkeys carry, so the
+    /// handler passes on any it did not register. 'SRUI'.</summary>
+    private const uint CarbonSignature = 0x53525549;
 
     /// <summary>When the window last gained focus, or null when nothing
     /// is pending. The focus readout is held for
@@ -85,6 +99,14 @@ public sealed class SdlHost : IDisposable, ISystemHotkeys
             foreach (var id in _hotkeys)
                 User32.UnregisterHotKey(_hwnd, id);
             _hotkeys.Clear();
+            foreach (var hotKeyRef in _carbonHotkeys.Values)
+                Carbon.UnregisterEventHotKey(hotKeyRef);
+            _carbonHotkeys.Clear();
+            if (_carbonHandler != IntPtr.Zero)
+            {
+                Carbon.RemoveEventHandler(_carbonHandler);
+                _carbonHandler = IntPtr.Zero;
+            }
             if (_hwnd != IntPtr.Zero)
                 RemoveMessageHook();
             Sdl3.SDL_DestroyWindow(_window);
@@ -203,11 +225,13 @@ public sealed class SdlHost : IDisposable, ISystemHotkeys
         }
     }
 
-    // ── System-wide hotkeys (Windows) ──
+    // ── System-wide hotkeys (Windows, macOS) ──
 
     /// <inheritdoc/>
     public string? Register(int id, KeyCombo combo)
     {
+        if (OperatingSystem.IsMacOS())
+            return RegisterCarbon(id, combo);
         if (_hwnd == IntPtr.Zero)
             return "system-wide hotkeys are not available here";
         if (VirtualKeyOf(combo.Key) is not { } vk)
@@ -233,6 +257,113 @@ public sealed class SdlHost : IDisposable, ISystemHotkeys
     {
         if (_hotkeys.Remove(id))
             User32.UnregisterHotKey(_hwnd, id);
+        if (_carbonHotkeys.Remove(id, out var hotKeyRef))
+            Carbon.UnregisterEventHotKey(hotKeyRef);
+    }
+
+    private string? RegisterCarbon(int id, KeyCombo combo)
+    {
+        if (MacKeyCodeOf(combo.Key) is not { } code)
+            return "has no system-wide form";
+        if (!InstallCarbonHandler())
+            return "system-wide hotkeys are not available here";
+        Unregister(id);
+        // The Win modifier is the Command key on macOS (SDL's GUI key).
+        var modifiers = (combo.Ctrl ? Carbon.ControlKey : 0)
+            | (combo.Alt ? Carbon.OptionKey : 0)
+            | (combo.Shift ? Carbon.ShiftKey : 0)
+            | (combo.Win ? Carbon.CmdKey : 0);
+        var hotKeyId = new Carbon.EventHotKeyID { Signature = CarbonSignature, Id = unchecked((uint)id) };
+        var status = Carbon.RegisterEventHotKey(
+            code, modifiers, hotKeyId, Carbon.GetEventDispatcherTarget(), 0, out var hotKeyRef);
+        if (status == Carbon.NoErr)
+        {
+            _carbonHotkeys[id] = hotKeyRef;
+            return null;
+        }
+        return status == Carbon.EventHotKeyExistsErr
+            ? "is already taken by another program"
+            : "could not be registered system-wide";
+    }
+
+    private unsafe bool InstallCarbonHandler()
+    {
+        if (_carbonHandler != IntPtr.Zero)
+            return true;
+        var spec = new Carbon.EventTypeSpec
+        {
+            EventClass = Carbon.EventClassKeyboard,
+            EventKind = Carbon.EventHotKeyPressed,
+        };
+        return Carbon.InstallEventHandler(Carbon.GetEventDispatcherTarget(), &OnCarbonHotkey,
+            1, &spec, IntPtr.Zero, out _carbonHandler) == Carbon.NoErr;
+    }
+
+    /// <summary>Carbon calls this for each hotkey press while SDL pumps
+    /// Cocoa events - the macOS counterpart of
+    /// <see cref="OnWindowsMessage"/>. Presses of hotkeys this host did not
+    /// register are passed on.</summary>
+    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+    private static unsafe int OnCarbonHotkey(IntPtr handlerCall, IntPtr theEvent, IntPtr userData)
+    {
+        Carbon.EventHotKeyID hotKeyId;
+        if (Carbon.GetEventParameter(theEvent, Carbon.EventParamDirectObject, Carbon.TypeEventHotKeyID,
+                IntPtr.Zero, (nuint)sizeof(Carbon.EventHotKeyID), IntPtr.Zero, &hotKeyId) != Carbon.NoErr
+            || hotKeyId.Signature != CarbonSignature)
+            return Carbon.EventNotHandledErr;
+        FiredHotkeys.Add(unchecked((int)hotKeyId.Id));
+        return Carbon.NoErr;
+    }
+
+    /// <summary>The macOS virtual key code for a key (kVK_* in HIToolbox's
+    /// Events.h, positions on the ANSI layout), or null for one with no
+    /// system form (the modifiers themselves, the media keys).</summary>
+    private static uint? MacKeyCodeOf(Key key)
+    {
+        if (key.IsChar(out var c))
+        {
+            return char.ToLowerInvariant(c) switch
+            {
+                'a' => 0x00, 's' => 0x01, 'd' => 0x02, 'f' => 0x03, 'h' => 0x04, 'g' => 0x05,
+                'z' => 0x06, 'x' => 0x07, 'c' => 0x08, 'v' => 0x09, 'b' => 0x0B, 'q' => 0x0C,
+                'w' => 0x0D, 'e' => 0x0E, 'r' => 0x0F, 'y' => 0x10, 't' => 0x11, 'o' => 0x1F,
+                'u' => 0x20, 'i' => 0x22, 'p' => 0x23, 'l' => 0x25, 'j' => 0x26, 'k' => 0x28,
+                'n' => 0x2D, 'm' => 0x2E,
+                '1' => 0x12, '2' => 0x13, '3' => 0x14, '4' => 0x15, '6' => 0x16, '5' => 0x17,
+                '9' => 0x19, '7' => 0x1A, '8' => 0x1C, '0' => 0x1D,
+                '=' => 0x18, '-' => 0x1B, ']' => 0x1E, '[' => 0x21, '\'' => 0x27, ';' => 0x29,
+                '\\' => 0x2A, ',' => 0x2B, '/' => 0x2C, '.' => 0x2F, '`' => 0x32,
+                _ => null,
+            };
+        }
+        if (key.IsF(out var n))
+        {
+            return n switch
+            {
+                1 => 0x7A, 2 => 0x78, 3 => 0x63, 4 => 0x76, 5 => 0x60, 6 => 0x61, 7 => 0x62,
+                8 => 0x64, 9 => 0x65, 10 => 0x6D, 11 => 0x67, 12 => 0x6F, 13 => 0x69, 14 => 0x6B,
+                15 => 0x71, 16 => 0x6A, 17 => 0x40, 18 => 0x4F, 19 => 0x50, 20 => 0x5A,
+                _ => null,
+            };
+        }
+        return key.Code switch
+        {
+            1 => 0x24, // Enter (kVK_Return)
+            2 => 0x35, // Escape
+            3 => 0x30, // Tab
+            4 => 0x31, // Space
+            5 => 0x7E, // Up
+            6 => 0x7D, // Down
+            7 => 0x7B, // Left
+            8 => 0x7C, // Right
+            9 => 0x73, // Home
+            10 => 0x77, // End
+            11 => 0x75, // Delete (kVK_ForwardDelete)
+            12 => 0x33, // Backspace (kVK_Delete)
+            13 => 0x74, // Page Up
+            14 => 0x79, // Page Down
+            _ => null,
+        };
     }
 
     /// <summary>The Windows virtual-key code for a key, or null for one
