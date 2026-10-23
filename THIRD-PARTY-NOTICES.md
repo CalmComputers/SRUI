@@ -52,17 +52,21 @@ The cosmos-specific sources are SRUI's own (section 1). The library bundles:
 Local modifications to the vendored sources are recorded in
 `native/PATCHES-cosmos.md`.
 
-# 4. phonon.dll — Steam Audio
+# 4. phonon.dll and libphonon.dylib — Steam Audio
 
 Steam Audio, copyright Valve Corporation, under Apache-2.0. Redistributed as
-an unmodified prebuilt binary; the licence text is at
+unmodified prebuilt binaries from the Steam Audio 4.5.2 SDK (`phonon.dll`
+for Windows, `macos/libphonon.dylib` for macOS); the licence text is at
 `native/phonon/LICENSE.md`.
 
-# 5. SDL3.dll — window and keyboard input
+# 5. SDL3.dll and libSDL3.dylib — window and keyboard input
 
-SDL, copyright Sam Lantinga and contributors, under the Zlib licence.
-Redistributed as an unmodified prebuilt binary from an official SDL release;
-the licence text is at `native/prebuilt/SDL3-LICENSE.txt`.
+SDL, copyright Sam Lantinga and contributors, under the Zlib licence. The
+Windows `SDL3.dll` is redistributed as an unmodified prebuilt binary from an
+official SDL release. The macOS `macos/libSDL3.dylib` is built by
+`native/build-native.sh --rebuild-sdl` from the unmodified source of the
+same official release, with its install name set to match its file name.
+The licence text is at `native/prebuilt/SDL3-LICENSE.txt`.
 
 # 6. What redistribution requires
 

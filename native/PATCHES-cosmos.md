@@ -121,3 +121,15 @@ counts callbacks and deadline misses — a callback exceeding
 frameCount / sampleRate is a buffer underrun — and the exported
 ma_engine_get_callback_stats reads (and optionally resets) the
 counters. Surfaced in C# as SoundManager.GetCallbackStats.
+
+# 10. CMakeLists.txt: macOS build
+
+The build file serves MSVC on Windows and Apple clang on macOS. Warning
+suppression for the vendored xiph code is spelled per compiler, and opus
+gets the WIN32 define (which steers stack_alloc.h to `<malloc.h>`) only on
+Windows. On macOS the library is libcosmos.dylib with hidden default
+visibility and MA_API defined as default visibility, so it exports the same
+surface the DLL does; it defines MA_NO_RUNTIME_LINKING and links
+CoreFoundation, CoreAudio, and AudioToolbox directly, as Apple's
+notarization requires; and it links phonon/macos/libphonon.dylib with an
+@loader_path rpath, so libphonon.dylib is found beside it.
