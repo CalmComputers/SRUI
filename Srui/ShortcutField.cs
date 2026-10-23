@@ -15,7 +15,7 @@ public partial class ShortcutField : Widget
     [Field] public partial KeyCombo? Combo { get; set; }
 
     /// <summary>The combo's display form; empty when blank.</summary>
-    [Field] public string Value => Combo?.DisplayName() ?? "";
+    [Field] public string Value => Combo?.DisplayName(App.KeyboardConvention) ?? "";
 
     /// <summary>When false, capturing a combo produces no speech feedback
     /// (for bind dialogs that narrate on their own terms).</summary>

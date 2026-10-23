@@ -14,12 +14,14 @@ It is the toolkit behind Lightspeed and Blindatro.
 # 1. Requirements
 
 - .NET 10 or later.
-- Windows on x64. The native binaries are published for that platform only;
-  a build for any other target warns (SRUI0001) and fails at run time.
-- The Microsoft Visual C++ redistributable, which `SDL3.dll` and
-  `cosmos.dll` both import.
+- Windows on x64, or macOS 11 or later on Apple silicon or Intel. The native
+  binaries are published for those platforms only; a build for any other
+  target warns (SRUI0001) and fails at run time.
+- On Windows, the Microsoft Visual C++ redistributable, which `SDL3.dll`
+  and `cosmos.dll` both import. macOS needs nothing beyond the system.
 - For speech, a running screen reader. Prism routes to whichever is present
-  and falls back to the platform's own text-to-speech.
+  (NVDA, JAWS, and others on Windows; VoiceOver on macOS) and falls back to
+  the platform's own text-to-speech.
 
 An application does not need a screen reader to *run* — the toolkit is
 fully headless-testable — but it needs one to be heard.
@@ -75,7 +77,10 @@ app.Run();
 
 Tab and Shift+Tab move between the widgets, and each announces itself on
 arrival: "Your name edit blank", "Greet button". Typing in the edit box
-echoes characters; Enter greets from anywhere in the window.
+echoes characters; Enter greets from anywhere in the window. On macOS the
+keys follow the Mac's own conventions: Command takes Control's place (a
+binding written as "ctrl+s" answers Command+S), and Option+arrows moves by
+word.
 
 # 4. Testing What It Says
 
@@ -137,13 +142,16 @@ consumer.
 
 | Package | Contents | Native binaries |
 |---|---|---|
-| Srui | Widgets, dialogs, focus and navigation, shortcuts, the text engine, the SDL host, speech, and the field source generator (as an analyzer) | prism.dll, SDL3.dll |
-| Srui.Audio | Sounds, buses, effect chains, HRTF spatialisation, tweens | cosmos.dll, phonon.dll |
+| Srui | Widgets, dialogs, focus and navigation, shortcuts, the text engine, the SDL host, speech, and the field source generator (as an analyzer) | prism, SDL3 |
+| Srui.Audio | Sounds, buses, effect chains, HRTF spatialisation, tweens | cosmos, phonon |
 | Srui.Testing | The headless test harness: input simulation, utterance assertions, scenario record and replay | none |
 | Srui.Templates | The `dotnet new` templates | none |
 
-Steam Audio (`phonon.dll`) is not optional: `cosmos.dll` imports it
-directly, so it ships wherever the audio package does.
+Each native library ships as a DLL for Windows (`runtimes/win-x64/native/`)
+and as a universal arm64 + x86_64 dylib for macOS (`runtimes/osx/native/`,
+for example `libprism.dylib`); the host picks the right one by name. Steam
+Audio (phonon) is not optional: cosmos imports it directly, so it ships
+wherever the audio package does.
 
 # 6. Documentation
 
@@ -165,13 +173,17 @@ window), and `AudioExample` (the audio stack alone).
 Native first, managed second:
 
 ```
-./native/build-native.ps1     # only on a fresh clone, or when native sources change
+./native/build-native.ps1     # Windows: only on a fresh clone, or when native sources change
+./native/build-native.sh      # macOS: the same, with cmake, ninja, and the Xcode command line tools
 dotnet build Srui.slnx
 dotnet test Srui.Tests
 ```
 
 `./pack.ps1` produces the NuGet packages; `./dist.ps1` produces a flat
-directory of binaries for consumers who do not use NuGet.
+directory of binaries for consumers who do not use NuGet. Both run on
+Windows and, under PowerShell 7, on macOS, and carry the natives of the
+platform they run on; `./pack.ps1 -Runtimes win-x64,osx -SkipNative` packs
+both platforms from a `native/out` that holds both builds' output.
 
 # 8. Licence
 

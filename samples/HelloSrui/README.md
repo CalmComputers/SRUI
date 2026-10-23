@@ -34,7 +34,8 @@ Two things, both visible in HelloSrui.csproj:
 
 There is no third step. The native binaries — prism and SDL3 for the UI
 stack, cosmos and phonon for audio — travel inside the packages under
-`runtimes/win-x64/native/`, and the host resolves them by name. Nothing
+`runtimes/win-x64/native/` (Windows DLLs) and `runtimes/osx/native/` (macOS
+dylibs), and the host resolves them by name. Nothing
 needs copying beside the executable.
 
 Two runtime rules carry over from srui itself: one SruiApp belongs to one

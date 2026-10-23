@@ -13,6 +13,9 @@
 #
 #   ./refresh.ps1               # full: native build first, then pack
 #   ./refresh.ps1 -SkipNative   # natives unchanged; managed only
+#
+# Runs on Windows and on macOS (PowerShell 7), packing this platform's
+# natives.
 
 param(
     [switch]$SkipNative
@@ -21,7 +24,15 @@ param(
 $ErrorActionPreference = "Stop"
 
 if (-not $SkipNative) {
-    & (Join-Path $PSScriptRoot "native\build-native.ps1")
+    # The platform's own native build: build-native.ps1 on Windows, and
+    # build-native.sh on macOS (PowerShell 7 there; Windows PowerShell 5.1 has
+    # no $IsMacOS, which reads as false).
+    if ($IsMacOS) {
+        & (Join-Path $PSScriptRoot "native/build-native.sh")
+        if ($LASTEXITCODE -ne 0) { throw "native build failed (exit $LASTEXITCODE)" }
+    } else {
+        & (Join-Path $PSScriptRoot "native\build-native.ps1")
+    }
 }
 
 $artifacts = Join-Path $PSScriptRoot "artifacts"
@@ -32,7 +43,8 @@ dotnet pack (Join-Path $PSScriptRoot "Srui.slnx") -c Release -o $artifacts
 if ($LASTEXITCODE -ne 0) { throw "pack failed" }
 
 foreach ($id in "srui", "srui.audio", "srui.testing", "srui.templates") {
-    $cached = Join-Path $env:USERPROFILE ".nuget\packages\$id"
+    # %USERPROFILE% on Windows, $HOME elsewhere.
+    $cached = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".nuget/packages/$id"
     if (Test-Path $cached) { Remove-Item -Recurse -Force $cached }
 }
 

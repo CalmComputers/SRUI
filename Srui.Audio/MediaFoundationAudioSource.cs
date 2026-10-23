@@ -9,7 +9,9 @@ namespace Srui.Audio;
 /// samples are pulled and converted to interleaved f32 as the engine
 /// asks, never decoded whole. Interop is raw vtable calls (slot orders
 /// and GUIDs transcribed from mfreadwrite.h / mfapi.h / mfidl.h), so
-/// Native AOT needs no COM runtime support.
+/// Native AOT needs no COM runtime support. Windows only;
+/// <see cref="AudioToolboxAudioSource"/> is the macOS counterpart, and
+/// <see cref="SystemAudioSource"/> picks between them by platform.
 /// </summary>
 public sealed unsafe class MediaFoundationAudioSource : PullAudioSource
 {
@@ -32,9 +34,13 @@ public sealed unsafe class MediaFoundationAudioSource : PullAudioSource
     }
 
     /// <summary>Open a file for decoding. Throws AudioException when
-    /// Media Foundation cannot read it.</summary>
+    /// Media Foundation cannot read it, and PlatformNotSupportedException
+    /// off Windows.</summary>
     public static MediaFoundationAudioSource Open(string path)
     {
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException(
+                "MediaFoundationAudioSource decodes through Windows Media Foundation; use SystemAudioSource.Open for the platform's decoder.");
         EnsureStartup();
         Check(MFCreateSourceReaderFromURL(path, IntPtr.Zero, out var reader),
             $"Media Foundation could not open '{path}'");

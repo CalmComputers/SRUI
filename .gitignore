@@ -10,3 +10,5 @@
 /native/out/
 /native/build/
 /artifacts/
+# macOS Finder metadata.
+.DS_Store

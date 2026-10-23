@@ -74,7 +74,15 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     /// so an app refuses its host's combos too — evaluated live, so a
     /// reconfigured host combo moves the refusal with it.</summary>
     public string? ReservedReasonFor(KeyCombo combo) =>
-        combo.ReservedReason ?? HostReservations?.Invoke(combo);
+        combo.ReservedReasonUnder(KeyboardConvention) ?? HostReservations?.Invoke(combo);
+
+    /// <summary>The keyboard convention this app's combos follow: how
+    /// they are spoken (shortcuts, the shortcut field), which are reserved,
+    /// and how keys map to logical input. A windowed app takes its host's
+    /// (<see cref="SdlHost.Convention"/>: Mac on macOS, where a combo's Ctrl
+    /// is the Command key); a headless app defaults to Windows and may be
+    /// set, as a test of the Mac behavior does.</summary>
+    public KeyboardConvention KeyboardConvention { get; set; }
 
     /// <summary>The audio device period in frames. The getter returns
     /// the period the device actually granted, creating the app-owned
@@ -185,6 +193,7 @@ public sealed class SruiApp : IWidgetContainer, IDisposable
     {
         Host = new SdlHost(title, width, height);
         Host.ProvideClipboard(this);
+        KeyboardConvention = Host.Convention;
         _speechReader = new SpeechReader();
         _readers.Add(_speechReader);
     }

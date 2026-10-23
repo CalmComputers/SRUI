@@ -16,14 +16,19 @@
                       OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
-  <!-- Native dependencies staged by native/build-native.ps1. No game
-       audio here, so only the window and speech DLLs are needed. -->
+  <!-- Native dependencies staged by native/build-native.ps1 (Windows)
+       or native/build-native.sh (macOS). No game audio here, so only
+       the window and speech DLLs are needed. -->
   <PropertyGroup>
     <SruiNativeDir>..\..\native\out\</SruiNativeDir>
   </PropertyGroup>
-  <ItemGroup>
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
     <None Include="$(SruiNativeDir)prism.dll" CopyToOutputDirectory="PreserveNewest" />
     <None Include="$(SruiNativeDir)SDL3.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <None Include="$(SruiNativeDir)libprism.dylib" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(SruiNativeDir)libSDL3.dylib" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

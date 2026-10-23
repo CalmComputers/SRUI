@@ -68,6 +68,15 @@ public sealed class MultiAppHost : IDisposable
     public MultiAppHost(string title, uint width = 400, uint height = 300)
     {
         Host = new SdlHost(title, width, height);
+        KeyboardConvention = Host.Convention;
+        if (KeyboardConvention == KeyboardConvention.Mac)
+        {
+            // macOS claims Command+Tab (Ctrl+Tab under the Mac convention)
+            // for its own app switcher, so it never reaches a window;
+            // Command+` is the macOS way to cycle within an app.
+            NextAppCombo = KeyCombo.WithCtrl(Key.Char('`'));
+            PreviousAppCombo = KeyCombo.CtrlShift(Key.Char('`'));
+        }
         _speechReader = new SpeechReader();
         _readers.Add(_speechReader);
     }
@@ -149,6 +158,7 @@ public sealed class MultiAppHost : IDisposable
         app.AudioSource = () => Audio;
         app.VerbositySource = () => Verbosity;
         app.HostReservations = SwitchReservation;
+        app.KeyboardConvention = KeyboardConvention;
         Host?.ProvideClipboard(app);
         var hosted = new HostedApp(this, name, app);
         // Every app runs on the host's one clock from the moment it
@@ -300,7 +310,15 @@ public sealed class MultiAppHost : IDisposable
 
     // ── Switching combos ──
 
-    /// <summary>Cycle to the next app (default ctrl+tab). Checked
+    /// <summary>The keyboard convention of this host and every app it
+    /// runs (<see cref="SruiApp.KeyboardConvention"/>): the window's
+    /// platform convention, Windows for a headless host unless set before
+    /// apps are added.</summary>
+    public KeyboardConvention KeyboardConvention { get; set; }
+
+    /// <summary>Cycle to the next app (default ctrl+tab; on a macOS window,
+    /// ctrl+` under the Mac convention, which is Command+`, since macOS
+    /// keeps Command+Tab for itself). Checked
     /// before the active app sees the input, so no app can trap the
     /// user. Apps with <see cref="HostedApp.ExcludedFromCycling"/> are
     /// never a destination. Reserved in every hosted app: their
@@ -308,14 +326,14 @@ public sealed class MultiAppHost : IDisposable
     /// value with a spoken reason. Null disables.</summary>
     public KeyCombo? NextAppCombo { get; set; } = KeyCombo.WithCtrl(Key.Tab);
 
-    /// <summary>Cycle to the previous app (default ctrl+shift+tab).
-    /// Null disables.</summary>
+    /// <summary>Cycle to the previous app (default ctrl+shift+tab; on a
+    /// macOS window, Command+Shift+`). Null disables.</summary>
     public KeyCombo? PreviousAppCombo { get; set; } = KeyCombo.CtrlShift(Key.Tab);
 
     private string? SwitchReservation(KeyCombo combo)
     {
         if (combo == NextAppCombo || combo == PreviousAppCombo)
-            return $"{combo.DisplayName()} is reserved for switching apps";
+            return $"{combo.DisplayName(KeyboardConvention)} is reserved for switching apps";
         return null;
     }
 

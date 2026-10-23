@@ -24,6 +24,9 @@ public class TestHost : Harness
     protected override SpeechVerbosity Verbosity => Host.Verbosity;
 
     /// <inheritdoc/>
+    protected override KeyboardConvention Convention => Host.KeyboardConvention;
+
+    /// <inheritdoc/>
     protected override void DispatchEvents() => Host.DispatchEvents();
 
     /// <inheritdoc/>

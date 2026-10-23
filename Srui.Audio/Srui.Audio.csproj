@@ -24,26 +24,37 @@
     <None Include="..\THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
-  <!-- Native dependencies, packed into the RID-specific native folder
-       the host probes; the P/Invokes use bare names ("cosmos"), so no
-       consumer-side copying is needed. phonon.dll is not optional:
-       cosmos.dll links phonon.lib, so Steam Audio is a hard import and
-       cosmos cannot load without it. Staged by native/build-native.ps1,
-       which pack.ps1 runs first. -->
+  <!-- Native dependencies, packed into the RID-specific native folders
+       the host probes; the P/Invokes use bare names ("cosmos"), which
+       resolve to cosmos.dll on Windows and libcosmos.dylib on macOS, so no
+       consumer-side copying is needed. Steam Audio is not optional: cosmos
+       links it (phonon.lib on Windows, libphonon.dylib on macOS), so it is
+       a hard import and cosmos cannot load without it. Staged by
+       native/build-native.ps1 (Windows) or native/build-native.sh (macOS),
+       which pack.ps1 runs first; SruiPackRuntimes (Directory.Build.props)
+       picks the platforms. -->
   <PropertyGroup>
     <SruiNativeDir>$(MSBuildThisFileDirectory)..\native\out\</SruiNativeDir>
   </PropertyGroup>
+  <ItemGroup Condition="$(SruiPackRuntimes.Contains('win-x64'))">
+    <None Include="$(SruiNativeDir)cosmos.dll" Pack="true" PackagePath="runtimes/win-x64/native/" Visible="false" />
+    <None Include="$(SruiNativeDir)phonon.dll" Pack="true" PackagePath="runtimes/win-x64/native/" Visible="false" />
+  </ItemGroup>
+  <ItemGroup Condition="$(SruiPackRuntimes.Contains('osx'))">
+    <None Include="$(SruiNativeDir)libcosmos.dylib" Pack="true" PackagePath="runtimes/osx/native/" Visible="false" />
+    <None Include="$(SruiNativeDir)libphonon.dylib" Pack="true" PackagePath="runtimes/osx/native/" Visible="false" />
+  </ItemGroup>
   <ItemGroup>
-    <None Include="$(SruiNativeDir)cosmos.dll" Pack="true" PackagePath="runtimes\win-x64\native\" Visible="false" />
-    <None Include="$(SruiNativeDir)phonon.dll" Pack="true" PackagePath="runtimes\win-x64\native\" Visible="false" />
-    <None Include="build\Srui.Audio.targets" Pack="true" PackagePath="buildTransitive\net10.0\" />
+    <None Include="build\Srui.Audio.targets" Pack="true" PackagePath="buildTransitive/net10.0/" />
   </ItemGroup>
 
   <!-- A missing native/out would otherwise pack silently, producing a
        package that compiles for consumers and dies on first P/Invoke. -->
   <Target Name="SruiVerifyNativeAssets" BeforeTargets="GenerateNuspec">
-    <Error Condition="!Exists('$(SruiNativeDir)cosmos.dll') Or !Exists('$(SruiNativeDir)phonon.dll')"
+    <Error Condition="$(SruiPackRuntimes.Contains('win-x64')) And (!Exists('$(SruiNativeDir)cosmos.dll') Or !Exists('$(SruiNativeDir)phonon.dll'))"
            Text="native/out is missing cosmos.dll or phonon.dll. Run native/build-native.ps1 before packing; pack.ps1 does it for you." />
+    <Error Condition="$(SruiPackRuntimes.Contains('osx')) And (!Exists('$(SruiNativeDir)libcosmos.dylib') Or !Exists('$(SruiNativeDir)libphonon.dylib'))"
+           Text="native/out is missing libcosmos.dylib or libphonon.dylib. Run native/build-native.sh before packing; pack.ps1 does it for you on macOS." />
   </Target>
 
 </Project>

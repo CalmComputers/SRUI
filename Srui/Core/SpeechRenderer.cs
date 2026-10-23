@@ -231,7 +231,7 @@ public sealed class SpeechRenderer
         Register(Fields.Description, static (ctx, v) =>
             ctx.Verbosity.Extras && v.Length != 0 ? v : null);
         Register(Fields.Shortcuts, static (ctx, v) =>
-            ctx.Verbosity.Shortcuts && v.Count != 0 ? v[0].DisplayName() : null);
+            ctx.Verbosity.Shortcuts && v.Count != 0 ? v[0].DisplayName(ctx.Widget.App.KeyboardConvention) : null);
 
         SetRoleName(Role.FilterList, "list");
     }

@@ -15,6 +15,12 @@ namespace Srui.Core;
 /// in between), which hosts commonly bind to a menu or palette.</summary>
 internal sealed class InputMapper
 {
+    /// <summary>The keyboard convention physical keys are read under: on
+    /// <see cref="KeyboardConvention.Mac"/> the Command key is the combo's
+    /// Ctrl and the Control key its Win, and the Mac editing keys apply.
+    /// Set by the host from the platform it runs on.</summary>
+    public KeyboardConvention Convention { get; set; }
+
     private bool _modifiersHeld;
     /// <summary>The physical combo of a printable keydown whose logical
     /// input arrives as the next TextInput event (SDL sends KEY_DOWN
@@ -60,14 +66,14 @@ internal sealed class InputMapper
                 // A modifier on its own is a physical key (the host's
                 // key stream reports its press) but never a logical
                 // input — the host would otherwise see it as a RawKey.
-                var mapped = IsModifierKey(ev.Key) ? null : MapKeyDown(ev.Key, ev.Mod);
+                var mapped = IsModifierKey(ev.Key) ? null : MapKeyDown(ev.Key, ev.Mod, Convention);
                 // A suppressed printable arrives next as TextInput;
                 // remember the physical key so the TypeChar carries it.
                 if (!IsModifierKey(ev.Key))
                 {
                     _pendingTypedKey = null;
                     if (mapped is null && !ctrl && !alt && !win
-                        && PhysicalCombo(ev.Key, ev.Mod) is (var key, var mods)
+                        && PhysicalCombo(ev.Key, ev.Mod, Convention) is (var key, var mods)
                         && (new Key(key).IsChar(out _) || new Key(key) == Key.Space))
                         _pendingTypedKey = (key, mods);
                 }
@@ -145,11 +151,11 @@ internal sealed class InputMapper
 
     /// <summary>Map a keydown to its logical input: SDL keycode to
     /// physical combo, then the shared combo mapping.</summary>
-    private static InputEvent? MapKeyDown(uint keycode, ushort keymod)
+    private static InputEvent? MapKeyDown(uint keycode, ushort keymod, KeyboardConvention convention)
     {
-        if (PhysicalCombo(keycode, keymod) is not (var key, var mods))
+        if (PhysicalCombo(keycode, keymod, convention) is not (var key, var mods))
             return null;
-        return MapCombo(KeyCombo.FromFlat(key, mods));
+        return MapCombo(KeyCombo.FromFlat(key, mods), convention);
     }
 
     /// <summary>Map a physical combo to the logical input its keydown
@@ -158,10 +164,12 @@ internal sealed class InputMapper
     /// half of keydown mapping, shared by the SDL path and synthetic
     /// hosts (the test harness). Null when the keydown yields no logical
     /// input directly: unmodified printables arrive as the following
-    /// TextInput → TypeChar instead.</summary>
-    public static InputEvent? MapCombo(KeyCombo combo)
+    /// TextInput → TypeChar instead. The combo is in the convention's
+    /// terms (under Mac, Ctrl is the Command key).</summary>
+    public static InputEvent? MapCombo(KeyCombo combo,
+        KeyboardConvention convention = KeyboardConvention.Windows)
     {
-        if (MapComboInner(combo) is not InputEvent mapped)
+        if (MapComboInner(combo, convention) is not InputEvent mapped)
             return null;
         if (mapped.Key != 0)
             return mapped;
@@ -169,9 +177,12 @@ internal sealed class InputMapper
         return mapped with { Key = key, Mods = mods };
     }
 
-    private static InputEvent? MapComboInner(KeyCombo combo)
+    private static InputEvent? MapComboInner(KeyCombo combo, KeyboardConvention convention)
     {
         var (key, ctrl, alt, shift) = (combo.Key, combo.Ctrl, combo.Alt, combo.Shift);
+
+        if (convention == KeyboardConvention.Mac && !combo.Win && MapMacCombo(combo) is { } mac)
+            return mac;
 
         // The Windows key has no semantic mapping of its own and turns
         // any combo into a host binding: win+left is not "move left".
@@ -265,17 +276,79 @@ internal sealed class InputMapper
         return InputEvent.RawKey(code, mods);
     }
 
+    /// <summary>The macOS editing keys, where they differ from the
+    /// Windows table below (which still supplies the rest: under the Mac
+    /// convention its Ctrl rows are Command+C, Command+Z, and so on).
+    /// Option+Left/Right moves by word and Option+Backspace/Delete deletes
+    /// one; Command+Left/Right goes to the line's ends and Command+Up/Down
+    /// to the document's; Command+Option+arrows is tree navigation, which
+    /// Option+arrows is on Windows. Command+Backspace/Delete and
+    /// Option+Up/Down have no logical kind here and stay host bindings.
+    /// Null defers to the Windows table.</summary>
+    private static InputEvent? MapMacCombo(KeyCombo combo)
+    {
+        var (key, command, option, shift) = (combo.Key, combo.Ctrl, combo.Alt, combo.Shift);
+        if (command && option && !shift)
+        {
+            if (key == Key.Up) return InputEvent.Simple(InputKind.TreeUp);
+            if (key == Key.Down) return InputEvent.Simple(InputKind.TreeDown);
+            if (key == Key.Left) return InputEvent.Simple(InputKind.TreeLeft);
+            if (key == Key.Right) return InputEvent.Simple(InputKind.TreeRight);
+        }
+        if (option && !command)
+        {
+            if (key == Key.Left)
+                return InputEvent.Simple(shift ? InputKind.SelectWordLeft : InputKind.MoveWordLeft);
+            if (key == Key.Right)
+                return InputEvent.Simple(shift ? InputKind.SelectWordRight : InputKind.MoveWordRight);
+            if (!shift && key == Key.Backspace) return InputEvent.Simple(InputKind.DeleteWordBackward);
+            if (!shift && key == Key.Delete) return InputEvent.Simple(InputKind.DeleteWordForward);
+            if (key == Key.Up || key == Key.Down)
+                return HostBinding(combo);
+        }
+        if (command && !option)
+        {
+            if (key == Key.Left)
+                return InputEvent.Simple(shift ? InputKind.SelectToLineStart : InputKind.MoveToLineStart);
+            if (key == Key.Right)
+                return InputEvent.Simple(shift ? InputKind.SelectToLineEnd : InputKind.MoveToLineEnd);
+            if (key == Key.Up)
+                return InputEvent.Simple(shift ? InputKind.SelectToDocStart : InputKind.MoveToDocStart);
+            if (key == Key.Down)
+                return InputEvent.Simple(shift ? InputKind.SelectToDocEnd : InputKind.MoveToDocEnd);
+            if (!shift && (key == Key.Backspace || key == Key.Delete))
+                return HostBinding(combo);
+        }
+        return null;
+    }
+
+    private static InputEvent HostBinding(KeyCombo combo)
+    {
+        var (code, mods) = combo.ToFlat();
+        return InputEvent.RawKey(code, mods);
+    }
+
     /// <summary>The physical combo for an SDL key event, in the flat
     /// (key, mods) encoding, when the key has one. Bare modifier presses
-    /// have none.</summary>
-    public static (uint Key, Mods Mods)? PhysicalCombo(uint keycode, ushort keymod)
+    /// have none. Under the Mac convention the Command key (SDL's GUI) is
+    /// the combo's Ctrl and the Control key its Win.</summary>
+    public static (uint Key, Mods Mods)? PhysicalCombo(uint keycode, ushort keymod,
+        KeyboardConvention convention = KeyboardConvention.Windows)
     {
         if (KeycodeToKey(keycode) is not Key key)
             return null;
-        var mods = ((keymod & Sdl3.KmodCtrl) != 0 ? Mods.Ctrl : Mods.None)
+        var mac = convention == KeyboardConvention.Mac;
+        // A bare modifier press names its key the way its flag does.
+        if (mac && key == Key.Win)
+            key = Key.Ctrl;
+        else if (mac && key == Key.Ctrl)
+            key = Key.Win;
+        var ctrlMask = mac ? Sdl3.KmodGui : Sdl3.KmodCtrl;
+        var winMask = mac ? Sdl3.KmodCtrl : Sdl3.KmodGui;
+        var mods = ((keymod & ctrlMask) != 0 ? Mods.Ctrl : Mods.None)
             | ((keymod & Sdl3.KmodAlt) != 0 ? Mods.Alt : Mods.None)
             | ((keymod & Sdl3.KmodShift) != 0 ? Mods.Shift : Mods.None)
-            | ((keymod & Sdl3.KmodGui) != 0 ? Mods.Win : Mods.None);
+            | ((keymod & winMask) != 0 ? Mods.Win : Mods.None);
         return (key.Code, mods);
     }
 

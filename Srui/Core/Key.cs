@@ -216,6 +216,22 @@ public readonly record struct Key(uint Code)
     };
 }
 
+/// <summary>Which platform's keyboard conventions a combo's modifiers
+/// follow. Under <see cref="Windows"/> the modifiers are the keys they
+/// name. Under <see cref="Mac"/> the combo's Ctrl is the Command key (the
+/// modifier macOS programs act with, as Ctrl is on Windows), Win is the
+/// Control key, and Alt is the Option key; so a binding written once as
+/// "ctrl+s" answers Ctrl+S on Windows and Command+S on macOS, and
+/// copy/paste/undo follow each platform's keys. The windowed host picks
+/// the convention of the platform it runs on (<see cref="SdlHost.Convention"/>);
+/// headless apps default to Windows, so a test means the same on any
+/// machine.</summary>
+public enum KeyboardConvention
+{
+    Windows,
+    Mac,
+}
+
 /// <summary>A key combined with modifier state. Carries both string forms
 /// (spoken and config) and the framework's reservation verdict, so a bind
 /// dialog needs nothing else.</summary>
@@ -328,13 +344,29 @@ public readonly record struct KeyCombo(Key Key, bool Ctrl, bool Alt, bool Shift,
     /// <summary>Spoken form: "windows control alt shift s". Modifier
     /// order: windows, control, alt, shift, then the key. Space-separated,
     /// lowercase.</summary>
-    public string DisplayName()
+    public string DisplayName() => DisplayName(KeyboardConvention.Windows);
+
+    /// <summary>Spoken form under a convention. Windows: "windows control
+    /// alt shift s". Mac names the keys the modifiers are there, in the
+    /// order macOS menus list them: "control option shift command s"
+    /// (Win, Alt, Shift, Ctrl).</summary>
+    public string DisplayName(KeyboardConvention convention)
     {
         var result = new System.Text.StringBuilder();
-        if (Win) result.Append("windows ");
-        if (Ctrl) result.Append("control ");
-        if (Alt) result.Append("alt ");
-        if (Shift) result.Append("shift ");
+        if (convention == KeyboardConvention.Mac)
+        {
+            if (Win) result.Append("control ");
+            if (Alt) result.Append("option ");
+            if (Shift) result.Append("shift ");
+            if (Ctrl) result.Append("command ");
+        }
+        else
+        {
+            if (Win) result.Append("windows ");
+            if (Ctrl) result.Append("control ");
+            if (Alt) result.Append("alt ");
+            if (Shift) result.Append("shift ");
+        }
         result.Append(Key.DisplayName());
         return result.ToString();
     }
@@ -396,24 +428,35 @@ public readonly record struct KeyCombo(Key Key, bool Ctrl, bool Alt, bool Shift,
     /// like Ctrl+Tab or Escape that merely might collide with a cancel
     /// widget, is at most a soft conflict for the host to warn about (see
     /// <see cref="Widget.ReservesKey"/> for the per-widget side).</summary>
-    public string? ReservedReason
+    public string? ReservedReason => ReservedReasonUnder(KeyboardConvention.Windows);
+
+    /// <summary><see cref="ReservedReason"/> under a convention. The Mac
+    /// convention moves tree navigation from Alt+arrows to Command+Option+arrows
+    /// (Ctrl+Alt+arrows in combo terms), since Option+Left/Right moves by
+    /// word there, and speaks the modifiers by their macOS names.</summary>
+    public string? ReservedReasonUnder(KeyboardConvention convention)
     {
-        get
+        // Plain Tab / Shift+Tab: the focus ring must always work.
+        if (Key == Key.Tab && !Ctrl && !Alt && !Win)
+            return "Tab is reserved for moving between widgets";
+        var arrow = Key == Key.Up || Key == Key.Down || Key == Key.Left || Key == Key.Right;
+        if (convention == KeyboardConvention.Mac)
         {
-            // Plain Tab / Shift+Tab: the focus ring must always work.
-            if (Key == Key.Tab && !Ctrl && !Alt && !Win)
-                return "Tab is reserved for moving between widgets";
-            // Alt+letter: widget mnemonics. Alt+arrows: hierarchy
-            // navigation. The Windows key takes a combo out of both.
-            if (Alt && !Ctrl && !Shift && !Win)
-            {
-                if (Key.IsChar(out var c) && char.IsAsciiLetter(c))
-                    return "Alt plus a letter is reserved for widget shortcuts";
-                if (Key == Key.Up || Key == Key.Down
-                    || Key == Key.Left || Key == Key.Right)
-                    return "Alt plus arrows is reserved for tree navigation";
-            }
+            if (Alt && !Ctrl && !Shift && !Win && Key.IsChar(out var m) && char.IsAsciiLetter(m))
+                return "Option plus a letter is reserved for widget shortcuts";
+            if (Alt && Ctrl && !Shift && !Win && arrow)
+                return "Command Option plus arrows is reserved for tree navigation";
             return null;
         }
+        // Alt+letter: widget mnemonics. Alt+arrows: hierarchy
+        // navigation. The Windows key takes a combo out of both.
+        if (Alt && !Ctrl && !Shift && !Win)
+        {
+            if (Key.IsChar(out var c) && char.IsAsciiLetter(c))
+                return "Alt plus a letter is reserved for widget shortcuts";
+            if (arrow)
+                return "Alt plus arrows is reserved for tree navigation";
+        }
+        return null;
     }
 }
