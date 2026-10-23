@@ -1,0 +1,60 @@
+# Builds, tests, AOT-checks, and packs SRUI on both supported platforms.
+#
+# Windows uses the prebuilt DLLs in native/out.zip, since build-native.ps1
+# needs a machine-specific clang-cl/MSVC toolchain; macOS builds its natives
+# from source with native/build-native.sh. Each job ends by packing that
+# platform's natives, which is what a consumer's restore would see.
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Stage prebuilt native DLLs
+        shell: pwsh
+        run: Expand-Archive native/out.zip -DestinationPath native -Force
+      - name: Build
+        run: dotnet build Srui.slnx -c Release
+      - name: Test
+        run: dotnet test Srui.Tests -c Release --no-build
+      - name: Native AOT check
+        shell: pwsh
+        run: |
+          dotnet publish samples/AotDemo -c Release -r win-x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          samples/AotDemo/bin/Release/net10.0/win-x64/publish/AotDemo.exe --headless
+      - name: Pack
+        shell: pwsh
+        run: ./pack.ps1 -SkipNative
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Install native build tools
+        run: brew install ninja
+      - name: Build native libraries
+        run: ./native/build-native.sh
+      - name: Build
+        run: dotnet build Srui.slnx -c Release
+      - name: Test
+        run: dotnet test Srui.Tests -c Release --no-build
+      - name: Native AOT check
+        run: |
+          dotnet publish samples/AotDemo -c Release -r osx-arm64
+          samples/AotDemo/bin/Release/net10.0/osx-arm64/publish/AotDemo --headless
+      - name: Pack
+        shell: pwsh
+        run: ./pack.ps1 -SkipNative
