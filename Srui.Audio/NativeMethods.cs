@@ -172,4 +172,10 @@ internal static class NativeMethods
     [DllImport(Lib)] internal static extern IntPtr cosmos_binauralizer_node_create(IntPtr graph);
     [DllImport(Lib)] internal static extern void cosmos_binauralizer_node_destroy(IntPtr node);
     [DllImport(Lib)] internal static extern int ma_phonon_binauralizer_node_set_directions(IntPtr node, float lx, float ly, float lz, float rx, float ry, float rz);
+
+    // ── AudioToolbox decoding (cosmos_apple_audio.c; present in the macOS build only) ──
+    [DllImport(Lib)] internal static extern IntPtr cosmos_atx_open([MarshalAs(UnmanagedType.LPUTF8Str)] string path, out uint channels, out uint sampleRate, out ulong lengthFrames, out ulong durationMs);
+    [DllImport(Lib)] internal static extern unsafe ulong cosmos_atx_read(IntPtr handle, float* output, ulong frameCount);
+    [DllImport(Lib)] internal static extern int cosmos_atx_seek(IntPtr handle, ulong frameIndex);
+    [DllImport(Lib)] internal static extern void cosmos_atx_close(IntPtr handle);
 }

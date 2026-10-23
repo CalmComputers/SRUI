@@ -84,6 +84,10 @@ if(WIN32)
 
     set_target_properties(cosmos PROPERTIES OUTPUT_NAME cosmos PREFIX "")
 elseif(APPLE)
+    # AAC/M4A/M4B/ALAC through AudioToolbox, the macOS counterpart of the
+    # managed Media Foundation reader on Windows.
+    target_sources(cosmos PRIVATE cosmos_apple_audio.c)
+
     # Everything else is hidden, so the dylib exports exactly the MA_API
     # surface, as the DLL does.
     set_target_properties(cosmos PROPERTIES C_VISIBILITY_PRESET hidden)

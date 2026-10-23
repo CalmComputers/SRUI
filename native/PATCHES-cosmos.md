@@ -133,3 +133,13 @@ surface the DLL does; it defines MA_NO_RUNTIME_LINKING and links
 CoreFoundation, CoreAudio, and AudioToolbox directly, as Apple's
 notarization requires; and it links phonon/macos/libphonon.dylib with an
 @loader_path rpath, so libphonon.dylib is found beside it.
+
+# 11. cosmos_apple_audio.c (new file, macOS only)
+
+SRUI-added AAC / M4A / M4B / ALAC decoding through AudioToolbox's
+ExtAudioFile, the macOS counterpart of the managed Media Foundation reader:
+cosmos_atx_open (format, length net of encoder priming, and duration),
+cosmos_atx_read (interleaved f32 at the file's own rate and channel count),
+cosmos_atx_seek, and cosmos_atx_close. CMakeLists.txt compiles it only on
+macOS; Srui.Audio's AudioToolboxAudioSource P/Invokes it.
+
