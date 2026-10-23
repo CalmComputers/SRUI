@@ -18,16 +18,23 @@
                       OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
-  <!-- Native dependencies staged by native/build-native.ps1. They are
-       optimized C/C++ regardless of the .NET configuration. -->
+  <!-- Native dependencies staged by native/build-native.ps1 (Windows)
+       or native/build-native.sh (macOS). They are optimized C/C++
+       regardless of the .NET configuration. -->
   <PropertyGroup>
     <SruiNativeDir>..\..\native\out\</SruiNativeDir>
   </PropertyGroup>
-  <ItemGroup>
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
     <None Include="$(SruiNativeDir)prism.dll" CopyToOutputDirectory="PreserveNewest" />
     <None Include="$(SruiNativeDir)SDL3.dll" CopyToOutputDirectory="PreserveNewest" />
     <None Include="$(SruiNativeDir)cosmos.dll" CopyToOutputDirectory="PreserveNewest" />
     <None Include="$(SruiNativeDir)phonon.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <None Include="$(SruiNativeDir)libprism.dylib" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(SruiNativeDir)libSDL3.dylib" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(SruiNativeDir)libcosmos.dylib" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(SruiNativeDir)libphonon.dylib" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
