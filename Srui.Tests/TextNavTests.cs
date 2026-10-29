@@ -293,6 +293,28 @@ public class TextNavTests
     }
 
     [Fact]
+    public void PrevWordExtentStopsAtSymbolsAcrossLines()
+    {
+        // Symbols at a line start go alone; the word above stays.
+        Assert.Equal(6, TextNav.PrevWordExtent(R("hello\n!!!"), 9));
+        Assert.Equal(6, TextNav.PrevWordExtent(R("hello\n  !!!  "), 13));
+        Assert.Equal(7, TextNav.PrevWordExtent(R("hello\r\n!!!"), 10));
+        // Symbols ending the line above: they go with the line break.
+        Assert.Equal(5, TextNav.PrevWordExtent(R("hello !!!\n"), 10));
+        Assert.Equal(6, TextNav.PrevWordExtent(R("hello\n!!!\n\n"), 11));
+        // Symbols with no line break still go with their word.
+        Assert.Equal(0, TextNav.PrevWordExtent(R("hello !!!"), 9));
+        Assert.Equal(0, TextNav.PrevWordExtent(R("!!!\n"), 4));
+    }
+
+    [Fact]
+    public void PrevWordExtentCrossesBlankLines()
+    {
+        Assert.Equal(0, TextNav.PrevWordExtent(R("hello\n\n"), 7));
+        Assert.Equal(0, TextNav.PrevWordExtent(R("hello\n  \n  "), 11));
+    }
+
+    [Fact]
     public void WordExtentEmpty()
     {
         var r = R("");

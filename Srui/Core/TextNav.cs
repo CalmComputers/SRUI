@@ -429,23 +429,39 @@ internal static class TextNav
     // whitespace). Used for Ctrl+Shift+Arrow selection and Ctrl+Backspace/Delete.
 
     /// <summary>Move left to the start of the previous word extent: skip
-    /// backward over all non-word chars, then over the word itself.</summary>
+    /// backward over all non-word chars, then over the word itself. A run
+    /// of non-word chars that crosses a line break and holds punctuation
+    /// is the target itself: the extent stops at the start of the nearest
+    /// line's share of the run that holds punctuation, and the word
+    /// before is kept. Only blank lines lead on to the word.</summary>
     public static int PrevWordExtent(Rope rope, int pos)
     {
         if (pos <= 0)
             return 0;
         var p = Math.Min(pos, rope.Length);
 
-        // Phase 1: skip backward over non-word chars.
+        // Phase 1: skip backward over non-word chars, a line at a time.
+        var crossedLine = false;
+        var linePunct = false;
         while (p > 0)
         {
             var (c, w) = RuneBefore(rope, p);
             if (IsWordChar(c))
                 break;
+            if (c.Value == '\n')
+            {
+                if (linePunct)
+                    return p;
+                crossedLine = true;
+            }
+            else if (IsPunct(c))
+            {
+                linePunct = true;
+            }
             p -= w;
         }
-        if (p == 0)
-            return 0;
+        if (p == 0 || (crossedLine && linePunct))
+            return p;
 
         // Phase 2: skip backward over word chars.
         while (p > 0)
