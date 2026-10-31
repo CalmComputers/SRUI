@@ -259,11 +259,13 @@ public class ReservedTests
     }
 
     [Fact]
-    public void AltLetterReservedButAltShiftLetterFree()
+    public void AltLetterBindableWithACaution()
     {
-        Assert.NotNull(KeyCombo.WithAlt(Key.Char('s')).ReservedReason);
-        Assert.Null(KeyCombo.AltShift(Key.Char('s')).ReservedReason);
-        Assert.Null(KeyCombo.WithAlt(Key.Char('5')).ReservedReason);
+        Assert.Null(KeyCombo.WithAlt(Key.Char('s')).ReservedReason);
+        Assert.NotNull(KeyCombo.WithAlt(Key.Char('s')).CautionReason);
+        Assert.Null(KeyCombo.AltShift(Key.Char('s')).CautionReason);
+        Assert.Null(KeyCombo.WithAlt(Key.Char('5')).CautionReason);
+        Assert.Null(KeyCombo.WithCtrl(Key.Char('s')).CautionReason);
     }
 
     [Fact]

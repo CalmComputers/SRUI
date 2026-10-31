@@ -54,6 +54,8 @@ internal static class Sdl3
     public const uint KeyDown = 0x40000051;
     public const uint KeyUp = 0x40000052;
     public const uint KeyKpEnter = 0x40000058;
+    public const uint KeyApplication = 0x40000065;
+    public const uint KeyMenu = 0x40000076;
     public const uint KeyLCtrl = 0x400000E0;
     public const uint KeyLShift = 0x400000E1;
     public const uint KeyLAlt = 0x400000E2;

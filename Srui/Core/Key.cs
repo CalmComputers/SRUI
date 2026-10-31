@@ -29,6 +29,11 @@ public readonly record struct Key(uint Code)
     public static readonly Key MediaPreviousTrack = new(17);
     public static readonly Key MediaStop = new(18);
 
+    /// <summary>The Applications key, the context-menu key beside the
+    /// right Windows key. Shift+F10 is its conventional twin on keyboards
+    /// without one; a host that binds the one usually binds both.</summary>
+    public static readonly Key Applications = new(23);
+
     /// <summary>The modifier keys as physical keys, left and right
     /// folded into one. They appear in the physical key stream only —
     /// a press of Shift on its own is a gesture an app may bind
@@ -104,6 +109,7 @@ public readonly record struct Key(uint Code)
             20 => "control",
             21 => "alt",
             22 => "windows",
+            23 => "applications",
             _ => "?",
         };
     }
@@ -137,6 +143,7 @@ public readonly record struct Key(uint Code)
             16 => "nexttrack",
             17 => "previoustrack",
             18 => "mediastop",
+            23 => "applications",
             _ => "?",
         };
     }
@@ -173,6 +180,7 @@ public readonly record struct Key(uint Code)
             "nexttrack" => MediaNextTrack,
             "previoustrack" or "prevtrack" => MediaPreviousTrack,
             "mediastop" or "stop" => MediaStop,
+            "applications" or "apps" or "menu" => Applications,
             _ => null,
         };
     }
@@ -395,7 +403,7 @@ public readonly record struct KeyCombo(Key Key, bool Ctrl, bool Alt, bool Shift,
     /// contribution to hard conflicts: everything else, including combos
     /// like Ctrl+Tab or Escape that merely might collide with a cancel
     /// widget, is at most a soft conflict for the host to warn about (see
-    /// <see cref="Widget.ReservesKey"/> for the per-widget side).</summary>
+    /// <see cref="CautionReason"/> and <see cref="Widget.ReservesKey"/>).</summary>
     public string? ReservedReason
     {
         get
@@ -403,16 +411,27 @@ public readonly record struct KeyCombo(Key Key, bool Ctrl, bool Alt, bool Shift,
             // Plain Tab / Shift+Tab: the focus ring must always work.
             if (Key == Key.Tab && !Ctrl && !Alt && !Win)
                 return "Tab is reserved for moving between widgets";
-            // Alt+letter: widget mnemonics. Alt+arrows: hierarchy
-            // navigation. The Windows key takes a combo out of both.
-            if (Alt && !Ctrl && !Shift && !Win)
-            {
-                if (Key.IsChar(out var c) && char.IsAsciiLetter(c))
-                    return "Alt plus a letter is reserved for widget shortcuts";
-                if (Key == Key.Up || Key == Key.Down
-                    || Key == Key.Left || Key == Key.Right)
-                    return "Alt plus arrows is reserved for tree navigation";
-            }
+            // Alt+arrows: hierarchy navigation. The Windows key takes a
+            // combo out of it.
+            if (Alt && !Ctrl && !Shift && !Win
+                && (Key == Key.Up || Key == Key.Down || Key == Key.Left || Key == Key.Right))
+                return "Alt plus arrows is reserved for tree navigation";
+            return null;
+        }
+    }
+
+    /// <summary>If the combo is bindable but shared with the framework, the
+    /// spoken caution a bind dialog says as it binds; otherwise null.
+    /// Alt+letter is the mnemonic range: a widget shortcut on the same
+    /// combo is matched before any host binding, so a binding there works
+    /// everywhere except where a widget in the active layer claims the
+    /// letter, and does that widget's shortcut instead.</summary>
+    public string? CautionReason
+    {
+        get
+        {
+            if (Alt && !Ctrl && !Shift && !Win && Key.IsChar(out var c) && char.IsAsciiLetter(c))
+                return "where a widget has alt plus this letter as its shortcut, that comes first";
             return null;
         }
     }

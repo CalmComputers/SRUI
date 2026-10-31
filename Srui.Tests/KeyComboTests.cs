@@ -212,10 +212,24 @@ public class KeyComboTests
     [Fact]
     public void WindowsKeyLiftsTheAltReservations()
     {
-        Assert.NotNull(KeyCombo.WithAlt(Key.Char('m')).ReservedReason);
-        Assert.Null(KeyCombo.WinAlt(Key.Char('m')).ReservedReason);
+        Assert.NotNull(KeyCombo.WithAlt(Key.Char('m')).CautionReason);
+        Assert.Null(KeyCombo.WinAlt(Key.Char('m')).CautionReason);
+        Assert.NotNull(KeyCombo.WithAlt(Key.Left).ReservedReason);
         Assert.Null(KeyCombo.WinAlt(Key.Left).ReservedReason);
         Assert.Null(KeyCombo.WithWin(Key.Tab).ReservedReason);
+    }
+
+    [Fact]
+    public void TheApplicationsKeyHasItsNames()
+    {
+        var combo = KeyCombo.Plain(Key.Applications);
+        Assert.Equal("applications", combo.DisplayName());
+        Assert.Equal("applications", combo.ToConfigString());
+        Assert.True(KeyCombo.TryParseConfig("applications", out var parsed));
+        Assert.Equal(combo, parsed);
+        Assert.True(KeyCombo.TryParseConfig("apps", out var alias));
+        Assert.Equal(combo, alias);
+        Assert.Null(combo.ReservedReason);
     }
 
     [Fact]

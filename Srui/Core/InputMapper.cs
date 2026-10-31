@@ -312,6 +312,7 @@ internal sealed class InputMapper
             Sdl3.KeyMediaNextTrack => Key.MediaNextTrack,
             Sdl3.KeyMediaPreviousTrack => Key.MediaPreviousTrack,
             Sdl3.KeyMediaStop => Key.MediaStop,
+            Sdl3.KeyApplication or Sdl3.KeyMenu => Key.Applications,
             Sdl3.KeyLShift or Sdl3.KeyRShift => Key.Shift,
             Sdl3.KeyLCtrl or Sdl3.KeyRCtrl => Key.Ctrl,
             Sdl3.KeyLAlt or Sdl3.KeyRAlt => Key.Alt,

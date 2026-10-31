@@ -74,6 +74,19 @@ public class InputMapperTests
     }
 
     [Fact]
+    public void TheApplicationsKeyIsARawKey()
+    {
+        // SDL names the key twice, application and menu; both are the one key.
+        var mapper = new InputMapper();
+        foreach (var code in new[] { Sdl3.KeyApplication, Sdl3.KeyMenu })
+        {
+            var input = mapper.Map(KeyDown(code, 0));
+            Assert.Equal(InputKind.RawKey, input?.Kind);
+            Assert.Equal(KeyCombo.Plain(Key.Applications), KeyCombo.FromInput(input!.Value));
+        }
+    }
+
+    [Fact]
     public void ModifierKeysAreInThePhysicalStreamOnly()
     {
         // A bare Shift press is a physical key a game may bind (the
