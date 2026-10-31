@@ -2607,13 +2607,17 @@ public class FilterListBoxTests
 
 public class CheckBoxTests
 {
+    /// <summary>Space raises Toggled with the new state, and Changed,
+    /// as every widget the user changes does.</summary>
     [Fact]
     public void TogglesOnSpace()
     {
         var ui = new TestApp();
         var wrap = new CheckBox(ui.App, "Word Wrap");
         var toggles = new List<bool>();
+        var changes = 0;
         wrap.Toggled += toggles.Add;
+        wrap.Changed += () => changes++;
         wrap.Focus();
 
         ui.Type(' ');
@@ -2624,6 +2628,7 @@ public class CheckBoxTests
         ui.Type(' ');
         Assert.Equal(new[] { "not checked" }, ui.Spoken());
         Assert.Equal(new[] { true, false }, toggles);
+        Assert.Equal(2, changes);
         Assert.False(wrap.Checked);
     }
 
@@ -2633,13 +2638,16 @@ public class CheckBoxTests
         var ui = new TestApp();
         var wrap = new CheckBox(ui.App, "Word Wrap");
         var toggles = 0;
+        var changes = 0;
         wrap.Toggled += _ => toggles++;
+        wrap.Changed += () => changes++;
         wrap.Focus();
         ui.Drain();
 
         wrap.Checked = true;
         Assert.Equal(new[] { "checked" }, ui.Spoken());
         Assert.Equal(0, toggles);
+        Assert.Equal(0, changes);
 
         // Same value: silent. Unfocused: silent.
         wrap.Checked = true;

@@ -94,7 +94,9 @@ public partial class CheckBox : Widget
     /// writes itself.</summary>
     [Field] public partial bool Checked { get; set; }
 
-    /// <summary>The user toggled the box; the argument is the new state.</summary>
+    /// <summary>The user toggled the box; the argument is the new state.
+    /// <see cref="Widget.Changed"/> is raised too, as for every widget
+    /// whose state the user changes.</summary>
     public event Action<bool>? Toggled;
 
     protected virtual void OnToggled(bool isChecked) => Toggled?.Invoke(isChecked);
@@ -111,6 +113,7 @@ public partial class CheckBox : Widget
             Checked = !Checked;
             var isChecked = Checked;
             Post(() => OnToggled(isChecked));
+            PostChanged();
             return true;
         }
         return false;
