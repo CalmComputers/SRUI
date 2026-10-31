@@ -31,7 +31,7 @@ public sealed class TaskApp
         // panels have already settled when Changed fires.
         _views.Changed += () =>
         {
-            if (_views.ActiveTab == "Summary")
+            if (_views.ActiveTab?.Value == "Summary")
                 _summary.ShowReport(_tasks.List.Items);
         };
 

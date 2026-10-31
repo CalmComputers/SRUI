@@ -25,6 +25,11 @@ public class Group : Widget
         : base(parent, name, role ?? Role.Group, focusable: false)
     {
     }
+
+    private protected Group(Widget after, string? name, Role? role)
+        : base(after, name, role ?? Role.Group, focusable: false)
+    {
+    }
 }
 
 /// <summary>A focusable widget with no spoken role and no built-in

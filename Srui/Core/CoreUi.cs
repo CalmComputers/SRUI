@@ -124,6 +124,17 @@ internal sealed class CoreUi
         return _tree.Insert(parent, index, label, owner);
     }
 
+    /// <summary>Whether the tree holds the node.</summary>
+    public bool Contains(NodeId id) => _tree.Contains(id);
+
+    /// <summary>Insert a node just after a sibling, in its parent or
+    /// its layer's roots.</summary>
+    public NodeId InsertAfter(NodeId sibling, WidgetLabel label, Widget? owner = null)
+    {
+        _dirty = true;
+        return _tree.InsertAfter(sibling, label, owner);
+    }
+
     /// <summary>Remove a node and its subtree. If focus was inside the
     /// removed subtree, it recovers to the nearest surviving focusable
     /// node; the tick end reads the landing as a recovery.</summary>

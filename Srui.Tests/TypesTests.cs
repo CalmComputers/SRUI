@@ -66,6 +66,7 @@ public class ReservationTests
         Assert.True(tabs.ReservesKey(KeyCombo.Plain(Key.Home)));
         Assert.True(tabs.ReservesKey(KeyCombo.Plain(Key.Up)));
         Assert.True(tabs.ReservesKey(KeyCombo.Plain(Key.Down)));
+        Assert.True(tabs.ReservesKey(KeyCombo.Plain(Key.Char('a')))); // typeahead
         Assert.False(tabs.ReservesKey(KeyCombo.WithCtrl(Key.Char('s'))));
     }
 

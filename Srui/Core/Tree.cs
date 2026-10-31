@@ -67,6 +67,20 @@ internal sealed class Tree
         return id;
     }
 
+    /// <summary>Insert a new node as the sibling just after
+    /// <paramref name="sibling"/>: under the same parent, or among the
+    /// roots of the layer the sibling is a root of.</summary>
+    public NodeId InsertAfter(NodeId sibling, WidgetLabel label, Widget? owner = null)
+    {
+        var parent = Parent(sibling);
+        var siblings = parent.IsNone ? LayerOf(sibling).Roots : Children(parent);
+        var at = siblings.IndexOf(sibling);
+        var id = new NodeId(_nextId++);
+        _nodes[id] = new Node(id, parent, label, owner);
+        siblings.Insert(at < 0 ? siblings.Count : at + 1, id);
+        return id;
+    }
+
     /// <summary>Remove a node and all its descendants from the tree.
     /// Clears the active layer's focus if it was inside.</summary>
     public void Remove(NodeId id)

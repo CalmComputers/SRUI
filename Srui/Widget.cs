@@ -90,6 +90,19 @@ public abstract partial class Widget : Element, IWidgetContainer
         Description = "";
     }
 
+    /// <summary>Create the widget's node just after a sibling, in the
+    /// sibling's container: for a widget that places others in reading
+    /// order after itself (a tab control's panels).</summary>
+    private protected Widget(Widget after, string? name, Role? role, bool focusable)
+    {
+        App = after.App;
+        Container = after.Container;
+        Node = Engine.InsertAfter(after.Node, new WidgetLabel(focusable, false), this);
+        Name = name;
+        Role = role ?? Role.None;
+        Description = "";
+    }
+
     // ── Focus and lifetime ──
 
     public void Focus() => Engine.SetFocus(Node);
@@ -107,6 +120,10 @@ public abstract partial class Widget : Element, IWidgetContainer
     /// it) from the tree. Focus recovers if it was inside. The object
     /// stays readable but mutations no longer land anywhere.</summary>
     public void Remove() => Engine.Remove(Node);
+
+    /// <summary>Whether the widget has left the tree, by its own
+    /// <see cref="Remove"/>, an ancestor's, or its dialog closing.</summary>
+    public bool IsRemoved => !Engine.Contains(Node);
 
     /// <summary>The widget this one's events are heard as if they came
     /// from. A widget's action events and announcements reach the user

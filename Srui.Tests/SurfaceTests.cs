@@ -2107,7 +2107,7 @@ public class SliderTests
 public class TabControlTests
 {
     [Fact]
-    public void CyclesWithWraparound()
+    public void MovesLikeAListWithEdges()
     {
         var ui = new TestApp();
         var tabs = new TabControl(ui.App, "Views", ["Files", "Playlist", "FX"]);
@@ -2116,15 +2116,31 @@ public class TabControlTests
 
         ui.Input(InputKind.MoveRight);
         Assert.Equal(new[] { "Playlist" }, ui.Spoken());
-        ui.Input(InputKind.MoveRight);
+        ui.Input(InputKind.MoveDown);
         Assert.Equal(new[] { "FX" }, ui.Spoken());
-        ui.Input(InputKind.MoveRight); // wraps
+        ui.Input(InputKind.MoveRight);
+        Assert.Equal(new[] { "bottom, FX" }, ui.Spoken());
+        ui.Input(InputKind.MoveToDocStart);
         Assert.Equal(new[] { "Files" }, ui.Spoken());
-
-        ui.Input(InputKind.MoveLeft); // wraps backward
+        ui.Input(InputKind.MoveLeft);
+        Assert.Equal(new[] { "top, Files" }, ui.Spoken());
+        ui.Input(InputKind.MoveToDocEnd);
         Assert.Equal(new[] { "FX" }, ui.Spoken());
         Assert.Equal(2, tabs.ActiveIndex);
-        Assert.Equal("FX", tabs.ActiveTab);
+        Assert.Equal("FX", tabs.ActiveTab?.Value);
+    }
+
+    [Fact]
+    public void TypingFindsATabByName()
+    {
+        var ui = new TestApp();
+        var tabs = new TabControl(ui.App, "Views", ["Files", "Playlist", "FX"]);
+        tabs.Focus();
+        ui.Drain();
+
+        ui.Type("p");
+        Assert.Equal(new[] { "Playlist" }, ui.Spoken());
+        Assert.Equal(1, tabs.ActiveIndex);
     }
 
     [Fact]
@@ -2175,6 +2191,92 @@ public class TabControlTests
         var tabs = new TabControl(ui.App, "Views", ["One", "Two"]);
         var only = new Group(ui.App, "One");
         Assert.Throws<ArgumentException>(() => tabs.AttachPanels(only));
+    }
+
+    [Fact]
+    public void AddedTabsReadInOrderBelowTheControlAndAboveWhatFollows()
+    {
+        var ui = new TestApp();
+        var tabs = new TabControl(ui.App, "Programs");
+        _ = new Button(ui.App, "Close");
+        var organizer = tabs.AddTab("Organizer");
+        _ = new CheckBox(organizer.Panel!, "Loud");
+        var chat = tabs.AddTab("Chat");
+        _ = new CheckBox(chat.Panel!, "Quiet");
+        tabs.Focus();
+        Assert.Equal(new[] { "Programs tab control Organizer" }, ui.Spoken());
+
+        // The active tab's panel follows the control, unnamed, since the
+        // tab just said what it holds; the other tab's is hidden.
+        ui.Input(InputKind.NavigateNext);
+        Assert.Equal(new[] { "Loud check box not checked" }, ui.Spoken());
+        ui.Input(InputKind.NavigateNext);
+        Assert.Equal(new[] { "Close button" }, ui.Spoken());
+
+        ui.Input(InputKind.NavigatePrev);
+        ui.Input(InputKind.NavigatePrev);
+        ui.Input(InputKind.MoveRight);
+        Assert.Equal(new[] { "Chat" }, ui.Spoken());
+        ui.Input(InputKind.NavigateNext);
+        Assert.Equal(new[] { "Quiet check box not checked" }, ui.Spoken());
+    }
+
+    [Fact]
+    public void InsertedTabsPanelSitsAmongItsNeighbours()
+    {
+        var ui = new TestApp();
+        var tabs = new TabControl(ui.App, "Programs");
+        var first = tabs.AddTab("A");
+        _ = new CheckBox(first.Panel!, "In A");
+        var last = tabs.AddTab("C");
+        _ = new CheckBox(last.Panel!, "In C");
+        var middle = tabs.InsertTab(1, "B");
+        _ = new CheckBox(middle.Panel!, "In B");
+        // An insert keeps the active tab; only its panel shows.
+        Assert.Same(first, tabs.ActiveTab);
+        Assert.False(first.Panel!.Hidden);
+        Assert.True(middle.Panel!.Hidden);
+        Assert.True(last.Panel!.Hidden);
+
+        tabs.ActiveTab = middle;
+        tabs.Focus();
+        ui.Drain();
+        ui.Input(InputKind.NavigateNext);
+        Assert.Equal(new[] { "In B check box not checked" }, ui.Spoken());
+        Assert.Equal(new[] { "A", "B", "C" }, tabs.Tabs.Select(t => t.Value));
+    }
+
+    [Fact]
+    public void RemovingTheActiveTabShowsTheOneInItsPlace()
+    {
+        var ui = new TestApp();
+        var tabs = new TabControl(ui.App, "Programs");
+        var a = tabs.AddTab("A");
+        var b = tabs.AddTab("B");
+        var aPanel = a.Panel!;
+        tabs.Focus();
+        ui.Drain();
+
+        tabs.RemoveTab(a);
+        Assert.Equal(new[] { "B" }, ui.Spoken());
+        Assert.True(aPanel.IsRemoved);
+        Assert.Null(a.Panel);
+        Assert.False(b.Panel!.Hidden);
+
+        tabs.RemoveTab(b);
+        Assert.Empty(tabs.Tabs);
+        Assert.Null(tabs.ActiveTab);
+        Assert.Equal(-1, tabs.ActiveIndex);
+    }
+
+    [Fact]
+    public void AnEmptyControlAcceptsItsFirstTabAsActive()
+    {
+        var ui = new TestApp();
+        var tabs = new TabControl(ui.App, "Programs");
+        var only = tabs.AddTab("Only");
+        Assert.Same(only, tabs.ActiveTab);
+        Assert.False(only.Panel!.Hidden);
     }
 }
 

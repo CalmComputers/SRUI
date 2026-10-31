@@ -118,6 +118,7 @@ public partial class ListBox<T> : Widget where T : Element
             if (_selectedItem is { } selected && IndexOf(_items, selected, _selectedIndex) < 0)
                 _selectedItem = null;
             Engine.Touch();
+            CursorMoved(byInput: false);
         }
     }
 
@@ -129,6 +130,7 @@ public partial class ListBox<T> : Widget where T : Element
     {
         _source = source;
         Engine.Touch();
+        CursorMoved(byInput: false);
     }
 
     /// <summary>Remove the item at the index. Removing the selected item
@@ -148,6 +150,7 @@ public partial class ListBox<T> : Widget where T : Element
             _selectedIndex = index;
         }
         Engine.Touch();
+        CursorMoved(byInput: false);
     }
 
     /// <summary>Insert an item at the index. The cursor stays on its
@@ -159,6 +162,7 @@ public partial class ListBox<T> : Widget where T : Element
             throw new ArgumentOutOfRangeException(nameof(index));
         _items.Insert(index, item);
         Engine.Touch();
+        CursorMoved(byInput: false);
     }
 
     /// <summary>Append an item.</summary>
@@ -175,6 +179,7 @@ public partial class ListBox<T> : Widget where T : Element
             _selectedItem = null;
         _items[index] = item;
         Engine.Touch();
+        CursorMoved(byInput: false);
     }
 
     private void Stored()
@@ -255,11 +260,21 @@ public partial class ListBox<T> : Widget where T : Element
         }
     }
 
-    private void Select(int index, T item)
+    private void Select(int index, T item, bool byInput = false)
     {
         _selectedIndex = index;
         _selectedItem = item;
         Engine.Touch();
+        CursorMoved(byInput);
+    }
+
+    /// <summary>The cursor moved or the items changed, by the user's
+    /// input or by the program - for a list in this assembly that keeps
+    /// other widgets in step with its cursor (a tab control's panels).
+    /// Input runs inside dispatch, where other widgets must not be
+    /// touched; the program's changes run outside it.</summary>
+    private protected virtual void CursorMoved(bool byInput)
+    {
     }
 
     // ── Multi-select checked state ──
@@ -390,7 +405,7 @@ public partial class ListBox<T> : Widget where T : Element
     /// notify the program.</summary>
     private void SelectAndNotify(IReadOnlyList<T> items, int index)
     {
-        Select(index, items[index]);
+        Select(index, items[index], byInput: true);
         PostChanged();
     }
 
