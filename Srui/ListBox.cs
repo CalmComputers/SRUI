@@ -403,7 +403,7 @@ public partial class ListBox<T> : Widget where T : Element
 
     /// <summary>Selection moved by input: the tick end reads the landing;
     /// notify the program.</summary>
-    private void SelectAndNotify(IReadOnlyList<T> items, int index)
+    private protected void SelectAndNotify(IReadOnlyList<T> items, int index)
     {
         Select(index, items[index], byInput: true);
         PostChanged();

@@ -118,6 +118,14 @@ var commands = new SoundFilterListBox(
 var toppings = new ListBox(
     listsPanel, "Toppings", ["almonds", "chocolate", "granola", "honey", "yogurt"],
     multiSelect: true);
+// Up and Down by items, Right and Left by groups; the group read on crossing.
+var produce = new GroupedListBox(
+    listsPanel, "Produce",
+    [
+        new ListGroup("Fruit", ["apple", "pear", "plum"]),
+        new ListGroup("Vegetables", ["carrot", "leek"]),
+        new ListGroup("Herbs", ["basil", "mint", "sage"]),
+    ]);
 var pantry = new TreeView(
     listsPanel, "Pantry",
     [
