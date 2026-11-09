@@ -278,6 +278,39 @@ public class TreeViewTests
     }
 
     [Fact]
+    public void ATypeaheadScopeIsAllTheSearchReaches()
+    {
+        var (ui, tree, vanilla, extra, _) = Build();
+        // Within a branch, the room alone; at the top, the roots and then
+        // Vanilla's content, which a landing reveals.
+        tree.TypeaheadScope = cursor => cursor.Parent is { } parent
+            ? parent.Children
+            : [.. tree.Roots, .. vanilla.Children];
+        extra.Expanded = true;
+        tree.SelectNode(extra.Children[0]);                  // Turtle
+
+        // Only Extra Credit's own Joker, however near Vanilla's is.
+        ui.Type('j');
+        Assert.Same(extra.Children[1], tree.SelectedNode);
+        Assert.Equal(new[] { "Joker" }, ui.Spoken());
+        ui.Type('j');                                        // the only bearer, said again
+        Assert.Same(extra.Children[1], tree.SelectedNode);
+        // Nor Blueprint, out of the room.
+        tree.SelectNode(extra.Children[0]);
+        ui.Drain();
+        ui.Type('b');
+        Assert.Same(extra.Children[0], tree.SelectedNode);
+        Assert.Empty(ui.Spoken());
+
+        tree.SelectNode(vanilla);
+        ui.Drain();
+        ui.Type('b');
+        Assert.Same(vanilla.Children[1], tree.SelectedNode);
+        Assert.True(vanilla.Expanded);
+        Assert.Equal(new[] { "Blueprint" }, ui.Spoken());
+    }
+
+    [Fact]
     public void TypeaheadPrefersSiblingsOverANeighborsDeepContent()
     {
         var ui = new TestApp();

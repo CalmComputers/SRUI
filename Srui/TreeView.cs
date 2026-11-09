@@ -476,6 +476,41 @@ public partial class TreeView<T> : Widget where T : TreeNode<T>
         return result;
     }
 
+    /// <summary>Where typeahead searches, in place of the whole tree:
+    /// given the cursor, the nodes to try, in order. A first letter
+    /// starts past the cursor where the cursor is among them, a prefix
+    /// at it, and repeats walk on round them; a node not among them is
+    /// never landed on. Every node given must be in the tree, its parents
+    /// stamped (<see cref="Refresh"/>); a landing opens the branches
+    /// above it, as any typeahead landing does. Null, the default,
+    /// searches the whole tree outward from the cursor. For a tree whose
+    /// branches are made as they are entered, so that what is hidden is
+    /// not the search's, or whose search reaches nodes it keeps hidden
+    /// until landed on.</summary>
+    public Func<T, IReadOnlyList<T>>? TypeaheadScope { get; set; }
+
+    /// <summary>The scope's nodes rotated to start past the cursor, or at
+    /// it with <paramref name="includeCursor"/>; as given where the
+    /// cursor is not among them.</summary>
+    private static List<T> ScopedCandidates(IReadOnlyList<T> scope, T cursor, bool includeCursor)
+    {
+        int at = -1;
+        for (int i = 0; i < scope.Count; i++)
+            if (ReferenceEquals(scope[i], cursor))
+            {
+                at = i;
+                break;
+            }
+        if (at < 0)
+            return [.. scope];
+        var result = new List<T>(scope.Count);
+        if (includeCursor)
+            result.Add(cursor);
+        for (int d = 1; d < scope.Count; d++)
+            result.Add(scope[(at + d) % scope.Count]);
+        return result;
+    }
+
     /// <summary>Order candidates by tree distance from the cursor,
     /// ties broken by flat-order nearness, after before behind.</summary>
     private static List<T> RankByDistance(T cursor, List<T> flat, IEnumerable<T> candidates)
@@ -563,7 +598,9 @@ public partial class TreeView<T> : Widget where T : TreeNode<T>
         // Repeats rotate in flat order instead: proximity re-ranked
         // from each new cursor would bounce between two close matches
         // and starve the rest; a rotation visits every bearer.
-        var candidates = cycling ? RotationCandidates() : TypeaheadCandidates(includeCursor: !singleChar);
+        var candidates = TypeaheadScope is { } scope && _cursor is { } from
+            ? ScopedCandidates(scope(from), from, includeCursor: !singleChar && !cycling)
+            : cycling ? RotationCandidates() : TypeaheadCandidates(includeCursor: !singleChar);
         foreach (var node in candidates)
         {
             if (node.SkipsTypeahead || !AsciiMatch.StartsWithLower(TextOf(node), needle))
