@@ -56,6 +56,7 @@ public sealed class MultiAppHost : IDisposable
     private readonly SpeechReader? _speechReader;
     private readonly List<IReader> _readers = new();
     private readonly List<HostedApp> _apps = new();
+    private readonly List<HostedApp> _recent = new();
     private HostedApp? _active;
     private SoundManager? _audio;
     private uint _audioPeriodFrames;
@@ -108,6 +109,19 @@ public sealed class MultiAppHost : IDisposable
     /// <summary>The hosted apps, in the order they were added.</summary>
     public IReadOnlyList<HostedApp> Apps => _apps;
 
+    /// <summary>The hosted apps, most recently used first: what the
+    /// switching combos walk. An app moves to the front when it is
+    /// activated on purpose (<see cref="Activate"/>), or when it takes
+    /// its first input after a switching combo landed on it - passing
+    /// through an app on the way somewhere else is not using it. A new
+    /// app starts at the back.</summary>
+    public IReadOnlyList<HostedApp> RecentApps => _recent;
+
+    /// <summary>Advances whenever <see cref="RecentApps"/> changes
+    /// order or membership, for a task list that orders by recency
+    /// and polls.</summary>
+    public long RecencyVersion { get; private set; }
+
     /// <summary>The app currently receiving input and speech; null
     /// until the first activation (<see cref="Run"/> activates the
     /// first app if the host program has not chosen one).</summary>
@@ -156,6 +170,8 @@ public sealed class MultiAppHost : IDisposable
         app.SetNow(_now);
         app.AddReader(new Forwarder(hosted));
         _apps.Add(hosted);
+        _recent.Add(hosted);
+        RecencyVersion++;
         AppsVersion++;
         AppsChanged?.Invoke();
         return hosted;
@@ -167,14 +183,16 @@ public sealed class MultiAppHost : IDisposable
         if (index < 0)
             return;
         _apps.RemoveAt(index);
+        _recent.Remove(hosted);
+        RecencyVersion++;
         if (ReferenceEquals(_active, hosted))
         {
             _active = null;
             hosted.App.IsForeground = false;
-            // Land on the neighbor that moved into the closed app's
-            // slot, or the new last app; announced like any switch.
-            if (_apps.Count > 0)
-                Activate(_apps[Math.Min(index, _apps.Count - 1)]);
+            // Land where the user was before, the most recently used
+            // app left; announced like any switch.
+            if (_recent.Count > 0)
+                Activate(_recent[0]);
         }
         hosted.App.Dispose();
         hosted.RaiseClosed();
@@ -189,9 +207,16 @@ public sealed class MultiAppHost : IDisposable
     /// (<see cref="SwitchAnnouncement"/>): the full name-then-focus
     /// announcement by default, focus alone for a task-list pick,
     /// or nothing. Activating the active app just re-announces it
-    /// at the same grade.</summary>
+    /// at the same grade. The app becomes the most recently used
+    /// (<see cref="RecentApps"/>): an activation is a choice.</summary>
     public void Activate(
         HostedApp hosted, SwitchAnnouncement announcement = SwitchAnnouncement.NameAndFocus)
+    {
+        Switch(hosted, announcement);
+        Commit();
+    }
+
+    private void Switch(HostedApp hosted, SwitchAnnouncement announcement)
     {
         if (!ReferenceEquals(hosted.Owner, this))
             throw new ArgumentException("the app belongs to a different host");
@@ -215,6 +240,18 @@ public sealed class MultiAppHost : IDisposable
             hosted.App.ReannounceWithContext();
         hosted.LastSwitch = announcement;
         hosted.RaiseActivated();
+    }
+
+    /// <summary>The active app is the one in use: to the front of the
+    /// recency order, which ends any walk the switching combos were
+    /// on.</summary>
+    private void Commit()
+    {
+        if (_active is not { } active || _recent.Count == 0 || ReferenceEquals(_recent[0], active))
+            return;
+        _recent.Remove(active);
+        _recent.Insert(0, active);
+        RecencyVersion++;
     }
 
     // ── Readers ──
@@ -300,7 +337,9 @@ public sealed class MultiAppHost : IDisposable
 
     // ── Switching combos ──
 
-    /// <summary>Cycle to the next app (default ctrl+tab). Checked
+    /// <summary>Cycle to the next app (default ctrl+tab): down the
+    /// recency order (<see cref="RecentApps"/>), which a walk does not
+    /// change, so pressing it again goes on to the one after. Checked
     /// before the active app sees the input, so no app can trap the
     /// user. Apps with <see cref="HostedApp.ExcludedFromCycling"/> are
     /// never a destination. Reserved in every hosted app: their
@@ -308,8 +347,9 @@ public sealed class MultiAppHost : IDisposable
     /// value with a spoken reason. Null disables.</summary>
     public KeyCombo? NextAppCombo { get; set; } = KeyCombo.WithCtrl(Key.Tab);
 
-    /// <summary>Cycle to the previous app (default ctrl+shift+tab).
-    /// Null disables.</summary>
+    /// <summary>Cycle to the previous app (default ctrl+shift+tab): up
+    /// the recency order, from the least recently used. Null
+    /// disables.</summary>
     public KeyCombo? PreviousAppCombo { get; set; } = KeyCombo.CtrlShift(Key.Tab);
 
     private string? SwitchReservation(KeyCombo combo)
@@ -324,16 +364,21 @@ public sealed class MultiAppHost : IDisposable
         // Excluded apps are never a destination, and with nowhere to
         // go, switching is silent — re-activating the only candidate
         // would just re-announce it.
-        if (_apps.Count == 0)
+        // The walk is through the recency order as it stands: landing
+        // does not reorder it (Switch, not Activate), so the next press
+        // goes on from here, and only the app the user then does
+        // something in moves to the front.
+        var count = _recent.Count;
+        if (count == 0)
             return;
-        var index = _active is { } active ? _apps.IndexOf(active) : 0;
-        for (var step = 0; step < _apps.Count; step++)
+        var index = _active is { } active ? _recent.IndexOf(active) : direction > 0 ? -1 : 0;
+        for (var step = 0; step < count; step++)
         {
-            index = (index + direction + _apps.Count) % _apps.Count;
-            var candidate = _apps[index];
+            index = (index + direction + count) % count;
+            var candidate = _recent[index];
             if (candidate.ExcludedFromCycling || ReferenceEquals(candidate, _active))
                 continue;
-            Activate(candidate);
+            Switch(candidate, SwitchAnnouncement.NameAndFocus);
             return;
         }
     }
@@ -355,6 +400,11 @@ public sealed class MultiAppHost : IDisposable
             Cycle(-1);
             return true;
         }
+        // Anything but the switching combos is using the app the user
+        // is in, ending a walk there. Speak Focus is not: the window
+        // regaining focus sends one by itself.
+        if (input.Kind != InputKind.SpeakFocus)
+            Commit();
         if (_active is { } active)
         {
             try

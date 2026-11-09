@@ -65,6 +65,82 @@ public class MultiAppHostTests
     }
 
     [Fact]
+    public void CtrlTabGoesBackToTheLastAppUsed()
+    {
+        var (ui, a, b, c) = ThreeApps();
+        ui.Host.Activate(a);
+        ui.Host.Activate(c);
+        ui.Drain();
+
+        // Gamma, then Alpha: the order of use, not of opening.
+        Assert.Equal(new[] { c, a, b }, ui.Host.RecentApps);
+        ui.Raw(KeyCombo.WithCtrl(Key.Tab));
+        Assert.True(a.IsActive);
+
+        // Doing something in Alpha makes it the last app used, so the
+        // next Ctrl+Tab goes back to Gamma: two apps toggle.
+        ui.Raw(KeyCombo.Plain(Key.Down));
+        Assert.Equal(new[] { a, c, b }, ui.Host.RecentApps);
+        ui.Raw(KeyCombo.WithCtrl(Key.Tab));
+        Assert.True(c.IsActive);
+    }
+
+    [Fact]
+    public void AWalkPassesThroughWithoutReordering()
+    {
+        var (ui, a, b, c) = ThreeApps();
+        ui.Host.Activate(b);
+        ui.Host.Activate(a);
+        ui.Drain();
+        var version = ui.Host.RecencyVersion;
+
+        // Alpha, Beta, Gamma by use. Landing on Beta and going on
+        // without touching it reaches Gamma, not back to Alpha.
+        ui.Raw(KeyCombo.WithCtrl(Key.Tab));
+        Assert.True(b.IsActive);
+        ui.Raw(KeyCombo.WithCtrl(Key.Tab));
+        Assert.True(c.IsActive);
+        Assert.Equal(new[] { a, b, c }, ui.Host.RecentApps);
+        Assert.Equal(version, ui.Host.RecencyVersion);
+
+        // Ctrl+Shift+Tab walks back the same way.
+        ui.Raw(KeyCombo.CtrlShift(Key.Tab));
+        Assert.True(b.IsActive);
+
+        // The window regaining focus is not using the app.
+        ui.Host.HandleInput(InputEvent.Simple(InputKind.SpeakFocus));
+        Assert.Equal(new[] { a, b, c }, ui.Host.RecentApps);
+
+        // Typing is: Beta comes to the front, and the walk is over.
+        ui.Host.HandleInput(InputEvent.TypeChar('x'));
+        Assert.Equal(new[] { b, a, c }, ui.Host.RecentApps);
+        ui.Raw(KeyCombo.WithCtrl(Key.Tab));
+        Assert.True(a.IsActive);
+    }
+
+    [Fact]
+    public void ANewAppStartsAtTheBack()
+    {
+        var (ui, a, b, c) = ThreeApps();
+        ui.Host.Activate(c);
+        var d = ui.Host.Add("Delta");
+        _ = new Button(d.App, "D");
+        Assert.Equal(new[] { c, a, b, d }, ui.Host.RecentApps);
+    }
+
+    private static (TestHost Ui, HostedApp A, HostedApp B, HostedApp C) ThreeApps()
+    {
+        var ui = new TestHost();
+        var a = ui.Host.Add("Alpha");
+        _ = new ListBox(a.App, "A", new[] { "one", "two" });
+        var b = ui.Host.Add("Beta");
+        _ = new EditBox(b.App, "B");
+        var c = ui.Host.Add("Gamma");
+        _ = new Button(c.App, "C");
+        return (ui, a, b, c);
+    }
+
+    [Fact]
     public void CtrlTabWithOneAppIsASilentNoOp()
     {
         var ui = new TestHost();
@@ -387,18 +463,21 @@ public class HostedAppLifecycleTests
     }
 
     [Fact]
-    public void ClosingTheActiveAppActivatesItsNeighbor()
+    public void ClosingTheActiveAppReturnsToTheMostRecentlyUsed()
     {
         var (ui, a, b, c) = ThreeApps();
+        ui.Host.Activate(c);
+        ui.Host.Activate(a);
         ui.Host.Activate(b);
         ui.Drain();
 
+        // Gamma took Beta's slot, but Alpha is where the user was.
         b.Close();
-        Assert.True(c.IsActive);
-        Assert.True(c.App.IsForeground);
+        Assert.True(a.IsActive);
+        Assert.True(a.App.IsForeground);
         Assert.False(b.App.IsForeground);
-        Assert.Equal(new[] { "Gamma", "C button" }, ui.Spoken());
-        _ = a;
+        Assert.Equal(new[] { "Alpha", "A button" }, ui.Spoken());
+        Assert.Equal(new[] { a, c }, ui.Host.RecentApps);
     }
 
     [Fact]
