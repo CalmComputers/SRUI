@@ -481,6 +481,28 @@ public class HostedAppLifecycleTests
     }
 
     [Fact]
+    public void ClosingTheActiveAppPassesOverAnAppExcludedFromCycling()
+    {
+        var (ui, launcher, b, c) = ThreeApps();
+        launcher.ExcludedFromCycling = true;
+        // Beta, then the launcher, then Gamma started from it: the
+        // launcher is the more recent, and Beta is where the work was.
+        ui.Host.Activate(b);
+        ui.Host.Activate(launcher);
+        ui.Host.Activate(c);
+        ui.Drain();
+
+        c.Close();
+        Assert.True(b.IsActive);
+        Assert.Equal(new[] { "Beta", "B button" }, ui.Spoken());
+
+        // Nothing else is open: now it is the launcher.
+        b.Close();
+        Assert.True(launcher.IsActive);
+        Assert.Equal(new[] { "Alpha", "A button" }, ui.Spoken());
+    }
+
+    [Fact]
     public void ClosingTheLastAppLeavesNoActive()
     {
         var ui = new TestHost();

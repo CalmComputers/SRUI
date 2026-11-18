@@ -189,10 +189,15 @@ public sealed class MultiAppHost : IDisposable
         {
             _active = null;
             hosted.App.IsForeground = false;
-            // Land where the user was before, the most recently used
-            // app left; announced like any switch.
+            // Land where the user was working before, the most recently
+            // used app left; announced like any switch. An app excluded
+            // from cycling - a launcher - is reached on purpose, and
+            // closing something is not that: it is passed over, even
+            // when it is the more recent (everything is started from
+            // it), and is where the user lands only when nothing else
+            // is open.
             if (_recent.Count > 0)
-                Activate(_recent[0]);
+                Activate(_recent.FirstOrDefault(app => !app.ExcludedFromCycling) ?? _recent[0]);
         }
         hosted.App.Dispose();
         hosted.RaiseClosed();
