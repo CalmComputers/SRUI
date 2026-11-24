@@ -1,7 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <!-- net8.0 is for hosts that embed the toolkit in a process they do
+         not own and whose runtime they cannot choose (a game mod). The
+         language version is pinned because a net8.0 target would
+         otherwise fall back to C# 12. -->
+    <TargetFrameworks>net10.0;net8.0</TargetFrameworks>
+    <LangVersion>14.0</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>Srui</RootNamespace>

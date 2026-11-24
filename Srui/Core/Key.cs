@@ -247,6 +247,15 @@ public readonly record struct KeyCombo(Key Key, bool Ctrl, bool Alt, bool Shift,
     /// <summary>Whether any modifier is held.</summary>
     public bool HasModifier => Ctrl || Alt || Shift || Win;
 
+    /// <summary>The logical input this combo's keydown produces under
+    /// the default map, carrying the combo as its physical provenance —
+    /// the mapping the SDL host and the test harness share, for a host
+    /// that pumps its own platform events into a headless app. Null
+    /// when the keydown yields no logical input by itself: an
+    /// unmodified printable arrives as the text input that follows it,
+    /// which the host sends as a TypeChar carrying this combo.</summary>
+    public InputEvent? ToInput() => Core.InputMapper.MapCombo(this);
+
     /// <summary>From the flat (key, mods) encoding used by RawKey inputs.</summary>
     public static KeyCombo FromFlat(uint key, Mods mods) => new(
         new Key(key),
