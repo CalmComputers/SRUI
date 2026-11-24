@@ -463,7 +463,14 @@ internal sealed class CoreUi
         {
             var next = Nav.RecoverFocus(_tree, _tree.Parent(restored));
             if (next.IsNone)
+            {
+                // Nothing on the ground can take focus. The layer's
+                // remembered focus must not stand: the tick end would
+                // read it as an arrival, a widget the user cannot
+                // reach spoken as where they are.
+                _tree.ClearFocus();
                 return;
+            }
             restored = next;
         }
         if (snapshot is not { } known || known.Focus != restored)
