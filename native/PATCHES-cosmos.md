@@ -67,9 +67,14 @@ selects the 128-frame default — low trigger-to-ear latency; larger
 values buy mixing headroom for heavy scenes), and a new exported helper
 ma_engine_get_actual_period_frames returns the period the device
 actually granted (WASAPI aligns the request; IAudioClient3 clamps it to
-the driver's range). The C# side sizes the Steam Audio frame from the
-granted value, so the phonon block and the device period cannot
-disagree regardless of what the driver decides.
+the driver's range). The granted value is for reporting latency only.
+The C# side sizes the Steam Audio frame from the period it requested,
+because that is the block the engine mixes in: miniaudio calls back in
+fixed blocks of the request and bridges to the device's own period
+behind them. Sizing it from the grant (asked 128, granted 352) handed
+every convolver part of a block, and two sounding together silenced
+the whole engine. The comment in miniaudio_impl.c still says the grant;
+it is corrected at the next native rebuild.
 
 The resource manager (the decode cache) is process-global and
 refcounted rather than per-engine: init reuses a live cache, and

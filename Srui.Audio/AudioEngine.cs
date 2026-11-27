@@ -30,16 +30,26 @@ internal sealed class AudioEngine : IDisposable
             throw new AudioException("audio engine initialization failed");
         }
 
-        // Steam Audio's frame size must match the device period — so ask
-        // the engine what WASAPI actually granted (the request may be
-        // aligned or clamped by the driver) and size phonon to that.
         var sampleRate = NativeMethods.ma_engine_get_sample_rate(Handle);
         PeriodFrames = NativeMethods.ma_engine_get_actual_period_frames(Handle);
         if (PeriodFrames == 0)
             PeriodFrames = 256;
-        HrtfAvailable = NativeMethods.ma_phonon_init(sampleRate, PeriodFrames) == 0
+
+        // Steam Audio works in whole blocks of its frame size, so that
+        // size must be the block the engine mixes in. That is the
+        // period asked for, not the one the device granted: miniaudio
+        // calls back in fixed blocks of the request and bridges to the
+        // device's own period behind them. Sized to the grant instead
+        // (asked 128, granted 352), every convolver was handed part of
+        // a block, and two of them sounding together silenced the
+        // whole engine until one was destroyed.
+        var blockFrames = periodFrames == 0 ? DefaultPeriodFrames : periodFrames;
+        HrtfAvailable = NativeMethods.ma_phonon_init(sampleRate, blockFrames) == 0
             || NativeMethods.ma_phonon_is_initialized() != 0;
     }
+
+    /// <summary>What a request of 0 asks for, as the native side reads it.</summary>
+    private const uint DefaultPeriodFrames = 128;
 
     /// <summary>The device period in frames — the granularity at which
     /// the device pulls audio, and the dominant term in trigger-to-ear
